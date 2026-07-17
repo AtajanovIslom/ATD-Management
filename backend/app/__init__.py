@@ -153,6 +153,17 @@ def create_app():
             "CREATE INDEX IF NOT EXISTS idx_audit_entity ON audit_logs(entity_type, entity_id)",
             "CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_logs(action)",
             "CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at DESC)",
+            """CREATE TABLE IF NOT EXISTS reminder_attachments (
+                id SERIAL PRIMARY KEY,
+                reminder_id INTEGER NOT NULL REFERENCES reminders(id) ON DELETE CASCADE,
+                filename VARCHAR(255) NOT NULL,
+                original_name VARCHAR(255) NOT NULL,
+                file_size INTEGER,
+                uploaded_at TIMESTAMP DEFAULT NOW()
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_reminder_att_rid ON reminder_attachments(reminder_id)",
+            "ALTER TABLE reminders ADD COLUMN IF NOT EXISTS notify_interval INTEGER DEFAULT 1440",
+            "ALTER TABLE reminders ADD COLUMN IF NOT EXISTS last_notified_at TIMESTAMP",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS email VARCHAR(255)",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(50)",
             "ALTER TABLE users ALTER COLUMN department SET DEFAULT ''",

@@ -15,10 +15,15 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    const status = error.response?.status
+    // 401 = token yo'q/muddati tugagan, 422 = imzo tekshiruvi muvaffaqiyatsiz (boshqa kalit bilan imzolangan token)
+    const isAuthError = status === 401 || status === 422
+    if (isAuthError && localStorage.getItem('token')) {
       localStorage.removeItem('token')
       localStorage.removeItem('user')
-      window.location.href = '/login'
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login'
+      }
     }
     return Promise.reject(error)
   }

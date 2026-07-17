@@ -4,10 +4,16 @@ import api from '../api/axios'
 import { useAuth } from '../context/AuthContext'
 
 /**
- * Har logindan keyin bir marta ko'rsatiladi:
- * agar user'da 5 kun ichida muddati keladigan yoki muddati o'tgan
- * BAJARILMAGAN eslatmalar bo'lsa, notification chiqadi.
+ * Eslatma ogohlantirishlari.
+ *
+ * Har bir eslatmaning o'z takrorlanish oralig'i bor (notify_interval, daqiqada).
+ * Backend faqat oralig'i kelgan eslatmalarni qaytaradi (due_only=1).
+ * Ko'rsatilgach `mark-notified` chaqiriladi — keyingi ko'rsatish oraliqdan keyin.
+ *
+ * Shuning uchun bir martalik emas, davriy tekshiruv kerak.
  */
+const CHECK_INTERVAL_MS = 60 * 1000  // har daqiqada tekshiramiz
+
 export default function ReminderNotification() {
   const { user } = useAuth()
   const navigate = useNavigate()
@@ -16,24 +22,31 @@ export default function ReminderNotification() {
 
   useEffect(() => {
     if (!user) return
-    // Har login uchun bir marta ko'rsatamiz (sessionStorage)
-    const key = `reminder_notif_shown_${user.id}`
-    if (sessionStorage.getItem(key)) return
+    let cancelled = false
 
-    api.get('/reminders/upcoming?days=5')
-      .then(res => {
-        if (res.data.total > 0) {
-          setItems(res.data.items)
-          setShow(true)
-        }
-        sessionStorage.setItem(key, '1')
-      })
-      .catch(() => { /* ignore */ })
-  }, [user])
+    const check = async () => {
+      // Oyna ochiq bo'lsa yangi ogohlantirish bilan bezovta qilmaymiz
+      if (cancelled || show) return
+      try {
+        const res = await api.get('/reminders/upcoming?days=5&due_only=1')
+        if (cancelled || res.data.total === 0) return
+        setItems(res.data.items)
+        setShow(true)
+        // Ko'rsatildi deb belgilaymiz — keyingisi oraliqdan keyin
+        await api.post('/reminders/mark-notified', {
+          ids: res.data.items.map(r => r.id),
+        })
+      } catch { /* ignore */ }
+    }
+
+    check()
+    const timer = setInterval(check, CHECK_INTERVAL_MS)
+    return () => { cancelled = true; clearInterval(timer) }
+  }, [user, show])
 
   if (!show || items.length === 0) return null
 
-  const close = () => setShow(false)
+  const close = () => { setShow(false); setItems([]) }
   const goToPage = () => { close(); navigate('/reminders') }
 
   const toggle = async (id) => {
@@ -90,9 +103,10 @@ export default function ReminderNotification() {
                   <div style={{ fontSize: 13, fontWeight: 500, whiteSpace: 'pre-wrap' }}>
                     {r.message}
                   </div>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, display: 'flex', gap: 8 }}>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                     <span>📅 {formatDate(r.remind_date)}</span>
                     <span style={{ color, fontWeight: 600 }}>{daysText(r.days_left)}</span>
+                    {r.notify_interval_label && <span>🔔 {r.notify_interval_label}</span>}
                   </div>
                 </div>
               </div>
@@ -111,13 +125,14 @@ export default function ReminderNotification() {
   )
 }
 
+// Reminders.jsx dagi bilan bir xil: muddat yaqinlashgan sari yashildan qizilga silliq o'tish
+const COLOR_MAX_DAYS = 30
+
 function colorForDays(days) {
   if (days === null || days === undefined) return '#64748b'
-  if (days < 0) return '#dc2626'
-  if (days <= 2) return '#ef4444'
-  if (days <= 5) return '#f97316'
-  if (days <= 14) return '#eab308'
-  return '#22c55e'
+  if (days < 0) return 'hsl(0, 85%, 38%)'
+  const t = Math.min(days, COLOR_MAX_DAYS) / COLOR_MAX_DAYS
+  return `hsl(${Math.round(t * 120)}, 85%, 45%)`
 }
 
 function daysText(days) {

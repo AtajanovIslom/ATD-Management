@@ -18,9 +18,9 @@ frontend/dist/
 .env
 backend/.env
 
-# Uploads
-backend/uploads/*
-!backend/uploads/.gitkeep
+# Uploads — foydalanuvchi yuklagan fayllar (Docker'da volume'da saqlanadi)
+backend/app/uploads/
+backend/uploads/
 
 # IDE
 .vscode/

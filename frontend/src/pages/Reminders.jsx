@@ -12,6 +12,20 @@ const UZ_MONTHS = ['Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun',
                    'Iyul', 'Avgust', 'Sentyabr', 'Oktyabr', 'Noyabr', 'Dekabr']
 const UZ_WEEK = ['Du', 'Se', 'Cho', 'Pa', 'Ju', 'Sha', 'Ya']  // Mon-Sun
 
+// Ogohlantirish takrorlanish oraliqlari (daqiqada) — backend'dagi ALLOWED_INTERVALS bilan mos.
+// -1 = maxsus rejim: muddatga 7 kun qolganda kunlik ogohlantirish (Reminder.LAST_WEEK_MODE)
+const NOTIFY_INTERVALS = [
+  { value: 0, label: 'Takrorlanmasin (faqat bir marta)' },
+  { value: -1, label: 'Oxirgi haftadan boshlab har kuni' },
+  { value: 60, label: 'Har soatda' },
+  { value: 120, label: 'Har 2 soatda' },
+  { value: 360, label: 'Har 6 soatda' },
+  { value: 720, label: 'Har 12 soatda' },
+  { value: 1440, label: 'Har kuni' },
+  { value: 10080, label: 'Har haftada' },
+  { value: 43200, label: 'Har oyda' },
+]
+
 // Lokal timezone bo'yicha YYYY-MM-DD (UTC ga o'girmasdan — kun surilib ketmasin)
 const isoDate = (d) => {
   const y = d.getFullYear()
@@ -61,11 +75,21 @@ export default function Reminders() {
 
   const closeDialog = () => setDialog(null)
 
-  const onSave = async ({ date, message, id }) => {
+  const onSave = async ({ date, message, id, notifyInterval, newFiles, removeFileIds }) => {
+    const fd = new FormData()
+    fd.append('remind_date', date)
+    fd.append('message', message)
+    fd.append('notify_interval', String(notifyInterval))
+    if (newFiles) {
+      for (const f of newFiles) fd.append('files', f)
+    }
+    if (removeFileIds) {
+      for (const fid of removeFileIds) fd.append('remove_file_ids', fid)
+    }
     if (id) {
-      await api.put(`/reminders/${id}`, { remind_date: date, message })
+      await api.put(`/reminders/${id}`, fd)
     } else {
-      await api.post('/reminders', { remind_date: date, message })
+      await api.post('/reminders', fd)
     }
     await load()
     closeDialog()
@@ -324,7 +348,29 @@ function ReminderItem({ item, onEdit, onToggle, onDelete }) {
         }}>
           <span style={{ color: 'var(--text-muted)' }}>📅 {formatDate(item.remind_date)}</span>
           <span style={{ color, fontWeight: 600 }}>{daysText}</span>
+          {!item.is_completed && item.notify_interval_label && (
+            <span style={{ color: 'var(--text-muted)' }}>🔔 {item.notify_interval_label}</span>
+          )}
         </div>
+        {item.files && item.files.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
+            {item.files.map(f => (
+              <a key={f.id} href={`${api.defaults.baseURL}${f.download_url}`}
+                target="_blank" rel="noopener noreferrer"
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 3,
+                  background: 'var(--bg-input, #f1f5f9)', border: '1px solid var(--border)',
+                  borderRadius: 5, padding: '3px 7px', fontSize: 10,
+                  color: 'var(--accent, #6366f1)', textDecoration: 'none',
+                  cursor: 'pointer',
+                }}
+                title={`Yuklab olish: ${f.original_name}`}
+              >
+                📎 {f.original_name}
+              </a>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Amallar */}
@@ -344,25 +390,63 @@ function ReminderDialog({ dialog, onClose, onSave, onDelete }) {
   const [message, setMessage] = useState(initial?.message || '')
   const [date, setDate] = useState(initial?.remind_date || dialog.date)
   const [busy, setBusy] = useState(false)
+  const [notifyInterval, setNotifyInterval] = useState(
+    initial?.notify_interval !== undefined && initial?.notify_interval !== null
+      ? initial.notify_interval
+      : 1440
+  )
+  const [newFiles, setNewFiles] = useState([])
+  const [existingFiles, setExistingFiles] = useState(initial?.files || [])
+  const [removeFileIds, setRemoveFileIds] = useState([])
 
   const canSave = message.trim().length > 0 && !!date
+
+  const addFiles = (e) => {
+    const selected = Array.from(e.target.files || [])
+    setNewFiles(prev => [...prev, ...selected])
+    e.target.value = ''
+  }
+
+  const removeNewFile = (idx) => {
+    setNewFiles(prev => prev.filter((_, i) => i !== idx))
+  }
+
+  const removeExisting = (file) => {
+    setExistingFiles(prev => prev.filter(f => f.id !== file.id))
+    setRemoveFileIds(prev => [...prev, file.id])
+  }
 
   const submit = async (e) => {
     e?.preventDefault()
     if (!canSave || busy) return
     setBusy(true)
     try {
-      await onSave({ date, message: message.trim(), id: initial?.id })
+      await onSave({
+        date, message: message.trim(), id: initial?.id,
+        notifyInterval,
+        newFiles: newFiles.length > 0 ? newFiles : null,
+        removeFileIds: removeFileIds.length > 0 ? removeFileIds : null,
+      })
     } catch (err) {
-      alert(err.response?.data?.error || 'Xatolik')
+      const d = err.response?.data
+      const msg = d?.error || d?.msg || err.message || 'Noma\'lum xato'
+      const status = err.response?.status ? ` (kod: ${err.response.status})` : ' (tarmoq xatosi — token muddati tugagan bo\'lishi mumkin)'
+      alert('Xatolik: ' + msg + status)
     } finally {
       setBusy(false)
     }
   }
 
+  const formatSize = (bytes) => {
+    if (!bytes) return ''
+    if (bytes < 1024) return bytes + ' B'
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+    return (bytes / 1024 / 1024).toFixed(1) + ' MB'
+  }
+
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" style={{ maxWidth: 460 }} onClick={e => e.stopPropagation()}>
+      <div className="modal" style={{ maxWidth: 500 }} onClick={e => e.stopPropagation()}>
         <h2>{initial ? '✏️ Eslatmani tahrirlash' : '📝 Yangi eslatma'}</h2>
 
         <form onSubmit={submit}>
@@ -384,6 +468,62 @@ function ReminderDialog({ dialog, onClose, onSave, onDelete }) {
             <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>
               Ctrl+Enter — tez saqlash
             </div>
+          </div>
+
+          <div className="form-group">
+            <label>🔔 Ogohlantirish takrorlanishi</label>
+            <select className="form-input" value={notifyInterval}
+              onChange={e => setNotifyInterval(Number(e.target.value))}>
+              {NOTIFY_INTERVALS.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>
+              Muddat yaqinlashganda shu oraliqda ogohlantirish beriladi
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label>Fayllar biriktirish</label>
+            <input type="file" multiple onChange={addFiles}
+              style={{ fontSize: 12, color: 'var(--text-muted)' }} />
+
+            {(existingFiles.length > 0 || newFiles.length > 0) && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                {existingFiles.map(f => (
+                  <span key={f.id} className="report-file-chip" style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 4,
+                    background: 'var(--bg-input, #f1f5f9)', border: '1px solid var(--border)',
+                    borderRadius: 6, padding: '4px 8px', fontSize: 11,
+                  }}>
+                    📎 {f.original_name}
+                    <span style={{ color: 'var(--text-muted)', fontSize: 10 }}>
+                      ({formatSize(f.file_size)})
+                    </span>
+                    <button type="button" onClick={() => removeExisting(f)} style={{
+                      background: 'none', border: 'none', color: '#ef4444',
+                      cursor: 'pointer', fontSize: 14, padding: '0 2px', lineHeight: 1,
+                    }}>×</button>
+                  </span>
+                ))}
+                {newFiles.map((f, i) => (
+                  <span key={`new-${i}`} style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 4,
+                    background: 'var(--accent-soft, rgba(99,102,241,0.1))', border: '1px solid var(--accent, #6366f1)',
+                    borderRadius: 6, padding: '4px 8px', fontSize: 11,
+                  }}>
+                    📄 {f.name}
+                    <span style={{ color: 'var(--text-muted)', fontSize: 10 }}>
+                      ({formatSize(f.size)})
+                    </span>
+                    <button type="button" onClick={() => removeNewFile(i)} style={{
+                      background: 'none', border: 'none', color: '#ef4444',
+                      cursor: 'pointer', fontSize: 14, padding: '0 2px', lineHeight: 1,
+                    }}>×</button>
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="modal-actions" style={{ justifyContent: 'space-between' }}>
@@ -442,25 +582,36 @@ function IconBtn({ children, onClick, title, tone }) {
 }
 
 function Legend() {
-  const items = [
-    { color: '#ef4444', label: 'Muddati o‘tgan / 0-2 kun' },
-    { color: '#f97316', label: '3-5 kun' },
-    { color: '#eab308', label: '6-14 kun' },
-    { color: '#22c55e', label: "15+ kun" },
-    { color: '#64748b', label: 'Bajarilgan' },
-  ]
+  // Gradient yo'nalishi colorForDays bilan mos: chapda muddati o'tgan (qizil),
+  // o'ngda uzoq muddat (yashil)
+  const stops = [0, 25, 50, 75, 100]
+    .map(p => `hsl(${Math.round((p / 100) * 120)}, 85%, 45%)`)
+    .join(', ')
+
   return (
     <div className="card" style={{ marginTop: 10, padding: 10 }}>
       <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
         Rang tavsifi
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-        {items.map(it => (
-          <div key={it.label} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
-            <span style={{ width: 12, height: 12, borderRadius: 3, background: it.color }} />
-            <span>{it.label}</span>
-          </div>
-        ))}
+
+      <div style={{
+        height: 8, borderRadius: 4, marginBottom: 6,
+        background: `linear-gradient(to right, ${stops})`,
+      }} />
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-muted)' }}>
+        <span>Muddat yaqin</span>
+        <span>{COLOR_MAX_DAYS}+ kun</span>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+          <span style={{ width: 12, height: 12, borderRadius: 3, background: 'hsl(0, 85%, 38%)' }} />
+          <span>Muddati o‘tgan</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+          <span style={{ width: 12, height: 12, borderRadius: 3, background: '#64748b' }} />
+          <span>Bajarilgan</span>
+        </div>
       </div>
     </div>
   )
@@ -469,13 +620,16 @@ function Legend() {
 
 /* -------------------------- Utillar ----------------------------------- */
 
+// Muddat yaqinlashgan sari rang yashildan qizilga silliq o'zgaradi.
+// HSL rang doirasida hue 120° (yashil) -> 0° (qizil) oralig'ida interpolyatsiya.
+const COLOR_MAX_DAYS = 30  // shundan uzoq muddat — to'liq yashil
+
 function colorForDays(days) {
   if (days === null || days === undefined) return '#64748b'
-  if (days < 0) return '#dc2626'    // muddati o'tgan (to'q qizil)
-  if (days <= 2) return '#ef4444'   // qizil
-  if (days <= 5) return '#f97316'   // to'q sariq
-  if (days <= 14) return '#eab308'  // sariq
-  return '#22c55e'                  // yashil
+  if (days < 0) return 'hsl(0, 85%, 38%)'  // muddati o'tgan — to'q qizil
+  const t = Math.min(days, COLOR_MAX_DAYS) / COLOR_MAX_DAYS  // 0..1
+  const hue = t * 120  // 0 = qizil, 120 = yashil
+  return `hsl(${Math.round(hue)}, 85%, 45%)`
 }
 
 function daysText_(days, completed) {

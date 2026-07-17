@@ -1,6 +1,16 @@
 from datetime import datetime, timezone
 from app import db
 
+
+def utc_naive_now():
+    """Naive UTC vaqt.
+
+    TIMESTAMP WITHOUT TIME ZONE ustunlariga tz-aware vaqt yozilsa, PostgreSQL uni
+    sessiya (lokal) mintaqasiga o'girib, tz'ni olib tashlaydi — natijada o'qishda
+    vaqt siljib ketadi. Shuning uchun vaqt hisobida naive UTC ishlatiladi.
+    """
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
 team_members = db.Table('team_members',
     db.Column('team_id', db.Integer, db.ForeignKey('teams.id'), primary_key=True),
     db.Column('user_id', db.Integer, db.ForeignKey('users.id'), primary_key=True),
@@ -316,11 +326,65 @@ class Reminder(db.Model):
                            default=lambda: datetime.now(timezone.utc),
                            onupdate=lambda: datetime.now(timezone.utc))
 
-    def to_dict(self):
+    # Ogohlantirish takrorlanish oralig'i (daqiqada). 0 = takrorlamaslik (faqat login'da bir marta)
+    notify_interval = db.Column(db.Integer, default=1440)
+    last_notified_at = db.Column(db.DateTime)
+
+    files = db.relationship('ReminderAttachment', backref='reminder', lazy=True, cascade='all, delete-orphan')
+
+    # Maxsus rejim: muddatga LAST_WEEK_DAYS kun qolganda kunlik ogohlantirish
+    LAST_WEEK_MODE = -1
+    LAST_WEEK_DAYS = 7
+
+    # Interfeys uchun ruxsat etilgan oraliqlar (daqiqa -> nom)
+    INTERVAL_LABELS = {
+        0: 'Takrorlanmasin',
+        LAST_WEEK_MODE: 'Oxirgi haftadan boshlab har kuni',
+        60: 'Har soatda',
+        120: 'Har 2 soatda',
+        360: 'Har 6 soatda',
+        720: 'Har 12 soatda',
+        1440: 'Har kuni',
+        10080: 'Har haftada',
+        43200: 'Har oyda',
+    }
+
+    def days_left(self):
         from datetime import date as _date
-        today = _date.today()
+        return (self.remind_date - _date.today()).days if self.remind_date else None
+
+    def is_notification_due(self, now=None):
+        """Ogohlantirish ko'rsatish vaqti keldimi?
+
+        `last_notified_at` — TIMESTAMP WITHOUT TIME ZONE ustuni, unga naive UTC
+        yoziladi (utc_naive_now()). Shuning uchun taqqoslash ham naive UTC'da.
+        """
+        interval = self.notify_interval if self.notify_interval is not None else 1440
+
+        if interval == self.LAST_WEEK_MODE:
+            # Muddatga bir haftadan ko'p qolgan bo'lsa — jim turamiz
+            dl = self.days_left()
+            if dl is None or dl > self.LAST_WEEK_DAYS:
+                return False
+            interval = 1440  # oxirgi haftada — kunlik
+
+        if interval == 0:
+            # Takrorlanmaydi — faqat hech qachon ko'rsatilmagan bo'lsa
+            return self.last_notified_at is None
+        if self.last_notified_at is None:
+            return True
+
+        now = now or utc_naive_now()
+        last = self.last_notified_at
+        if last.tzinfo is not None:
+            last = last.astimezone(timezone.utc).replace(tzinfo=None)
+        elapsed_minutes = (now - last).total_seconds() / 60
+        return elapsed_minutes >= interval
+
+    def to_dict(self):
         rd = self.remind_date
-        days_left = (rd - today).days if rd else None
+        days_left = self.days_left()
+        interval = self.notify_interval if self.notify_interval is not None else 1440
         return {
             'id': self.id,
             'user_id': self.user_id,
@@ -330,8 +394,33 @@ class Reminder(db.Model):
             'completed_at': self.completed_at.isoformat() if self.completed_at else None,
             'days_left': days_left,
             'is_overdue': (not self.is_completed) and days_left is not None and days_left < 0,
+            'notify_interval': interval,
+            'notify_interval_label': self.INTERVAL_LABELS.get(interval, f'Har {interval} daqiqada'),
+            'last_notified_at': self.last_notified_at.isoformat() if self.last_notified_at else None,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'files': [f.to_dict() for f in self.files],
+        }
+
+
+class ReminderAttachment(db.Model):
+    __tablename__ = 'reminder_attachments'
+
+    id = db.Column(db.Integer, primary_key=True)
+    reminder_id = db.Column(db.Integer, db.ForeignKey('reminders.id', ondelete='CASCADE'), nullable=False)
+    filename = db.Column(db.String(255), nullable=False)
+    original_name = db.Column(db.String(255), nullable=False)
+    file_size = db.Column(db.Integer)
+    uploaded_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'reminder_id': self.reminder_id,
+            'filename': self.filename,
+            'original_name': self.original_name,
+            'file_size': self.file_size,
+            'download_url': f'/reminders/files/{self.filename}',
         }
 
 
