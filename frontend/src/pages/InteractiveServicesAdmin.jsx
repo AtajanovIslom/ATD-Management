@@ -31,8 +31,10 @@ export default function InteractiveServicesAdmin() {
   useEffect(() => { loadDepartments() }, [loadDepartments])
 
   // Bo'lim CRUD
-  const openAddDept = () => setDeptDialog({ mode: 'add', name: '' })
-  const openEditDept = (d) => setDeptDialog({ mode: 'edit', item: d, name: d.name })
+  const openAddDept = () => setDeptDialog({ mode: 'add', name: '', multiType: false })
+  const openEditDept = (d) => setDeptDialog({
+    mode: 'edit', item: d, name: d.name, multiType: !!d.multi_type,
+  })
   const closeDeptDialog = () => setDeptDialog(null)
 
   const saveDept = async () => {
@@ -41,10 +43,11 @@ export default function InteractiveServicesAdmin() {
     if (!name) return
     setBusy(true)
     try {
+      const payload = { name, multi_type: deptDialog.multiType }
       if (deptDialog.mode === 'add') {
-        await api.post('/interactive/departments', { name })
+        await api.post('/interactive/departments', payload)
       } else {
-        await api.put(`/interactive/departments/${deptDialog.item.id}`, { name })
+        await api.put(`/interactive/departments/${deptDialog.item.id}`, payload)
       }
       closeDeptDialog()
       loadDepartments()
@@ -104,7 +107,18 @@ export default function InteractiveServicesAdmin() {
               ) : departments.map((d, i) => (
                 <tr key={d.id}>
                   <td>{i + 1}</td>
-                  <td><strong>{d.name}</strong></td>
+                  <td>
+                    <strong>{d.name}</strong>
+                    {d.multi_type && (
+                      <span style={{
+                        marginLeft: 8, fontSize: 11, fontWeight: 600,
+                        padding: '2px 8px', borderRadius: 10, whiteSpace: 'nowrap',
+                        background: 'rgba(34,197,94,0.12)', color: '#22c55e',
+                      }} title="Arizada bir nechta xizmat turini tanlash mumkin">
+                        ko'p tanlov
+                      </span>
+                    )}
+                  </td>
                   <td style={{ textAlign: 'center' }}>
                     <span style={{
                       fontSize: 12, fontWeight: 600,
@@ -139,6 +153,10 @@ export default function InteractiveServicesAdmin() {
           onSave={saveDept}
           busy={busy}
           placeholder="Masalan: Elektr taminoti"
+          switchValue={deptDialog.multiType}
+          onSwitchChange={(v) => setDeptDialog({ ...deptDialog, multiType: v })}
+          switchLabel="Bir nechta xizmat turini tanlash"
+          switchHint="Yoqilsa, arizachi shu bo'limdan bir vaqtda bir nechta xizmat turini belgilay oladi"
         />
       )}
 
@@ -284,8 +302,12 @@ function TypesDialog({ department, onClose }) {
 
 /* -------------------------- Umumiy nom dialogi ---------------------------- */
 
-function NameDialog({ title, value, onChange, onClose, onSave, busy, placeholder }) {
+function NameDialog({
+  title, value, onChange, onClose, onSave, busy, placeholder,
+  switchValue, onSwitchChange, switchLabel, switchHint,
+}) {
   const canSave = useMemo(() => value.trim().length > 0, [value])
+  const hasSwitch = typeof onSwitchChange === 'function'
 
   const onKey = (e) => {
     if (e.key === 'Enter' && canSave && !busy) onSave()
@@ -307,6 +329,18 @@ function NameDialog({ title, value, onChange, onClose, onSave, busy, placeholder
             autoFocus
           />
         </div>
+
+        {hasSwitch && (
+          <div className="form-group">
+            <Switch
+              checked={!!switchValue}
+              onChange={onSwitchChange}
+              label={switchLabel}
+              hint={switchHint}
+            />
+          </div>
+        )}
+
         <div className="modal-actions">
           <button className="btn btn-outline" onClick={onClose}>Bekor qilish</button>
           <button className="btn btn-primary" disabled={!canSave || busy} onClick={onSave}>
@@ -314,6 +348,61 @@ function NameDialog({ title, value, onChange, onClose, onSave, busy, placeholder
           </button>
         </div>
       </div>
+    </div>
+  )
+}
+
+
+/* -------------------------------- Switch --------------------------------- */
+
+/**
+ * ARIA switch — yashirin checkbox o'rniga role="switch" tugmasi.
+ * Sabab: 0x0 / opacity:0 input accessibility daraxtiga tushmaydi va
+ * <label> ichida bo'lgani uchun bosilganda hodisa ikki marta ishlaydi.
+ * Tugma esa klaviaturadan ham ishlaydi (Space/Enter — brauzer o'zi).
+ */
+function Switch({ checked, onChange, label, hint }) {
+  return (
+    <div
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      tabIndex={0}
+      onClick={() => onChange(!checked)}
+      onKeyDown={e => {
+        if (e.key === ' ' || e.key === 'Enter') {
+          e.preventDefault()
+          onChange(!checked)
+        }
+      }}
+      style={{
+        display: 'flex', alignItems: 'flex-start', gap: 10,
+        cursor: 'pointer', userSelect: 'none',
+      }}
+    >
+      <span style={{
+        flexShrink: 0, marginTop: 1,
+        width: 40, height: 22, borderRadius: 11,
+        background: checked ? 'var(--accent, #6366f1)' : 'var(--border, #475569)',
+        position: 'relative',
+        transition: 'background 0.2s',
+      }}>
+        <span style={{
+          position: 'absolute', top: 3, left: checked ? 21 : 3,
+          width: 16, height: 16, borderRadius: '50%',
+          background: '#fff',
+          transition: 'left 0.2s',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+        }} />
+      </span>
+      <span style={{ minWidth: 0 }}>
+        <span style={{ fontSize: 13, fontWeight: 500 }}>{label}</span>
+        {hint && (
+          <span style={{
+            display: 'block', fontSize: 11, color: 'var(--text-muted)', marginTop: 2,
+          }}>{hint}</span>
+        )}
+      </span>
     </div>
   )
 }

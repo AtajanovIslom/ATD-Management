@@ -17,8 +17,9 @@ Ruxsat: superadmin, director, deputy_director, admin (Boshqarma rahbari)
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from app import db
-from app.models import ServiceDepartment, ServiceType
+from app.models import ServiceDepartment, ServiceType, interactive_request_types
 from app.utils import is_admin_or_above, log_audit
 
 interactive_bp = Blueprint('interactive_services', __name__)
@@ -29,6 +30,22 @@ def _require_admin():
     if not is_admin_or_above(role):
         return jsonify({'error': "Ruxsat yo'q"}), 403
     return None
+
+
+def _requests_using_types(type_ids):
+    """Berilgan xizmat turlari nechta arizada ishlatilganini qaytaradi.
+
+    Arizada ishlatilgan turni o'chirib bo'lmaydi (tashqi kalit) — aks holda
+    ma'lumotlar bazasi xatosi 500 bo'lib chiqadi. Shuning uchun oldindan
+    tekshirib, tushunarli xabar qaytaramiz.
+    """
+    if not type_ids:
+        return 0
+    return (
+        db.session.query(func.count(func.distinct(interactive_request_types.c.request_id)))
+        .filter(interactive_request_types.c.type_id.in_(type_ids))
+        .scalar() or 0
+    )
 
 
 # =========================================================================
@@ -68,10 +85,11 @@ def create_department():
     if not name:
         return jsonify({'error': 'Nom kiritilishi shart'}), 400
 
-    dept = ServiceDepartment(name=name)
+    dept = ServiceDepartment(name=name, multi_type=bool(data.get('multi_type')))
     db.session.add(dept)
     db.session.flush()
-    log_audit('create', 'service_department', dept.id, entity_label=dept.name)
+    log_audit('create', 'service_department', dept.id, entity_label=dept.name,
+              details=f"multi_type={dept.multi_type}")
     db.session.commit()
     return jsonify(dept.to_dict(type_count=0)), 201
 
@@ -90,7 +108,10 @@ def update_department(dept_id):
         return jsonify({'error': 'Nom kiritilishi shart'}), 400
 
     dept.name = name
-    log_audit('update', 'service_department', dept.id, entity_label=dept.name)
+    if 'multi_type' in data:
+        dept.multi_type = bool(data['multi_type'])
+    log_audit('update', 'service_department', dept.id, entity_label=dept.name,
+              details=f"multi_type={dept.multi_type}")
     db.session.commit()
     return jsonify(dept.to_dict())
 
@@ -103,9 +124,23 @@ def delete_department(dept_id):
         return err
 
     dept = ServiceDepartment.query.get_or_404(dept_id)
+
+    type_ids = [t.id for t in dept.types]
+    used = _requests_using_types(type_ids)
+    if used:
+        return jsonify({'error': (
+            f"Bu bo'limni o'chirib bo'lmaydi — uning xizmat turlari {used} ta arizada "
+            f"ishlatilgan. Avval o'sha arizalarni o'chiring."
+        )}), 409
+
     log_audit('delete', 'service_department', dept.id, entity_label=dept.name)
     db.session.delete(dept)  # cascade — turlar ham o'chadi
-    db.session.commit()
+    try:
+        db.session.commit()
+    except IntegrityError:
+        # Tekshiruvdan keyin ariza kelib qolgan bo'lishi mumkin (poyga holati)
+        db.session.rollback()
+        return jsonify({'error': "Bo'lim ishlatilmoqda — o'chirib bo'lmaydi"}), 409
     return jsonify({'message': "Bo'lim o'chirildi"})
 
 
@@ -183,7 +218,19 @@ def delete_type(type_id):
         return err
 
     t = ServiceType.query.get_or_404(type_id)
+
+    used = _requests_using_types([t.id])
+    if used:
+        return jsonify({'error': (
+            f"Bu xizmat turini o'chirib bo'lmaydi — {used} ta arizada ishlatilgan. "
+            f"Avval o'sha arizalarni o'chiring."
+        )}), 409
+
     log_audit('delete', 'service_type', t.id, entity_label=t.name)
     db.session.delete(t)
-    db.session.commit()
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({'error': "Xizmat turi ishlatilmoqda — o'chirib bo'lmaydi"}), 409
     return jsonify({'message': "Xizmat turi o'chirildi"})

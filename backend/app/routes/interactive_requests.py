@@ -32,9 +32,8 @@ from app.utils import is_any_admin, is_admin_or_above, log_audit, fetch_employee
 interactive_public_bp = Blueprint('interactive_public', __name__)
 interactive_req_bp = Blueprint('interactive_requests', __name__)
 
-# Bir nechta xizmat turini qabul qiluvchi bo'lim ID lari — hozircha
-# "Создание учётных записей" bo'limi. Kelajakda flag/config'ga chiqarsa bo'ladi.
-MULTI_TYPE_DEPARTMENT_IDS = {4}
+# Bir nechta xizmat turini tanlash mumkinligi — bo'limning `multi_type` bayrog'i
+# orqali aniqlanadi (admin panelda sozlanadi).
 
 
 # =========================================================================
@@ -58,8 +57,10 @@ def _resolve_types(type_ids, department_id):
     if not ids:
         return None, "Kamida bitta xizmat turi tanlanishi shart"
 
-    if len(ids) > 1 and department_id not in MULTI_TYPE_DEPARTMENT_IDS:
-        return None, "Ushbu bo'lim uchun faqat bitta xizmat turi tanlanishi mumkin"
+    if len(ids) > 1:
+        dept = ServiceDepartment.query.get(department_id)
+        if not dept or not dept.multi_type:
+            return None, "Ushbu bo'lim uchun faqat bitta xizmat turi tanlanishi mumkin"
 
     types = ServiceType.query.filter(ServiceType.id.in_(ids)).all()
     if len(types) != len(ids):
@@ -97,7 +98,7 @@ def public_employee_lookup(tabel_num):
 def public_list_departments():
     depts = ServiceDepartment.query.order_by(ServiceDepartment.name).all()
     return jsonify([
-        {'id': d.id, 'name': d.name, 'multi_type': d.id in MULTI_TYPE_DEPARTMENT_IDS}
+        {'id': d.id, 'name': d.name, 'multi_type': bool(d.multi_type)}
         for d in depts
     ])
 

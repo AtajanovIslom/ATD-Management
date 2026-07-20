@@ -164,6 +164,20 @@ def create_app():
             "CREATE INDEX IF NOT EXISTS idx_reminder_att_rid ON reminder_attachments(reminder_id)",
             "ALTER TABLE reminders ADD COLUMN IF NOT EXISTS notify_interval INTEGER DEFAULT 1440",
             "ALTER TABLE reminders ADD COLUMN IF NOT EXISTS last_notified_at TIMESTAMP",
+            # multi_type ilgari kodda qattiq yozilgan edi (MULTI_TYPE_DEPARTMENT_IDS={4}) —
+            # endi bo'lim xususiyati. Backfill FAQAT ustun birinchi marta yaratilganda
+            # bajariladi, aks holda admin o'chirgan sozlama har restartda qayta yoqilardi.
+            """DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'service_departments' AND column_name = 'multi_type'
+                ) THEN
+                    ALTER TABLE service_departments
+                        ADD COLUMN multi_type BOOLEAN DEFAULT FALSE NOT NULL;
+                    UPDATE service_departments SET multi_type = TRUE WHERE id = 4;
+                END IF;
+            END $$;""",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS email VARCHAR(255)",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(50)",
             "ALTER TABLE users ALTER COLUMN department SET DEFAULT ''",
