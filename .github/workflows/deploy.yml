@@ -1,0 +1,74 @@
+name: Deploy
+
+# main'ga push bo'lishi bilan serverda qayta quriladi.
+# Server ichki tarmoqda (172.16.x.x) bo'lgani uchun GitHub'ning bulutdagi
+# runnerlari unga kira olmaydi — shuning uchun serverning O'ZIDA
+# self-hosted runner ishlaydi va GitHub'ga faqat chiquvchi (outbound) ulanadi.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:      # GitHub sahifasidan qo'lda ham ishga tushirish mumkin
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false   # deploy yarmida to'xtatib qo'ymaymiz
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, hisobot]
+    timeout-minutes: 30
+
+    steps:
+      - name: Kodni yangilash va qayta qurish
+        env:
+          # Repo Settings -> Variables -> DEPLOY_PATH orqali o'zgartirish mumkin
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+        run: |
+          set -euo pipefail
+          DIR="${DEPLOY_PATH:-$HOME/HISOBOT}"
+
+          echo "==> Deploy papkasi: $DIR"
+          cd "$DIR"
+
+          # .env va uploads git'da kuzatilmaydi, shuning uchun reset ularga tegmaydi.
+          # Ma'lumotlar bazasi va yuklangan fayllar Docker volume'da — saqlanadi.
+          echo "==> Kod yangilanmoqda"
+          git fetch --prune origin main
+          git reset --hard origin/main
+          echo "    commit: $(git rev-parse --short HEAD) - $(git log -1 --pretty=%s)"
+
+          if [ ! -f .env ]; then
+            echo "XATO: .env fayli yo'q. Avval uni serverda yarating." >&2
+            exit 1
+          fi
+
+          echo "==> Konteynerlar quriladi va ishga tushiriladi"
+          docker compose up -d --build --remove-orphans
+
+          echo "==> Eski image'lar tozalanmoqda"
+          docker image prune -f
+
+      - name: Sog'liqni tekshirish
+        env:
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+        run: |
+          set -euo pipefail
+          DIR="${DEPLOY_PATH:-$HOME/HISOBOT}"
+          cd "$DIR"
+
+          # Backend ko'tarilishini kutamiz (migratsiya biroz vaqt oladi)
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost/ || echo 000)
+            if [ "$code" = "200" ]; then
+              echo "Sayt ishlayapti (HTTP $code)"
+              docker compose ps
+              exit 0
+            fi
+            echo "  kutilmoqda... ($i/30, HTTP $code)"
+            sleep 5
+          done
+
+          echo "XATO: sayt 150 soniyada javob bermadi" >&2
+          docker compose ps
+          docker compose logs --tail 60
+          exit 1
