@@ -7,7 +7,7 @@ export default function SignUp() {
   const navigate = useNavigate()
   const { setSession } = useAuth()
   const [form, setForm] = useState({
-    full_name: '', department: '', position: '', tab_number: '', login: '', password: '', confirmPassword: ''
+    full_name: '', position: '', tab_number: '', login: '', password: '', confirmPassword: ''
   })
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -60,11 +60,6 @@ export default function SignUp() {
             <label>Ism sharifi *</label>
             <input className="form-input" value={form.full_name}
               onChange={set('full_name')} placeholder="F.I.Sh." required />
-          </div>
-          <div className="form-group">
-            <label>Bo'linma *</label>
-            <input className="form-input" value={form.department}
-              onChange={set('department')} placeholder="Bo'linmangiz" required />
           </div>
           <div className="form-group">
             <label>Lavozim</label>

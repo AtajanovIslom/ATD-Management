@@ -30,7 +30,8 @@ def signup():
     login = data.get('login', '').strip()
     password = data.get('password', '')
 
-    if not all([full_name, department, tab_number, login]):
+    # Boshqarma/bo'linma registratsiyada so'ralmaydi — adminlar keyin biriktiradi
+    if not all([full_name, tab_number, login]):
         return jsonify({'error': 'Barcha majburiy maydonlar to\'ldirilishi shart'}), 400
 
     if ' ' in login:
