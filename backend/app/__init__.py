@@ -25,7 +25,6 @@ def create_app():
     from app.routes.departments import departments_bp
     from app.routes.divisions import divisions_bp
     from app.routes.permissions import permissions_bp
-    from app.routes.service_requests import service_bp, public_bp
     from app.routes.interactive_services import interactive_bp
     from app.routes.interactive_requests import interactive_public_bp, interactive_req_bp
     from app.routes.audit import audit_bp
@@ -40,8 +39,6 @@ def create_app():
     app.register_blueprint(departments_bp, url_prefix='/api/departments')
     app.register_blueprint(divisions_bp, url_prefix='/api/divisions')
     app.register_blueprint(permissions_bp, url_prefix='/api/permissions')
-    app.register_blueprint(service_bp, url_prefix='/api/service-requests')
-    app.register_blueprint(public_bp, url_prefix='/api/public')
     app.register_blueprint(interactive_bp, url_prefix='/api/interactive')
     app.register_blueprint(interactive_public_bp, url_prefix='/api/public/interactive')
     app.register_blueprint(interactive_req_bp, url_prefix='/api/interactive-requests')

@@ -3,7 +3,7 @@ import api from '../api/axios'
 import { useAuth } from '../context/AuthContext'
 
 export default function ManageDepartments() {
-  const { can, isSuperAdmin } = useAuth()
+  const { can } = useAuth()
   const [departments, setDepartments] = useState([])
   const [expanded, setExpanded] = useState({})
   const [loading, setLoading] = useState(true)
@@ -20,8 +20,6 @@ export default function ManageDepartments() {
   const [membersModal, setMembersModal] = useState(null) // division obj
   const [allUsers, setAllUsers] = useState([])
   const [selectedUsers, setSelectedUsers] = useState([])
-
-  const [serviceModal, setServiceModal] = useState(null)  // division obj
 
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -170,36 +168,6 @@ export default function ManageDepartments() {
     }
   }
 
-  // --- Servis provayder ---
-  const openServiceConfig = (div) => {
-    setServiceModal(div)
-  }
-
-  const toggleServiceProvider = async (enable) => {
-    if (!serviceModal) return
-    try {
-      const res = await api.post(`/service-requests/divisions/${serviceModal.id}/service-config`, {
-        is_service_provider: enable,
-      })
-      setServiceModal(res.data)
-      load()
-    } catch (err) {
-      alert(err.response?.data?.error || 'Xatolik')
-    }
-  }
-
-  const rotateApiKey = async () => {
-    if (!serviceModal) return
-    if (!window.confirm('API kalitni yangilash mobil ilova sozlamalarini yangilashni talab qiladi. Davom etamizmi?')) return
-    try {
-      const res = await api.post(`/service-requests/divisions/${serviceModal.id}/rotate-key`)
-      setServiceModal(prev => ({ ...prev, service_api_key: res.data.service_api_key }))
-      load()
-    } catch (err) {
-      alert(err.response?.data?.error || 'Xatolik')
-    }
-  }
-
   if (loading) return <div className="loading">Yuklanmoqda...</div>
 
   return (
@@ -260,15 +228,6 @@ export default function ManageDepartments() {
                       }}>
                         <div style={{ flex: 1 }}>
                           <strong>{div.name}</strong>
-                          {div.is_service_provider && (
-                            <span style={{
-                              marginLeft: 8, fontSize: 11, padding: '2px 8px',
-                              borderRadius: 4, background: 'rgba(16, 185, 129, 0.15)',
-                              color: '#10b981', fontWeight: 600,
-                            }}>
-                              🛠️ Texnik xizmat bo'limi
-                            </span>
-                          )}
                           {div.description && (
                             <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 8 }}>{div.description}</span>
                           )}
@@ -285,15 +244,6 @@ export default function ManageDepartments() {
                           </div>
                         </div>
                         <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                          {isSuperAdmin && (
-                            <button
-                              className={`btn btn-sm ${div.is_service_provider ? 'btn-primary' : 'btn-outline'}`}
-                              onClick={() => openServiceConfig(div)}
-                              title="Texnik xizmat bo'limi sifatida sozlash"
-                            >
-                              🛠️ Servis
-                            </button>
-                          )}
                           {can('div.members') && (
                             <button className="btn btn-outline btn-sm" onClick={() => openMembers(div)}>
                               👥 Xodimlar ({div.member_count})
@@ -420,117 +370,6 @@ export default function ManageDepartments() {
         </div>
       )}
 
-      {/* Servis provayder modal */}
-      {serviceModal && (
-        <div className="modal-overlay" onClick={() => setServiceModal(null)}>
-          <div className="modal" style={{ maxWidth: 600 }} onClick={e => e.stopPropagation()}>
-            <h2 style={{ marginBottom: 4 }}>
-              🛠️ Texnik xizmat bo'limi
-            </h2>
-            <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>
-              "{serviceModal.name}" bo'limini kombinat miqyosida keluvchi zayavkalar bilan ishlash uchun sozlash
-            </p>
-
-            <div style={{
-              padding: 14, borderRadius: 8,
-              background: serviceModal.is_service_provider
-                ? 'rgba(16, 185, 129, 0.08)'
-                : 'var(--bg-input, rgba(255,255,255,0.03))',
-              border: `1px solid ${serviceModal.is_service_provider ? '#10b981' : 'var(--border)'}`,
-              marginBottom: 16,
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div>
-                  <div style={{ fontWeight: 600, marginBottom: 4 }}>
-                    {serviceModal.is_service_provider
-                      ? "✅ Bo'lim faol — zayavkalarni qabul qilmoqda"
-                      : "⚪ Bo'lim faol emas"}
-                  </div>
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                    Faollashtirilganda bu bo'lim xodimlari "So'rovlar" sahifasini ko'radi
-                  </div>
-                </div>
-                <button
-                  className={`btn ${serviceModal.is_service_provider ? 'btn-outline' : 'btn-primary'}`}
-                  onClick={() => toggleServiceProvider(!serviceModal.is_service_provider)}
-                >
-                  {serviceModal.is_service_provider ? "O'chirish" : "Yoqish"}
-                </button>
-              </div>
-            </div>
-
-            {serviceModal.is_service_provider && serviceModal.service_api_key && (
-              <>
-                <div style={{ marginBottom: 8, fontWeight: 600, fontSize: 13 }}>
-                  🔑 API kalit (mobil ilova uchun)
-                </div>
-                <div style={{
-                  padding: 12, borderRadius: 6, border: '1px solid var(--border)',
-                  background: 'var(--bg-input, rgba(255,255,255,0.03))',
-                  fontFamily: 'monospace', fontSize: 12, wordBreak: 'break-all',
-                  marginBottom: 8,
-                }}>
-                  {serviceModal.service_api_key}
-                </div>
-                <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
-                  <button className="btn btn-outline btn-sm" onClick={() => {
-                    navigator.clipboard.writeText(serviceModal.service_api_key)
-                    alert("API kalit nusxalandi")
-                  }}>
-                    📋 Nusxalash
-                  </button>
-                  <button className="btn btn-outline btn-sm" onClick={rotateApiKey}>
-                    🔄 Yangilash
-                  </button>
-                </div>
-
-                <details style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>
-                  <summary style={{ cursor: 'pointer', fontWeight: 600 }}>📖 API foydalanish yo'riqnomasi</summary>
-                  <div style={{ marginTop: 8, lineHeight: 1.7 }}>
-                    <div><strong>Barcha so'rovlarga qo'shing:</strong> Header <code>X-API-Key: {'{yuqoridagi kalit}'}</code></div>
-                    <br/>
-                    <div><strong>1) Yangi zayavka yuborish:</strong></div>
-                    <pre style={{
-                      background: 'var(--bg)', padding: 8, borderRadius: 4,
-                      fontSize: 11, overflow: 'auto', margin: '4px 0',
-                    }}>{`POST /api/public/requests
-{
-  "external_id": "APP-12345",
-  "submitter_name": "Ism Familiya",
-  "submitter_phone": "+998...",
-  "submitter_address": "Manzil",
-  "title": "Muammo qisqacha",
-  "description": "Batafsil",
-  "category": "internet",
-  "priority": "normal"
-}`}</pre>
-                    <div><strong>2) Zayavka holatini so'rash:</strong></div>
-                    <pre style={{
-                      background: 'var(--bg)', padding: 8, borderRadius: 4,
-                      fontSize: 11, overflow: 'auto', margin: '4px 0',
-                    }}>{`GET /api/public/requests/APP-12345/status
-
-Javob:
-{
-  "external_id": "APP-12345",
-  "status": "in_progress",
-  "status_label": "Jarayonda",
-  "assignee_name": "...",
-  "created_at": "...",
-  "updated_at": "..."
-}`}</pre>
-                    <div><strong>Holatlar:</strong> new, accepted, in_progress, completed, rejected</div>
-                  </div>
-                </details>
-              </>
-            )}
-
-            <div className="modal-actions">
-              <button className="btn btn-primary" onClick={() => setServiceModal(null)}>Yopish</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
