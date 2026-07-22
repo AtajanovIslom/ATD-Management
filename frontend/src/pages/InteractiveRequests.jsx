@@ -54,7 +54,8 @@ export default function InteractiveRequests() {
   useEffect(() => { load() }, [load])
 
   useEffect(() => {
-    if (isAnyAdmin) api.get('/users/workers').then(r => setWorkers(r.data)).catch(() => {})
+    // Faqat interaktiv xizmat ko'rsatuvchi bo'lim a'zolari (agar belgilangan bo'lsa)
+    if (isAnyAdmin) api.get('/users/workers?service_provider=1').then(r => setWorkers(r.data)).catch(() => {})
   }, [isAnyAdmin])
 
   const openReq = async (r) => {

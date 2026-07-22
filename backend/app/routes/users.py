@@ -41,6 +41,15 @@ def get_workers():
         q = q.filter_by(department_id=dept_id)
     elif role == 'department_admin' and div_id:
         q = q.filter_by(division_id=div_id)
+
+    # ?service_provider=1 — faqat interaktiv xizmat ko'rsatuvchi bo'lim a'zolari.
+    # Agar hali hech qaysi bo'lim belgilanmagan bo'lsa, cheklamaslik (eski xatti-harakat).
+    if request.args.get('service_provider') == '1':
+        from app.models import Division
+        provider_div_ids = [d.id for d in Division.query.filter_by(is_service_provider=True).all()]
+        if provider_div_ids:
+            q = q.filter(User.division_id.in_(provider_div_ids))
+
     workers = q.order_by(User.full_name).all()
     return jsonify([w.to_dict() for w in workers])
 

@@ -63,6 +63,10 @@ def update_division(div_id):
         div.description = data['description'].strip()
     if 'department_id' in data:
         div.department_id = data['department_id']
+    # Interaktiv xizmat ko'rsatuvchi bo'lim belgisi — belgilangan bo'limlar
+    # a'zolari interaktiv arizalarga biriktirilishi mumkin bo'ladi
+    if 'is_service_provider' in data:
+        div.is_service_provider = bool(data['is_service_provider'])
     log_audit('update', 'division', div.id, entity_label=div.name)
     db.session.commit()
     return jsonify(div.to_dict())

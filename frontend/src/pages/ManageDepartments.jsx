@@ -3,7 +3,7 @@ import api from '../api/axios'
 import { useAuth } from '../context/AuthContext'
 
 export default function ManageDepartments() {
-  const { can } = useAuth()
+  const { can, isSuperAdmin } = useAuth()
   const [departments, setDepartments] = useState([])
   const [expanded, setExpanded] = useState({})
   const [loading, setLoading] = useState(true)
@@ -20,6 +20,8 @@ export default function ManageDepartments() {
   const [membersModal, setMembersModal] = useState(null) // division obj
   const [allUsers, setAllUsers] = useState([])
   const [selectedUsers, setSelectedUsers] = useState([])
+
+  const [serviceModal, setServiceModal] = useState(null) // division obj
 
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -168,6 +170,22 @@ export default function ManageDepartments() {
     }
   }
 
+  // --- Interaktiv xizmat ko'rsatuvchi bo'lim belgisi ---
+  const openServiceConfig = (div) => setServiceModal(div)
+
+  const toggleServiceProvider = async (enable) => {
+    if (!serviceModal) return
+    try {
+      const res = await api.put(`/divisions/${serviceModal.id}`, {
+        is_service_provider: enable,
+      })
+      setServiceModal(res.data)
+      load()
+    } catch (err) {
+      alert(err.response?.data?.error || 'Xatolik')
+    }
+  }
+
   if (loading) return <div className="loading">Yuklanmoqda...</div>
 
   return (
@@ -228,6 +246,15 @@ export default function ManageDepartments() {
                       }}>
                         <div style={{ flex: 1 }}>
                           <strong>{div.name}</strong>
+                          {div.is_service_provider && (
+                            <span style={{
+                              marginLeft: 8, fontSize: 11, padding: '2px 8px',
+                              borderRadius: 4, background: 'rgba(16, 185, 129, 0.15)',
+                              color: '#10b981', fontWeight: 600,
+                            }}>
+                              🧩 Interaktiv xizmat ko'rsatadi
+                            </span>
+                          )}
                           {div.description && (
                             <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 8 }}>{div.description}</span>
                           )}
@@ -244,6 +271,15 @@ export default function ManageDepartments() {
                           </div>
                         </div>
                         <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                          {isSuperAdmin && (
+                            <button
+                              className={`btn btn-sm ${div.is_service_provider ? 'btn-primary' : 'btn-outline'}`}
+                              onClick={() => openServiceConfig(div)}
+                              title="Interaktiv xizmat ko'rsatuvchi bo'lim sifatida belgilash"
+                            >
+                              🧩 Servis
+                            </button>
+                          )}
                           {can('div.members') && (
                             <button className="btn btn-outline btn-sm" onClick={() => openMembers(div)}>
                               👥 Xodimlar ({div.member_count})
@@ -365,6 +401,50 @@ export default function ManageDepartments() {
               <button className="btn btn-primary" onClick={saveMembers} disabled={saving}>
                 {saving ? 'Saqlanmoqda...' : 'Saqlash'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Interaktiv xizmat ko'rsatuvchi bo'lim modal */}
+      {serviceModal && (
+        <div className="modal-overlay" onClick={() => setServiceModal(null)}>
+          <div className="modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
+            <h2 style={{ marginBottom: 4 }}>🧩 Interaktiv xizmat bo'limi</h2>
+            <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>
+              "{serviceModal.name}" bo'limi interaktiv xizmatlar ko'rsatishini belgilash
+            </p>
+
+            <div style={{
+              padding: 14, borderRadius: 8,
+              background: serviceModal.is_service_provider
+                ? 'rgba(16, 185, 129, 0.08)'
+                : 'var(--bg-input, rgba(255,255,255,0.03))',
+              border: `1px solid ${serviceModal.is_service_provider ? '#10b981' : 'var(--border)'}`,
+              marginBottom: 16,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                <div>
+                  <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                    {serviceModal.is_service_provider
+                      ? "✅ Bo'lim interaktiv xizmat ko'rsatadi"
+                      : "⚪ Bo'lim interaktiv xizmat ko'rsatmaydi"}
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                    Belgilangan bo'lsa, bu bo'lim xodimlariga interaktiv arizalarni biriktirish mumkin bo'ladi
+                  </div>
+                </div>
+                <button
+                  className={`btn ${serviceModal.is_service_provider ? 'btn-outline' : 'btn-primary'}`}
+                  onClick={() => toggleServiceProvider(!serviceModal.is_service_provider)}
+                >
+                  {serviceModal.is_service_provider ? "O'chirish" : "Yoqish"}
+                </button>
+              </div>
+            </div>
+
+            <div className="modal-actions">
+              <button className="btn btn-primary" onClick={() => setServiceModal(null)}>Yopish</button>
             </div>
           </div>
         </div>
