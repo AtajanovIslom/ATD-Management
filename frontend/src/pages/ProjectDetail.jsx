@@ -44,7 +44,7 @@ function DonutChart({ percent }) {
 
 export default function ProjectDetail() {
   const { id } = useParams()
-  const { user } = useAuth()
+  const { user, isAdmin } = useAuth()
   const navigate = useNavigate()
   const [project, setProject] = useState(null)
   const [reports, setReports] = useState([])
@@ -82,6 +82,8 @@ export default function ProjectDetail() {
         name: projRes.data.name,
         description: projRes.data.description,
         status: projRes.data.status,
+        start_date: projRes.data.start_date ? projRes.data.start_date.split('T')[0] : '',
+        deadline: projRes.data.deadline ? projRes.data.deadline.split('T')[0] : '',
       })
     } catch (err) {
       console.error(err)
@@ -199,7 +201,11 @@ export default function ProjectDetail() {
 
   const handleEditSave = async () => {
     try {
-      await api.put(`/projects/${id}`, editForm)
+      await api.put(`/projects/${id}`, {
+        ...editForm,
+        start_date: editForm.start_date ? new Date(editForm.start_date + 'T00:00:00').toISOString() : null,
+        deadline: editForm.deadline ? new Date(editForm.deadline + 'T23:59:59').toISOString() : null,
+      })
 
       for (const sid of deletedStageIds) {
         await api.delete(`/projects/${id}/stages/${sid}`)
@@ -279,7 +285,8 @@ export default function ProjectDetail() {
   if (loading) return <div className="empty-state"><p>Yuklanmoqda...</p></div>
   if (!project) return <div className="empty-state"><p>Loyiha topilmadi</p></div>
 
-  const isAdmin = user.role === 'admin'
+  // isAdmin useAuth'dan olinadi (superadmin ham kiradi) — ilgari bu yerda
+  // `user.role === 'admin'` deb qayta belgilangan edi, superadmin chiqib qolardi
   const completedStages = project.stages.filter(s => s.status === 'completed').length
   const currentStage = project.stages.find(s => s.status === 'in_progress' || s.status === 'review')
   const currentIdx = currentStage ? project.stages.findIndex(s => s.id === currentStage.id) : -1
@@ -342,6 +349,18 @@ export default function ProjectDetail() {
               <option value="on_hold">To'xtatilgan</option>
               <option value="completed">Tugallangan</option>
             </select>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            <div className="form-group">
+              <label>Boshlash sanasi</label>
+              <input type="date" className="form-input" value={editForm.start_date || ''}
+                onChange={e => setEditForm({ ...editForm, start_date: e.target.value })} />
+            </div>
+            <div className="form-group">
+              <label>Topshirish muddati</label>
+              <input type="date" className="form-input" value={editForm.deadline || ''}
+                onChange={e => setEditForm({ ...editForm, deadline: e.target.value })} />
+            </div>
           </div>
           <div className="form-group">
             <label>Bosqichlar</label>

@@ -221,6 +221,8 @@ def update_project(project_id):
         project.description = data['description'].strip()
     if 'status' in data:
         project.status = data['status']
+    if 'start_date' in data:
+        project.start_date = parse_datetime(data['start_date']) if data['start_date'] else None
     if 'deadline' in data:
         project.deadline = parse_datetime(data['deadline']) if data['deadline'] else None
     if 'team_ids' in data:
