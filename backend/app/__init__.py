@@ -172,6 +172,7 @@ def create_app():
                 updated_at TIMESTAMP DEFAULT NOW()
             )""",
             "CREATE INDEX IF NOT EXISTS idx_work_logs_user_date ON work_logs(user_id, work_date)",
+            "ALTER TABLE work_logs ADD COLUMN IF NOT EXISTS interactive_request_id INTEGER REFERENCES interactive_requests(id) ON DELETE SET NULL",
             "ALTER TABLE reminders ADD COLUMN IF NOT EXISTS notify_interval INTEGER DEFAULT 1440",
             "ALTER TABLE reminders ADD COLUMN IF NOT EXISTS last_notified_at TIMESTAMP",
             # multi_type ilgari kodda qattiq yozilgan edi (MULTI_TYPE_DEPARTMENT_IDS={4}) —

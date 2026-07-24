@@ -20,8 +20,10 @@ const downloadFile = async (url, originalName) => {
 export default function TaskDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { user } = useAuth()
-  const isAdmin = user.role === 'admin'
+  const { user, isDeptAdmin } = useAuth()
+  // Har qanday rahbar (boshqarma/bo'lim rahbari + superadmin) vazifani tasdiqlaydi/qaytaradi.
+  // Ilgari `user.role === 'admin'` edi — bo'lim rahbari va superadmin chiqib qolardi.
+  const isAdmin = isDeptAdmin
 
   const [task, setTask] = useState(null)
   const [reports, setReports] = useState([])

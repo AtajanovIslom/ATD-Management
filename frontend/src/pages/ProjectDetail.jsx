@@ -44,7 +44,7 @@ function DonutChart({ percent }) {
 
 export default function ProjectDetail() {
   const { id } = useParams()
-  const { user, isAdmin } = useAuth()
+  const { user, isAdmin, isDeptAdmin } = useAuth()
   const navigate = useNavigate()
   const [project, setProject] = useState(null)
   const [reports, setReports] = useState([])
@@ -316,13 +316,15 @@ export default function ProjectDetail() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {/* Tahrirlash — barcha rahbarlarga (bo'lim rahbari ham). O'chirish faqat
+              boshqarma rahbari va yuqori rollarga (bo'lim rahbariga ko'rinmaydi) */}
+          {isDeptAdmin && (
+            <button className="btn btn-outline btn-sm" onClick={() => editMode ? (setEditMode(false), setDeletedStageIds(new Set())) : openEditMode()}>
+              {editMode ? 'Bekor qilish' : 'Tahrirlash'}
+            </button>
+          )}
           {isAdmin && (
-            <>
-              <button className="btn btn-outline btn-sm" onClick={() => editMode ? (setEditMode(false), setDeletedStageIds(new Set())) : openEditMode()}>
-                {editMode ? 'Bekor qilish' : 'Tahrirlash'}
-              </button>
-              <button className="btn btn-danger btn-sm" onClick={handleDelete}>O'chirish</button>
-            </>
+            <button className="btn btn-danger btn-sm" onClick={handleDelete}>O'chirish</button>
           )}
           <button className="btn btn-outline" onClick={() => navigate('/')}>← Orqaga</button>
         </div>

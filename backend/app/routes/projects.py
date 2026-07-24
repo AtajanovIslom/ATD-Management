@@ -6,8 +6,8 @@ from flask_jwt_extended import jwt_required, get_jwt, get_jwt_identity
 from app import db
 from app.models import Project, ProjectStage, ProjectAttachment, DailyReport, ReportAttachment, Team, User, SubStage
 from app.utils import (
-    get_scope, is_any_admin, is_superadmin, dept_user_ids, div_user_ids,
-    log_audit, FULL_ACCESS_ROLES,
+    get_scope, is_any_admin, is_admin_or_above, is_superadmin,
+    dept_user_ids, div_user_ids, log_audit, FULL_ACCESS_ROLES,
 )
 
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'uploads')
@@ -248,8 +248,10 @@ def update_project(project_id):
 @projects_bp.route('/<int:project_id>', methods=['DELETE'])
 @jwt_required()
 def delete_project(project_id):
-    if not is_admin_role():
-        return jsonify({'error': 'Ruxsat yo\'q'}), 403
+    # Loyihani o'chirish faqat boshqarma rahbari va yuqori rollarga.
+    # Bo'lim rahbari (department_admin) loyihani faqat tahrirlaydi, o'chira olmaydi.
+    if not is_admin_or_above(get_jwt().get('role', '')):
+        return jsonify({'error': "Loyihani o'chirish huquqingiz yo'q"}), 403
 
     project = Project.query.get_or_404(project_id)
     log_audit('delete', 'project', project.id, entity_label=project.name)

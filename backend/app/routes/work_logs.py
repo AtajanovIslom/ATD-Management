@@ -66,19 +66,56 @@ def create():
     if not content:
         return jsonify({'error': "Ish tavsifi kiritilishi shart"}), 400
 
-    project_id = data.get('project_id') or None
-    task_id = data.get('task_id') or None
-
-    w = WorkLog(
-        user_id=user_id, work_date=wd, content=content,
-        project_id=int(project_id) if project_id else None,
-        task_id=int(task_id) if task_id else None,
-    )
+    w = _build_worklog(user_id, wd, content, data)
     db.session.add(w)
     db.session.flush()
     log_audit('create', 'work_log', w.id, entity_label=content[:60])
     db.session.commit()
     return jsonify(w.to_dict()), 201
+
+
+def _build_worklog(user_id, wd, content, data):
+    """Bitta hisobot obyektini yasaydi (bitta yoki batch yaratishda ishlatiladi)."""
+    project_id = data.get('project_id') or None
+    task_id = data.get('task_id') or None
+    interactive_request_id = data.get('interactive_request_id') or None
+    return WorkLog(
+        user_id=user_id, work_date=wd, content=content,
+        project_id=int(project_id) if project_id else None,
+        task_id=int(task_id) if task_id else None,
+        interactive_request_id=int(interactive_request_id) if interactive_request_id else None,
+    )
+
+
+@work_logs_bp.route('/batch', methods=['POST'])
+@jwt_required()
+def create_batch():
+    """Bir nechta hisobotni bir martada saqlash (jadval ko'rinishida).
+       Body: { "items": [ { work_date, content, project_id?, task_id?, interactive_request_id? }, ... ] }
+    """
+    user_id = int(get_jwt_identity())
+    data = request.get_json() or {}
+    items = data.get('items') or []
+    if not isinstance(items, list) or not items:
+        return jsonify({'error': "Kamida bitta hisobot kiritilishi shart"}), 400
+
+    created = []
+    for row in items:
+        content = (row.get('content') or '').strip()
+        if not content:
+            continue  # bo'sh qatorlarni o'tkazib yuboramiz
+        wd = _parse_date(row.get('work_date')) or _date.today()
+        w = _build_worklog(user_id, wd, content, row)
+        db.session.add(w)
+        created.append(w)
+
+    if not created:
+        return jsonify({'error': "Barcha qatorlar bo'sh"}), 400
+
+    db.session.flush()
+    log_audit('create', 'work_log', None, entity_label=f"{len(created)} ta kunlik hisobot")
+    db.session.commit()
+    return jsonify([w.to_dict() for w in created]), 201
 
 
 @work_logs_bp.route('/<int:log_id>', methods=['PUT'])
@@ -102,6 +139,8 @@ def update(log_id):
         w.project_id = int(data['project_id']) if data['project_id'] else None
     if 'task_id' in data:
         w.task_id = int(data['task_id']) if data['task_id'] else None
+    if 'interactive_request_id' in data:
+        w.interactive_request_id = int(data['interactive_request_id']) if data['interactive_request_id'] else None
 
     log_audit('update', 'work_log', w.id, entity_label=w.content[:60])
     db.session.commit()
@@ -123,8 +162,41 @@ def delete(log_id):
 # WORD (.docx) EKSPORT
 # =========================================================================
 
-def _build_docx(title, subtitle, logs):
-    """Hisobotlar ro'yxatidan .docx hujjat yasaydi va BytesIO qaytaradi."""
+def _add_logs_table(doc, logs, with_employee=True):
+    """Hisobotlar jadvalini hujjatga qo'shadi."""
+    from docx.shared import Pt
+
+    cols = ['Sana', 'Xodim', 'Loyiha / Vazifa / Interaktiv', 'Bajarilgan ish'] if with_employee \
+        else ['Sana', 'Loyiha / Vazifa / Interaktiv', 'Bajarilgan ish']
+    table = doc.add_table(rows=1, cols=len(cols))
+    table.style = 'Light Grid Accent 1'
+    hdr = table.rows[0].cells
+    for i, name in enumerate(cols):
+        hdr[i].text = name
+        for para in hdr[i].paragraphs:
+            for run in para.runs:
+                run.font.bold = True
+                run.font.size = Pt(10)
+
+    for w in logs:
+        row = table.add_row().cells
+        if with_employee:
+            row[0].text = w.work_date.strftime('%d.%m.%Y') if w.work_date else ''
+            row[1].text = w.user.full_name if w.user else ''
+            row[2].text = w.ref_label()
+            row[3].text = w.content or ''
+        else:
+            row[0].text = w.work_date.strftime('%d.%m.%Y') if w.work_date else ''
+            row[1].text = w.ref_label()
+            row[2].text = w.content or ''
+
+
+def _build_docx(title, subtitle, logs, group_by_division=False):
+    """Hisobotlar ro'yxatidan .docx hujjat yasaydi va BytesIO qaytaradi.
+
+    group_by_division=True bo'lsa — hisobotlar bo'limlar kesimida guruhlanadi
+    (boshqarma rahbari eksporti uchun).
+    """
     from docx import Document
     from docx.shared import Pt
     from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -140,26 +212,18 @@ def _build_docx(title, subtitle, logs):
 
     if not logs:
         doc.add_paragraph("Ushbu davr uchun hisobot topilmadi.")
-    else:
-        table = doc.add_table(rows=1, cols=4)
-        table.style = 'Light Grid Accent 1'
-        hdr = table.rows[0].cells
-        hdr[0].text = 'Sana'
-        hdr[1].text = 'Xodim'
-        hdr[2].text = 'Loyiha / Vazifa'
-        hdr[3].text = 'Bajarilgan ish'
-        for c in hdr:
-            for para in c.paragraphs:
-                for run in para.runs:
-                    run.font.bold = True
-                    run.font.size = Pt(10)
-
+    elif group_by_division:
+        # Bo'limlar kesimida guruhlaymiz
+        groups = {}
         for w in logs:
-            row = table.add_row().cells
-            row[0].text = w.work_date.strftime('%d.%m.%Y') if w.work_date else ''
-            row[1].text = w.user.full_name if w.user else ''
-            row[2].text = w.ref_label()
-            row[3].text = w.content or ''
+            div_name = (w.user.division.name if w.user and w.user.division else None) or "Bo'lim ko'rsatilmagan"
+            groups.setdefault(div_name, []).append(w)
+        for div_name in sorted(groups.keys()):
+            doc.add_heading(f"🏢 {div_name}", level=2)
+            _add_logs_table(doc, groups[div_name], with_employee=True)
+            doc.add_paragraph()
+    else:
+        _add_logs_table(doc, logs, with_employee=True)
 
     doc.add_paragraph()
     footer = doc.add_paragraph(f"Yaratildi: {datetime.now().strftime('%d.%m.%Y %H:%M')}")
@@ -260,11 +324,11 @@ def export_department():
     q, d_from, d_to = _apply_date_range(q)
     logs = q.order_by(WorkLog.work_date.asc(), WorkLog.user_id.asc(), WorkLog.id.asc()).all()
 
-    dept_name = actor.department_name if hasattr(actor, 'department_name') else ''
     buf = _build_docx(
         title="Boshqarma xodimlari kunlik hisobotlari",
         subtitle=_range_subtitle(d_from, d_to),
         logs=logs,
+        group_by_division=True,  # bo'limlar kesimida
     )
     fname = f"boshqarma_hisobot_{_date.today().isoformat()}.docx"
     return send_file(buf, as_attachment=True, download_name=fname,

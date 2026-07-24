@@ -1,21 +1,26 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import api from '../api/axios'
+import { useAuth } from '../context/AuthContext'
 
 /**
  * Xodimning kunlik ish hisoboti sahifasi.
- *  - Bajarilgan ishni yozadi, qaysi loyiha yoki vazifaga tegishli ekanini tanlaydi
- *  - Sana bo'yicha saqlanadi, tahrirlash/o'chirish mumkin
- *  - Sana oralig'i bo'yicha filtr + Word (.docx) yuklab olish
+ *  - Bir yoki bir nechta hisobotni jadval ko'rinishida bir martada saqlaydi
+ *  - Har birini loyiha, vazifa yoki (huquqi bo'lsa) interaktiv arizaga biriktiradi
+ *  - Sana bo'yicha saqlanadi, tahrirlash/o'chirish mumkin, sana oralig'i filtri
  */
 const today = () => new Date().toISOString().slice(0, 10)
 
 export default function WorkLogs() {
+  const { user, isDeptAdmin } = useAuth()
+  const canInteractive = isDeptAdmin || user?.division_is_service_provider
+
   const [logs, setLogs] = useState([])
   const [projects, setProjects] = useState([])
   const [tasks, setTasks] = useState([])
+  const [interactiveReqs, setInteractiveReqs] = useState([])
   const [loading, setLoading] = useState(true)
   const [range, setRange] = useState({ from: '', to: '' })
-  const [dialog, setDialog] = useState(null) // { mode, item? }
+  const [dialog, setDialog] = useState(null) // { mode: 'add'|'edit', item? }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -35,16 +40,30 @@ export default function WorkLogs() {
   useEffect(() => {
     api.get('/projects').then(r => setProjects(r.data)).catch(() => {})
     api.get('/tasks').then(r => setTasks(Array.isArray(r.data) ? r.data : [])).catch(() => {})
-  }, [])
-
-  const onSave = async ({ id, work_date, content, ref }) => {
-    const payload = {
-      work_date, content,
-      project_id: ref.type === 'project' ? ref.id : null,
-      task_id: ref.type === 'task' ? ref.id : null,
+    if (canInteractive) {
+      api.get('/interactive-requests').then(r => setInteractiveReqs(r.data)).catch(() => {})
     }
-    if (id) await api.put(`/work-logs/${id}`, payload)
-    else await api.post('/work-logs', payload)
+  }, [canInteractive])
+
+  const refPayload = (ref) => ({
+    project_id: ref.type === 'project' ? ref.id : null,
+    task_id: ref.type === 'task' ? ref.id : null,
+    interactive_request_id: ref.type === 'interactive' ? ref.id : null,
+  })
+
+  // Bir nechta qatorni bir martada saqlash
+  const onSaveBatch = async (rows) => {
+    const items = rows
+      .filter(r => r.content.trim())
+      .map(r => ({ work_date: r.work_date, content: r.content.trim(), ...refPayload(r.ref) }))
+    if (items.length === 0) return
+    await api.post('/work-logs/batch', { items })
+    await load()
+    setDialog(null)
+  }
+
+  const onSaveSingle = async ({ id, work_date, content, ref }) => {
+    await api.put(`/work-logs/${id}`, { work_date, content, ...refPayload(ref) })
     await load()
     setDialog(null)
   }
@@ -53,27 +72,6 @@ export default function WorkLogs() {
     if (!window.confirm("Ushbu hisobotni o'chirmoqchimisiz?")) return
     await api.delete(`/work-logs/${item.id}`)
     await load()
-  }
-
-  const downloadWord = () => {
-    const params = new URLSearchParams()
-    if (range.from) params.set('from', range.from)
-    if (range.to) params.set('to', range.to)
-    const token = localStorage.getItem('token')
-    // send_file yuklab olish uchun fetch + blob (Authorization header kerak)
-    fetch(`${api.defaults.baseURL}/work-logs/export?` + params.toString(), {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then(r => r.blob())
-      .then(blob => {
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = `hisobot_${today()}.docx`
-        a.click()
-        URL.revokeObjectURL(url)
-      })
-      .catch(() => alert('Yuklab olishda xatolik'))
   }
 
   return (
@@ -90,7 +88,6 @@ export default function WorkLogs() {
         </button>
       </div>
 
-      {/* Filtr + eksport */}
       <div className="card" style={{ padding: 12, marginBottom: 12, display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
         <div>
           <label style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Dan</label>
@@ -105,9 +102,6 @@ export default function WorkLogs() {
         {(range.from || range.to) && (
           <button className="btn btn-outline btn-sm" onClick={() => setRange({ from: '', to: '' })}>Tozalash</button>
         )}
-        <button className="btn btn-outline" style={{ marginLeft: 'auto' }} onClick={downloadWord}>
-          📄 Word yuklab olish
-        </button>
       </div>
 
       {loading ? (
@@ -126,7 +120,8 @@ export default function WorkLogs() {
                   <span style={{ color: 'var(--text-muted)' }}>📅 {formatDate(w.work_date)}</span>
                   {w.ref_label && w.ref_label !== '—' && (
                     <span style={{ color: 'var(--accent, #6366f1)', fontWeight: 600 }}>
-                      {w.project_name ? '🚀' : '📝'} {w.project_name || w.task_name}
+                      {w.project_name ? '🚀 ' : w.task_name ? '📝 ' : '🧩 '}
+                      {w.project_name || w.task_name || w.interactive_label}
                     </span>
                   )}
                 </div>
@@ -140,13 +135,17 @@ export default function WorkLogs() {
         </div>
       )}
 
-      {dialog && (
-        <WorkLogDialog
-          dialog={dialog}
-          projects={projects}
-          tasks={tasks}
-          onClose={() => setDialog(null)}
-          onSave={onSave}
+      {dialog?.mode === 'add' && (
+        <BatchDialog
+          projects={projects} tasks={tasks} interactiveReqs={interactiveReqs} canInteractive={canInteractive}
+          onClose={() => setDialog(null)} onSave={onSaveBatch}
+        />
+      )}
+      {dialog?.mode === 'edit' && (
+        <EditDialog
+          item={dialog.item}
+          projects={projects} tasks={tasks} interactiveReqs={interactiveReqs} canInteractive={canInteractive}
+          onClose={() => setDialog(null)} onSave={onSaveSingle}
         />
       )}
     </div>
@@ -154,18 +153,116 @@ export default function WorkLogs() {
 }
 
 
-function WorkLogDialog({ dialog, projects, tasks, onClose, onSave }) {
-  const initial = dialog.mode === 'edit' ? dialog.item : null
-  const [workDate, setWorkDate] = useState(initial?.work_date || today())
-  const [content, setContent] = useState(initial?.content || '')
-  const [refType, setRefType] = useState(
-    initial?.project_id ? 'project' : initial?.task_id ? 'task' : 'project'
+/* ---- Interaktiv ariza uchun ko'rinadigan nom ---- */
+function interactiveName(r) {
+  const types = (r.types || []).map(t => t.name).join(', ')
+  return types || r.tracking_id || `#${r.id}`
+}
+
+/* ---- Bitta qator uchun ref (loyiha/vazifa/interaktiv) tanlash ---- */
+function RefPicker({ sel, setRef, projects, tasks, interactiveReqs, canInteractive, compact }) {
+  const options = sel.type === 'project' ? projects
+    : sel.type === 'task' ? tasks
+    : interactiveReqs
+  return (
+    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+      <select className="form-input" style={{ maxWidth: compact ? 130 : 160 }}
+        value={sel.type} onChange={e => setRef({ type: e.target.value, id: '' })}>
+        <option value="project">🚀 Loyiha</option>
+        <option value="task">📝 Vazifa</option>
+        {canInteractive && <option value="interactive">🧩 Interaktiv</option>}
+      </select>
+      <select className="form-input" style={{ flex: 1, minWidth: 140 }}
+        value={sel.id} onChange={e => setRef({ ...sel, id: e.target.value })}>
+        <option value="">— Tanlang (ixtiyoriy) —</option>
+        {options.map(o => (
+          <option key={o.id} value={o.id}>
+            {sel.type === 'interactive' ? interactiveName(o) : o.name}
+          </option>
+        ))}
+      </select>
+    </div>
   )
-  const [refId, setRefId] = useState(
-    initial?.project_id ? String(initial.project_id) : initial?.task_id ? String(initial.task_id) : ''
-  )
+}
+
+
+/* ---- Ko'p qatorli (jadval) yangi hisobot dialogi ---- */
+function BatchDialog({ projects, tasks, interactiveReqs, canInteractive, onClose, onSave }) {
+  const emptyRow = () => ({ work_date: today(), content: '', ref: { type: 'project', id: '' } })
+  const [rows, setRows] = useState([emptyRow()])
   const [busy, setBusy] = useState(false)
 
+  const updateRow = (i, patch) => setRows(rows.map((r, idx) => idx === i ? { ...r, ...patch } : r))
+  const addRow = () => setRows([...rows, emptyRow()])
+  const removeRow = (i) => setRows(rows.length > 1 ? rows.filter((_, idx) => idx !== i) : rows)
+
+  const canSave = useMemo(() => rows.some(r => r.content.trim()), [rows])
+
+  const submit = async () => {
+    if (!canSave || busy) return
+    setBusy(true)
+    try { await onSave(rows) }
+    catch (err) { alert(err.response?.data?.error || 'Xatolik') }
+    finally { setBusy(false) }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{ maxWidth: 760 }} onClick={e => e.stopPropagation()}>
+        <h2>📓 Yangi kunlik hisobot</h2>
+        <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
+          Bir nechta hisobotni bir martada saqlashingiz mumkin — pastdagi "+ Qator qo'shish" bilan
+        </p>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: '55vh', overflowY: 'auto' }}>
+          {rows.map((r, i) => (
+            <div key={i} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 10 }}>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)' }}>{i + 1}</span>
+                <input type="date" className="form-input" style={{ maxWidth: 160 }}
+                  value={r.work_date} onChange={e => updateRow(i, { work_date: e.target.value })} />
+                <div style={{ flex: 1 }}>
+                  <RefPicker sel={r.ref} setRef={(ref) => updateRow(i, { ref })}
+                    projects={projects} tasks={tasks} interactiveReqs={interactiveReqs} canInteractive={canInteractive} compact />
+                </div>
+                {rows.length > 1 && (
+                  <button type="button" className="btn btn-danger btn-sm" onClick={() => removeRow(i)}>✕</button>
+                )}
+              </div>
+              <textarea className="form-input" rows={2} value={r.content}
+                onChange={e => updateRow(i, { content: e.target.value })}
+                placeholder="Bajarilgan ish..." />
+            </div>
+          ))}
+        </div>
+
+        <button type="button" className="btn btn-outline btn-sm" onClick={addRow} style={{ marginTop: 8 }}>
+          + Qator qo'shish
+        </button>
+
+        <div className="modal-actions" style={{ marginTop: 14 }}>
+          <button type="button" className="btn btn-outline" onClick={onClose}>Bekor</button>
+          <button type="button" className="btn btn-primary" disabled={!canSave || busy} onClick={submit}>
+            {busy ? 'Saqlanmoqda...' : 'Barchasini saqlash'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
+/* ---- Bitta hisobotni tahrirlash dialogi ---- */
+function EditDialog({ item, projects, tasks, interactiveReqs, canInteractive, onClose, onSave }) {
+  const [workDate, setWorkDate] = useState(item.work_date || today())
+  const [content, setContent] = useState(item.content || '')
+  const [ref, setRef] = useState(
+    item.project_id ? { type: 'project', id: String(item.project_id) }
+      : item.task_id ? { type: 'task', id: String(item.task_id) }
+      : item.interactive_request_id ? { type: 'interactive', id: String(item.interactive_request_id) }
+      : { type: 'project', id: '' }
+  )
+  const [busy, setBusy] = useState(false)
   const canSave = content.trim().length > 0 && !!workDate
 
   const submit = async (e) => {
@@ -174,60 +271,33 @@ function WorkLogDialog({ dialog, projects, tasks, onClose, onSave }) {
     setBusy(true)
     try {
       await onSave({
-        id: initial?.id,
-        work_date: workDate,
-        content: content.trim(),
-        ref: { type: refType, id: refId ? parseInt(refId) : null },
+        id: item.id, work_date: workDate, content: content.trim(),
+        ref: { type: ref.type, id: ref.id ? parseInt(ref.id) : null },
       })
-    } catch (err) {
-      alert(err.response?.data?.error || 'Xatolik')
-    } finally {
-      setBusy(false)
-    }
+    } catch (err) { alert(err.response?.data?.error || 'Xatolik') }
+    finally { setBusy(false) }
   }
-
-  const options = refType === 'project' ? projects : tasks
 
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
-        <h2>{initial ? '✏️ Hisobotni tahrirlash' : '📓 Yangi kunlik hisobot'}</h2>
+        <h2>✏️ Hisobotni tahrirlash</h2>
         <form onSubmit={submit}>
           <div className="form-group">
             <label>Sana *</label>
             <input type="date" className="form-input" value={workDate}
               onChange={e => setWorkDate(e.target.value)} required />
           </div>
-
           <div className="form-group">
             <label>Bajarilgan ish *</label>
             <textarea className="form-input" rows={4} value={content}
-              onChange={e => setContent(e.target.value)}
-              placeholder="Bugun nima qildingiz..." autoFocus />
+              onChange={e => setContent(e.target.value)} autoFocus />
           </div>
-
           <div className="form-group">
             <label>Qaysi ishga tegishli</label>
-            <div style={{ display: 'flex', gap: 12, marginBottom: 8 }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, cursor: 'pointer' }}>
-                <input type="radio" name="reftype" checked={refType === 'project'}
-                  onChange={() => { setRefType('project'); setRefId('') }} />
-                🚀 Loyiha
-              </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, cursor: 'pointer' }}>
-                <input type="radio" name="reftype" checked={refType === 'task'}
-                  onChange={() => { setRefType('task'); setRefId('') }} />
-                📝 Vazifa
-              </label>
-            </div>
-            <select className="form-input" value={refId} onChange={e => setRefId(e.target.value)}>
-              <option value="">— Tanlang (ixtiyoriy) —</option>
-              {options.map(o => (
-                <option key={o.id} value={o.id}>{o.name}</option>
-              ))}
-            </select>
+            <RefPicker sel={ref} setRef={setRef}
+              projects={projects} tasks={tasks} interactiveReqs={interactiveReqs} canInteractive={canInteractive} />
           </div>
-
           <div className="modal-actions">
             <button type="button" className="btn btn-outline" onClick={onClose}>Bekor</button>
             <button type="submit" className="btn btn-primary" disabled={!canSave || busy}>

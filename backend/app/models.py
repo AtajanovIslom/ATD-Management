@@ -444,6 +444,7 @@ class WorkLog(db.Model):
     content = db.Column(db.Text, nullable=False)
     project_id = db.Column(db.Integer, db.ForeignKey('projects.id', ondelete='SET NULL'), nullable=True)
     task_id = db.Column(db.Integer, db.ForeignKey('tasks.id', ondelete='SET NULL'), nullable=True)
+    interactive_request_id = db.Column(db.Integer, db.ForeignKey('interactive_requests.id', ondelete='SET NULL'), nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc),
                            onupdate=lambda: datetime.now(timezone.utc))
@@ -451,12 +452,16 @@ class WorkLog(db.Model):
     user = db.relationship('User', foreign_keys=[user_id], lazy='joined')
     project = db.relationship('Project', foreign_keys=[project_id], lazy='joined')
     task = db.relationship('Task', foreign_keys=[task_id], lazy='joined')
+    interactive_request = db.relationship('InteractiveRequest', foreign_keys=[interactive_request_id], lazy='joined')
 
     def ref_label(self):
         if self.project:
             return f"Loyiha: {self.project.name}"
         if self.task:
             return f"Vazifa: {self.task.name}"
+        if self.interactive_request:
+            types = ", ".join(t.name for t in self.interactive_request.types) or self.interactive_request.tracking_id
+            return f"Interaktiv: {types}"
         return "—"
 
     def to_dict(self):
@@ -471,6 +476,10 @@ class WorkLog(db.Model):
             'project_name': self.project.name if self.project else None,
             'task_id': self.task_id,
             'task_name': self.task.name if self.task else None,
+            'interactive_request_id': self.interactive_request_id,
+            'interactive_label': (
+                ", ".join(t.name for t in self.interactive_request.types) or self.interactive_request.tracking_id
+            ) if self.interactive_request else None,
             'ref_label': self.ref_label(),
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
