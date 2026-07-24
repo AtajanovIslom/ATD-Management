@@ -52,7 +52,8 @@ export default function Navbar() {
       <nav className="sidebar-nav">
         {link('/', '📊', 'Boshqaruv paneli', true)}
         {link('/reminders', '🗓️', 'Eslatmalarim')}
-        {link('/work-logs', '📓', 'Kunlik hisobotim')}
+        {/* Kunlik hisobotim — faqat oddiy xodimlarda (rahbarlar hisobot topshirmaydi) */}
+        {!isDeptAdmin && link('/work-logs', '📓', 'Kunlik hisobotim')}
         {isDeptAdmin && link('/department-work-logs', '👥', 'Xodimlar hisobotlari')}
 
         {isDeptAdmin && link('/statistics', '📈', 'Statistika')}

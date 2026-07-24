@@ -56,8 +56,8 @@ export default function App() {
           {/* Eslatmalarim — barcha foydalanuvchilar uchun */}
           <Route path="/reminders" element={<Reminders />} />
 
-          {/* Kunlik hisobot — barcha xodimlar uchun */}
-          <Route path="/work-logs" element={<WorkLogs />} />
+          {/* Kunlik hisobot — faqat oddiy xodimlar (rahbarlar hisobot topshirmaydi) */}
+          {!isDeptAdmin && <Route path="/work-logs" element={<WorkLogs />} />}
 
           {/* Xodimlar hisobotlari — boshqarma/bo'lim rahbari uchun */}
           {isDeptAdmin && (
