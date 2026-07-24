@@ -427,6 +427,56 @@ class ReminderAttachment(db.Model):
         }
 
 
+class WorkLog(db.Model):
+    """Xodimning kunlik ish hisoboti.
+
+    Xodim kun davomida bajargan ishini yozadi va qaysi loyiha yoki vazifaga
+    tegishli ekanini belgilaydi. Sana bo'yicha saqlanadi, egasi tahrirlashi/
+    o'chirishi mumkin. Boshqarma rahbari o'z boshqarmasi xodimlarining
+    hisobotlarini ko'radi.
+    """
+    __tablename__ = 'work_logs'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'),
+                        nullable=False, index=True)
+    work_date = db.Column(db.Date, nullable=False, index=True)
+    content = db.Column(db.Text, nullable=False)
+    project_id = db.Column(db.Integer, db.ForeignKey('projects.id', ondelete='SET NULL'), nullable=True)
+    task_id = db.Column(db.Integer, db.ForeignKey('tasks.id', ondelete='SET NULL'), nullable=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc),
+                           onupdate=lambda: datetime.now(timezone.utc))
+
+    user = db.relationship('User', foreign_keys=[user_id], lazy='joined')
+    project = db.relationship('Project', foreign_keys=[project_id], lazy='joined')
+    task = db.relationship('Task', foreign_keys=[task_id], lazy='joined')
+
+    def ref_label(self):
+        if self.project:
+            return f"Loyiha: {self.project.name}"
+        if self.task:
+            return f"Vazifa: {self.task.name}"
+        return "—"
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'user_name': self.user.full_name if self.user else None,
+            'user_position': self.user.position if self.user else None,
+            'work_date': self.work_date.isoformat() if self.work_date else None,
+            'content': self.content or '',
+            'project_id': self.project_id,
+            'project_name': self.project.name if self.project else None,
+            'task_id': self.task_id,
+            'task_name': self.task.name if self.task else None,
+            'ref_label': self.ref_label(),
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
 class AuditLog(db.Model):
     """Loyiha bo'ylab barcha muhim amallar tarixi (kim, qachon, nima qildi)"""
     __tablename__ = 'audit_logs'
@@ -620,6 +670,9 @@ class User(db.Model):
             'registration_token': self.registration_token,
             'division_id': self.division_id,
             'division_name': div.name if div else None,
+            # Xodimning bo'linmasi interaktiv xizmat ko'rsatadimi (interaktiv arizalar
+            # sahifasiga kirish huquqini aniqlash uchun)
+            'division_is_service_provider': bool(div.is_service_provider) if div else False,
             'department_id': self.department_id,
             'department_name': dept.name if dept else None,
             'created_at': self.created_at.isoformat() if self.created_at else None,

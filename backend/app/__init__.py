@@ -29,6 +29,7 @@ def create_app():
     from app.routes.interactive_requests import interactive_public_bp, interactive_req_bp
     from app.routes.audit import audit_bp
     from app.routes.reminders import reminders_bp
+    from app.routes.work_logs import work_logs_bp
 
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(users_bp, url_prefix='/api/users')
@@ -44,6 +45,7 @@ def create_app():
     app.register_blueprint(interactive_req_bp, url_prefix='/api/interactive-requests')
     app.register_blueprint(audit_bp, url_prefix='/api/audit-logs')
     app.register_blueprint(reminders_bp, url_prefix='/api/reminders')
+    app.register_blueprint(work_logs_bp, url_prefix='/api/work-logs')
 
     with app.app_context():
         from app.models import User
@@ -159,6 +161,17 @@ def create_app():
                 uploaded_at TIMESTAMP DEFAULT NOW()
             )""",
             "CREATE INDEX IF NOT EXISTS idx_reminder_att_rid ON reminder_attachments(reminder_id)",
+            """CREATE TABLE IF NOT EXISTS work_logs (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                work_date DATE NOT NULL,
+                content TEXT NOT NULL,
+                project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+                task_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
+                created_at TIMESTAMP DEFAULT NOW(),
+                updated_at TIMESTAMP DEFAULT NOW()
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_work_logs_user_date ON work_logs(user_id, work_date)",
             "ALTER TABLE reminders ADD COLUMN IF NOT EXISTS notify_interval INTEGER DEFAULT 1440",
             "ALTER TABLE reminders ADD COLUMN IF NOT EXISTS last_notified_at TIMESTAMP",
             # multi_type ilgari kodda qattiq yozilgan edi (MULTI_TYPE_DEPARTMENT_IDS={4}) —

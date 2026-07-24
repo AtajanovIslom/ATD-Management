@@ -54,8 +54,9 @@ export default function InteractiveRequests() {
   useEffect(() => { load() }, [load])
 
   useEffect(() => {
-    // Faqat interaktiv xizmat ko'rsatuvchi bo'lim a'zolari (agar belgilangan bo'lsa)
-    if (isAnyAdmin) api.get('/users/workers?service_provider=1').then(r => setWorkers(r.data)).catch(() => {})
+    // Biriktirish ierarxiyasi bo'yicha xodimlar: boshqarma rahbari -> bo'lim rahbarlariga,
+    // bo'lim rahbari -> o'z xodimlariga (backend rol bo'yicha aniqlaydi)
+    if (isAnyAdmin) api.get('/interactive-requests/assignable-workers').then(r => setWorkers(r.data)).catch(() => {})
   }, [isAnyAdmin])
 
   const openReq = async (r) => {
@@ -634,7 +635,7 @@ function WalkinModal({ onClose, onCreated }) {
           </div>
 
           <div className="form-group">
-            <label>Bo'lim *</label>
+            <label>Interaktiv xizmat kategoriyasi *</label>
             <select className="form-input" value={form.department_id}
               onChange={e => setForm({ ...form, department_id: e.target.value, type_ids: [] })}>
               <option value="">— Tanlang —</option>
@@ -644,6 +645,11 @@ function WalkinModal({ onClose, onCreated }) {
                 </option>
               ))}
             </select>
+            {depts.length === 0 && (
+              <div style={{ fontSize: 11, color: '#ef4444', marginTop: 4 }}>
+                ⚠ Hali kategoriya yo'q. "Interaktiv xizmatlar" sahifasida qo'shing.
+              </div>
+            )}
           </div>
 
           {form.department_id && (

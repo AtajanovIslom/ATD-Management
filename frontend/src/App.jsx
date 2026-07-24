@@ -18,6 +18,8 @@ import InteractiveServicesAdmin from './pages/InteractiveServicesAdmin'
 import InteractiveRequests from './pages/InteractiveRequests'
 import AuditLogs from './pages/AuditLogs'
 import Reminders from './pages/Reminders'
+import WorkLogs from './pages/WorkLogs'
+import DepartmentWorkLogs from './pages/DepartmentWorkLogs'
 import ReminderNotification from './components/ReminderNotification'
 import Navbar from './components/Navbar'
 
@@ -53,6 +55,14 @@ export default function App() {
 
           {/* Eslatmalarim — barcha foydalanuvchilar uchun */}
           <Route path="/reminders" element={<Reminders />} />
+
+          {/* Kunlik hisobot — barcha xodimlar uchun */}
+          <Route path="/work-logs" element={<WorkLogs />} />
+
+          {/* Xodimlar hisobotlari — boshqarma/bo'lim rahbari uchun */}
+          {isDeptAdmin && (
+            <Route path="/department-work-logs" element={<DepartmentWorkLogs />} />
+          )}
 
           {/* Audit jurnali — faqat superadmin/director/deputy_director */}
           {isSuperAdmin && (

@@ -52,6 +52,8 @@ export default function Navbar() {
       <nav className="sidebar-nav">
         {link('/', '📊', 'Boshqaruv paneli', true)}
         {link('/reminders', '🗓️', 'Eslatmalarim')}
+        {link('/work-logs', '📓', 'Kunlik hisobotim')}
+        {isDeptAdmin && link('/department-work-logs', '👥', 'Xodimlar hisobotlari')}
 
         {isDeptAdmin && link('/statistics', '📈', 'Statistika')}
 
@@ -76,18 +78,22 @@ export default function Navbar() {
         {canManageRoles && link('/roles', '🔑', 'Rol va huquqlar')}
         {isSuperAdmin && link('/audit-logs', '📋', 'Audit jurnali')}
 
-        <NavLink to="/interactive-requests" className={({ isActive }) => isActive ? 'active' : ''}>
-          📥 Interaktiv arizalar
-          {interactiveCount > 0 && (
-            <span style={{
-              marginLeft: 8, background: '#3b82f6', color: '#fff',
-              fontSize: 10, fontWeight: 700,
-              padding: '1px 6px', borderRadius: 10,
-            }}>
-              {interactiveCount}
-            </span>
-          )}
-        </NavLink>
+        {/* Interaktiv arizalar — faqat adminlar (boshqarma/bo'lim rahbari) va
+            "Interaktiv xizmat ko'rsatadi" deb belgilangan bo'lim a'zolariga */}
+        {(isDeptAdmin || user.division_is_service_provider) && (
+          <NavLink to="/interactive-requests" className={({ isActive }) => isActive ? 'active' : ''}>
+            📥 Interaktiv arizalar
+            {interactiveCount > 0 && (
+              <span style={{
+                marginLeft: 8, background: '#3b82f6', color: '#fff',
+                fontSize: 10, fontWeight: 700,
+                padding: '1px 6px', borderRadius: 10,
+              }}>
+                {interactiveCount}
+              </span>
+            )}
+          </NavLink>
+        )}
 
       </nav>
       <div className="sidebar-footer">

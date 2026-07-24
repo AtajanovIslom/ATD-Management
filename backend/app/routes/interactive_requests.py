@@ -27,7 +27,10 @@ from app.models import (
     InteractiveRequest, InteractiveRequestHistory,
     ServiceDepartment, ServiceType, User,
 )
-from app.utils import is_any_admin, is_admin_or_above, log_audit, fetch_employee_from_isup
+from app.utils import (
+    is_any_admin, is_admin_or_above, log_audit, fetch_employee_from_isup,
+    get_scope, div_user_ids, dept_user_ids,
+)
 
 interactive_public_bp = Blueprint('interactive_public', __name__)
 interactive_req_bp = Blueprint('interactive_requests', __name__)
@@ -200,12 +203,22 @@ def public_history_by_tabel(tabel_num):
 @interactive_req_bp.route('', methods=['GET'])
 @jwt_required()
 def list_requests():
-    """Rol bo'yicha scope: admin — hammasi; xodim — o'ziga biriktirilganlari"""
-    role = get_jwt().get('role', '')
+    """Rol bo'yicha ko'rinish:
+       - superadmin/direksiya + boshqarma rahbari (admin): hammasi (triage uchun)
+       - bo'lim rahbari (department_admin): o'z bo'limi a'zolariga yoki o'ziga biriktirilganlar
+       - xodim (user): faqat o'ziga biriktirilganlar
+    """
+    role, dept_id, div_id = get_scope(get_jwt())
     user_id = int(get_jwt_identity())
 
     q = InteractiveRequest.query
-    if role == 'user' or not is_any_admin(role):
+    if is_admin_or_above(role):
+        pass  # hammasini ko'radi
+    elif role == 'department_admin':
+        member_ids = div_user_ids(div_id) if div_id else set()
+        member_ids.add(user_id)
+        q = q.filter(InteractiveRequest.assigned_to.in_(member_ids))
+    else:
         q = q.filter_by(assigned_to=user_id)
 
     for param, col in [
@@ -294,12 +307,45 @@ def walkin_create():
     return jsonify(req.to_dict()), 201
 
 
+def _assignable_workers(role, dept_id, div_id):
+    """Interaktiv arizalar biriktirish ierarxiyasi — kim kimga biriktira oladi:
+       - superadmin/direksiya: barcha bo'lim rahbarlari va provider bo'lim a'zolari
+       - boshqarma rahbari (admin): o'z boshqarmasidagi bo'lim rahbarlari
+       - bo'lim rahbari (department_admin): o'z bo'limidagi xodimlar
+    """
+    from app.models import Division
+    if role in ('superadmin', 'director', 'deputy_director'):
+        provider_ids = [d.id for d in Division.query.filter_by(is_service_provider=True).all()]
+        cond = User.role == 'department_admin'
+        if provider_ids:
+            cond = db.or_(cond, User.division_id.in_(provider_ids))
+        return User.query.filter(User.is_active == True).filter(cond).order_by(User.full_name).all()
+    if role == 'admin':
+        return (User.query.filter_by(is_active=True, role='department_admin', department_id=dept_id)
+                .order_by(User.full_name).all())
+    if role == 'department_admin':
+        return (User.query.filter_by(is_active=True, role='user', division_id=div_id)
+                .order_by(User.full_name).all())
+    return []
+
+
+@interactive_req_bp.route('/assignable-workers', methods=['GET'])
+@jwt_required()
+def assignable_workers():
+    """Joriy foydalanuvchi arizani biriktira oladigan xodimlar ro'yxati"""
+    role, dept_id, div_id = get_scope(get_jwt())
+    if not is_any_admin(role):
+        return jsonify([])
+    return jsonify([w.to_dict() for w in _assignable_workers(role, dept_id, div_id)])
+
+
 @interactive_req_bp.route('/<int:req_id>/assign', methods=['POST'])
 @jwt_required()
 def assign(req_id):
-    """Rahbar arizani xodimga biriktiradi (status → in_progress)"""
-    role = get_jwt().get('role', '')
-    if not is_admin_or_above(role):
+    """Rahbar arizani xodimga biriktiradi (status → in_progress).
+       Faqat ierarxiya bo'yicha ruxsat etilgan xodimga."""
+    role, dept_id, div_id = get_scope(get_jwt())
+    if not is_any_admin(role):
         return jsonify({'error': "Ruxsat yo'q"}), 403
 
     r = InteractiveRequest.query.get_or_404(req_id)
@@ -310,6 +356,10 @@ def assign(req_id):
     worker_id = data.get('user_id')
     if not worker_id:
         return jsonify({'error': 'user_id majburiy'}), 400
+
+    allowed_ids = {w.id for w in _assignable_workers(role, dept_id, div_id)}
+    if int(worker_id) not in allowed_ids:
+        return jsonify({'error': "Bu xodimga biriktirish huquqingiz yo'q"}), 403
 
     worker = User.query.get(int(worker_id))
     if not worker or not worker.is_active:
