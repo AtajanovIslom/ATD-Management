@@ -5,7 +5,10 @@ from flask import Blueprint, request, jsonify, send_from_directory
 from flask_jwt_extended import jwt_required, get_jwt, get_jwt_identity
 from app import db
 from app.models import Project, ProjectStage, ProjectAttachment, DailyReport, ReportAttachment, Team, User, SubStage
-from app.utils import get_scope, is_any_admin, is_superadmin, dept_user_ids, div_user_ids
+from app.utils import (
+    get_scope, is_any_admin, is_superadmin, dept_user_ids, div_user_ids,
+    log_audit, FULL_ACCESS_ROLES,
+)
 
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'uploads')
 ALLOWED_EXTENSIONS = {'doc', 'docx', 'xls', 'xlsx', 'pdf', 'txt', 'png', 'jpg', 'jpeg', 'zip', 'rar', 'pptx'}
@@ -39,6 +42,8 @@ def get_projects():
                 Project.created_by.in_(uid_set),
                 Project.stages.any(ProjectStage.assignee_id.in_(uid_set)),
                 Project.stages.any(ProjectStage.assignees.any(User.id.in_(uid_set))),
+                # Superadmin/direksiya yaratgan loyihalar ham ko'rinadi
+                Project.creator.has(User.role.in_(FULL_ACCESS_ROLES)),
             )
         ).order_by(Project.created_at.desc()).all()
     elif role == 'department_admin' and div_id:
@@ -49,6 +54,7 @@ def get_projects():
                 Project.created_by.in_(uid_set),
                 Project.stages.any(ProjectStage.assignee_id.in_(uid_set)),
                 Project.stages.any(ProjectStage.assignees.any(User.id.in_(uid_set))),
+                Project.creator.has(User.role.in_(FULL_ACCESS_ROLES)),
             )
         ).order_by(Project.created_at.desc()).all()
     else:
@@ -202,6 +208,8 @@ def create_project():
             )
             db.session.add(attachment)
 
+    log_audit('create', 'project', project.id, entity_label=project.name,
+              details=f"{len(stages_data)} ta bosqich")
     db.session.commit()
     return jsonify(project.to_dict()), 201
 
@@ -232,6 +240,7 @@ def update_project(project_id):
             if team:
                 project.teams.append(team)
 
+    log_audit('update', 'project', project.id, entity_label=project.name)
     db.session.commit()
     return jsonify(project.to_dict())
 
@@ -243,6 +252,7 @@ def delete_project(project_id):
         return jsonify({'error': 'Ruxsat yo\'q'}), 403
 
     project = Project.query.get_or_404(project_id)
+    log_audit('delete', 'project', project.id, entity_label=project.name)
     for att in project.attachments:
         filepath = os.path.join(UPLOAD_DIR, att.filename)
         if os.path.exists(filepath):
@@ -296,6 +306,10 @@ def update_stage(project_id, stage_id):
                 next_stage.started_at = now
 
         stage.status = new_status
+        STATUS_UZ = {'in_progress': 'jarayonda', 'review': 'tekshiruvda',
+                     'completed': 'tugallandi', 'pending': 'kutilmoqda'}
+        log_audit('update', 'project_stage', stage.id, entity_label=stage.name,
+                  details=f"holat: {STATUS_UZ.get(new_status, new_status)}")
 
     if is_admin:
         if 'name' in data:
@@ -352,6 +366,9 @@ def add_stage(project_id):
             project.teams.append(team)
 
     db.session.add(stage)
+    db.session.flush()
+    log_audit('create', 'project_stage', stage.id, entity_label=stage.name,
+              details=f"loyiha: {project.name}")
     db.session.commit()
     return jsonify(project.to_dict()), 201
 
@@ -367,6 +384,8 @@ def delete_stage(project_id, stage_id):
         return jsonify({'error': 'Kamida bitta bosqich bo\'lishi kerak'}), 400
 
     stage = ProjectStage.query.get_or_404(stage_id)
+    log_audit('delete', 'project_stage', stage.id, entity_label=stage.name,
+              details=f"loyiha: {project.name}")
     db.session.delete(stage)
     db.session.flush()
 
