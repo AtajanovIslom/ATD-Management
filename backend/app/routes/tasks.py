@@ -17,46 +17,41 @@ def parse_datetime(s):
     return datetime.fromisoformat(s.replace('Z', '+00:00'))
 
 
+def _scoped_tasks(role, dept_id, div_id, user_id):
+    """Rol bo'yicha ko'rinadigan vazifalar (ro'yxat va statistika uchun umumiy).
+       Bo'lim rahbari faqat o'z bo'limi, boshqarma rahbari faqat o'z boshqarmasi.
+    """
+    if is_superadmin(role):
+        return Task.query.order_by(Task.created_at.desc()).all()
+    if role == 'admin' and dept_id:
+        uid_set = dept_user_ids(dept_id); uid_set.add(user_id)
+    elif role == 'department_admin' and div_id:
+        uid_set = div_user_ids(div_id); uid_set.add(user_id)
+    else:
+        user = User.query.get(user_id)
+        team_ids = {t.id for t in user.teams} if user else set()
+        return Task.query.filter(
+            db.or_(
+                Task.assignee_id == user_id,
+                Task.assignees.any(User.id == user_id),
+                Task.team_id.in_(team_ids) if team_ids else db.false(),
+            )
+        ).order_by(Task.created_at.desc()).all()
+    return Task.query.filter(
+        db.or_(
+            Task.created_by.in_(uid_set),
+            Task.assignee_id.in_(uid_set),
+            Task.assignees.any(User.id.in_(uid_set)),
+        )
+    ).order_by(Task.created_at.desc()).all()
+
+
 @tasks_bp.route('', methods=['GET'])
 @jwt_required()
 def get_tasks():
     user_id = int(get_jwt_identity())
-    claims = get_jwt()
-    role, dept_id, div_id = get_scope(claims)
-
-    if is_superadmin(role):
-        tasks = Task.query.order_by(Task.created_at.desc()).all()
-    elif role == 'admin' and dept_id:
-        uid_set = dept_user_ids(dept_id)
-        uid_set.add(user_id)
-        tasks = Task.query.filter(
-            db.or_(
-                Task.created_by.in_(uid_set),
-                Task.assignee_id.in_(uid_set),
-                Task.assignees.any(User.id.in_(uid_set)),
-            )
-        ).order_by(Task.created_at.desc()).all()
-    elif role == 'department_admin' and div_id:
-        uid_set = div_user_ids(div_id)
-        uid_set.add(user_id)
-        tasks = Task.query.filter(
-            db.or_(
-                Task.created_by.in_(uid_set),
-                Task.assignee_id.in_(uid_set),
-                Task.assignees.any(User.id.in_(uid_set)),
-            )
-        ).order_by(Task.created_at.desc()).all()
-    else:
-        user = User.query.get(user_id)
-        user_team_ids = {t.id for t in user.teams} if user else set()
-        tasks = Task.query.filter(
-            db.or_(
-                Task.assignee_id == user_id,
-                Task.assignees.any(User.id == user_id),
-                Task.team_id.in_(user_team_ids) if user_team_ids else db.false()
-            )
-        ).order_by(Task.created_at.desc()).all()
-
+    role, dept_id, div_id = get_scope(get_jwt())
+    tasks = _scoped_tasks(role, dept_id, div_id, user_id)
     return jsonify([t.to_list_dict() for t in tasks])
 
 
@@ -293,11 +288,12 @@ def _strip_tz(dt):
 @tasks_bp.route('/full-stats', methods=['GET'])
 @jwt_required()
 def task_full_stats():
-    claims = get_jwt()
-    if not is_any_admin(claims.get('role', '')):
+    role, dept_id, div_id = get_scope(get_jwt())
+    if not is_any_admin(role):
         return jsonify({'error': "Ruxsat yo'q"}), 403
 
-    tasks = Task.query.order_by(Task.created_at.desc()).all()
+    # Bo'lim/boshqarma rahbari faqat o'z scope'idagi vazifalar statistikasini ko'radi
+    tasks = _scoped_tasks(role, dept_id, div_id, int(get_jwt_identity()))
 
     in_work_statuses = ('active', 'in_progress', 'review', 'returned')
     perf = {}

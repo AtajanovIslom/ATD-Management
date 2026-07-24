@@ -25,48 +25,42 @@ def is_admin_role():
     return is_any_admin(get_jwt().get('role', ''))
 
 
-@projects_bp.route('', methods=['GET'])
-@jwt_required()
-def get_projects():
-    claims = get_jwt()
-    user_id = int(get_jwt_identity())
-    role, dept_id, div_id = get_scope(claims)
-
+def _scoped_projects(role, dept_id, div_id, user_id):
+    """Rol bo'yicha ko'rinadigan loyihalar (ro'yxat va statistika uchun umumiy).
+       Bo'lim rahbari faqat o'z bo'limi, boshqarma rahbari faqat o'z boshqarmasi
+       (+ superadmin/direksiya yaratgan loyihalar).
+    """
     if is_superadmin(role):
-        projects = Project.query.order_by(Project.created_at.desc()).all()
-    elif role == 'admin' and dept_id:
-        uid_set = dept_user_ids(dept_id)
-        uid_set.add(user_id)
-        projects = Project.query.filter(
-            db.or_(
-                Project.created_by.in_(uid_set),
-                Project.stages.any(ProjectStage.assignee_id.in_(uid_set)),
-                Project.stages.any(ProjectStage.assignees.any(User.id.in_(uid_set))),
-                # Superadmin/direksiya yaratgan loyihalar ham ko'rinadi
-                Project.creator.has(User.role.in_(FULL_ACCESS_ROLES)),
-            )
-        ).order_by(Project.created_at.desc()).all()
+        return Project.query.order_by(Project.created_at.desc()).all()
+    if role == 'admin' and dept_id:
+        uid_set = dept_user_ids(dept_id); uid_set.add(user_id)
     elif role == 'department_admin' and div_id:
-        uid_set = div_user_ids(div_id)
-        uid_set.add(user_id)
-        projects = Project.query.filter(
-            db.or_(
-                Project.created_by.in_(uid_set),
-                Project.stages.any(ProjectStage.assignee_id.in_(uid_set)),
-                Project.stages.any(ProjectStage.assignees.any(User.id.in_(uid_set))),
-                Project.creator.has(User.role.in_(FULL_ACCESS_ROLES)),
-            )
-        ).order_by(Project.created_at.desc()).all()
+        uid_set = div_user_ids(div_id); uid_set.add(user_id)
     else:
         user = User.query.get(user_id)
-        user_team_ids = [t.id for t in user.teams] if user else []
-        conditions = [
+        team_ids = [t.id for t in user.teams] if user else []
+        conds = [
             Project.stages.any(ProjectStage.assignee_id == user_id),
             Project.stages.any(ProjectStage.assignees.any(User.id == user_id)),
         ]
-        if user_team_ids:
-            conditions.append(Project.teams.any(Team.id.in_(user_team_ids)))
-        projects = Project.query.filter(db.or_(*conditions)).order_by(Project.created_at.desc()).all()
+        if team_ids:
+            conds.append(Project.teams.any(Team.id.in_(team_ids)))
+        return Project.query.filter(db.or_(*conds)).order_by(Project.created_at.desc()).all()
+    return Project.query.filter(
+        db.or_(
+            Project.created_by.in_(uid_set),
+            Project.stages.any(ProjectStage.assignee_id.in_(uid_set)),
+            Project.stages.any(ProjectStage.assignees.any(User.id.in_(uid_set))),
+            Project.creator.has(User.role.in_(FULL_ACCESS_ROLES)),
+        )
+    ).order_by(Project.created_at.desc()).all()
+
+
+@projects_bp.route('', methods=['GET'])
+@jwt_required()
+def get_projects():
+    role, dept_id, div_id = get_scope(get_jwt())
+    projects = _scoped_projects(role, dept_id, div_id, int(get_jwt_identity()))
 
 
     return jsonify([p.to_list_dict() for p in projects])
@@ -480,16 +474,21 @@ def download_report_file(filename):
 @projects_bp.route('/stats', methods=['GET'])
 @jwt_required()
 def get_stats():
-    if not is_admin_role():
+    role, dept_id, div_id = get_scope(get_jwt())
+    if not is_any_admin(role):
         return jsonify({'error': 'Ruxsat yo\'q'}), 403
 
-    total = Project.query.count()
-    active = Project.query.filter_by(status='active').count()
-    completed = Project.query.filter_by(status='completed').count()
-    on_hold = Project.query.filter_by(status='on_hold').count()
+    # Rol scope'iga qarab loyihalar
+    projects = _scoped_projects(role, dept_id, div_id, int(get_jwt_identity()))
+    total = len(projects)
+    active = sum(1 for p in projects if p.status == 'active')
+    completed = sum(1 for p in projects if p.status == 'completed')
+    on_hold = sum(1 for p in projects if p.status == 'on_hold')
+    scoped_ids = {p.id for p in projects}
 
     team_performance = {}
-    all_stages = ProjectStage.query.filter(ProjectStage.team_id.isnot(None)).all()
+    all_stages = [s for s in ProjectStage.query.filter(ProjectStage.team_id.isnot(None)).all()
+                  if s.project_id in scoped_ids]
     for stage in all_stages:
         tid = stage.team_id
         if tid not in team_performance:
@@ -525,11 +524,15 @@ def get_stats():
 @projects_bp.route('/full-stats', methods=['GET'])
 @jwt_required()
 def get_full_stats():
-    if not is_admin_role():
+    role, dept_id, div_id = get_scope(get_jwt())
+    if not is_any_admin(role):
         return jsonify({'error': 'Ruxsat yo\'q'}), 403
 
-    projects = Project.query.all()
-    all_stages = ProjectStage.query.filter(ProjectStage.team_id.isnot(None)).all()
+    # Bo'lim/boshqarma rahbari faqat o'z scope'idagi loyihalar statistikasini ko'radi
+    projects = _scoped_projects(role, dept_id, div_id, int(get_jwt_identity()))
+    scoped_ids = {p.id for p in projects}
+    all_stages = [s for s in ProjectStage.query.filter(ProjectStage.team_id.isnot(None)).all()
+                  if s.project_id in scoped_ids]
 
     team_perf = {}
     for stage in all_stages:
