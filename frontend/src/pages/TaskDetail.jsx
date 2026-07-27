@@ -20,10 +20,12 @@ const downloadFile = async (url, originalName) => {
 export default function TaskDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { user, isDeptAdmin } = useAuth()
-  // Har qanday rahbar (boshqarma/bo'lim rahbari + superadmin) vazifani tasdiqlaydi/qaytaradi.
-  // Ilgari `user.role === 'admin'` edi — bo'lim rahbari va superadmin chiqib qolardi.
+  const { user, isDeptAdmin, isAdmin: isDeptOrHigher } = useAuth()
+  // isAdmin = barcha rahbarlar (bo'lim rahbari, boshqarma rahbari, superadmin)
   const isAdmin = isDeptAdmin
+  // Boshqarma rahbari va yuqori (bo'lim rahbari kirmaydi) — tugallanган vazifani
+  // qayta yuklash huquqi shu darajaga ega
+  const canReturnCompleted = isDeptOrHigher  // useAuth'dagi isAdmin: admin+superadmin
 
   const [task, setTask] = useState(null)
   const [reports, setReports] = useState([])
@@ -240,6 +242,18 @@ export default function TaskDetail() {
                     ↩ Qayta yuklash
                   </button>
                 </>
+              )}
+              {/* Boshqarma rahbari va yuqori — tugallangan vazifani qayta yuklashi mumkin
+                  (ishda kamchilik topilsa). Bo'lim rahbari bunga huquqi yo'q. */}
+              {canReturnCompleted && task.status === 'completed' && (
+                <button className="btn btn-warning btn-sm"
+                  onClick={() => {
+                    if (window.confirm('Tugallangan vazifani qayta ishga qaytarasizmi?')) {
+                      handleStatusChange('returned')
+                    }
+                  }}>
+                  ↩ Qayta ishlashga yuborish
+                </button>
               )}
             </div>
           </div>

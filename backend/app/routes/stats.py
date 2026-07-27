@@ -76,9 +76,11 @@ def employee_stats():
         total_late = task_summary['late'] + stage_summary['late']
         total_in_progress = task_summary['in_progress'] + stage_summary['in_progress']
 
-        # KPI: bajarilganlar ichida vaqtida bajarilgani foizi
-        kpi = round(total_on_time / total_completed * 100) if total_completed else 0
-        completion_rate = round(total_completed / total_items * 100) if total_items else 0
+        # Samaradorlik (KPI) — jami vazifadan qanchasi bajarilgan (masalan 4 tadan 1 tasi = 25%).
+        # "on-time" ko'rsatkichi alohida qoladi — bajarilganlar ichida vaqtida bajarilganlar foizi.
+        kpi = round(total_completed / total_items * 100) if total_items else 0
+        on_time_rate = round(total_on_time / total_completed * 100) if total_completed else 0
+        completion_rate = kpi  # eski maydon nomiga moslik uchun
 
         work_items = []
         for t in u_tasks:
@@ -121,6 +123,7 @@ def employee_stats():
             'reports': task_reports + project_reports,
             'kpi': kpi,
             'completion_rate': completion_rate,
+            'on_time_rate': on_time_rate,
             'work_items': work_items,
         })
 

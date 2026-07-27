@@ -161,11 +161,20 @@ def update_task(task_id):
             if not TaskReport.query.filter_by(task_id=task.id).first():
                 return jsonify({'error': 'Avval hisobot topshiring'}), 400
         elif new_status in ('completed', 'returned'):
-            # Faqat rahbar tasdiqlaydi/qaytaradi va faqat review holatidan
+            # Faqat rahbar tasdiqlaydi/qaytaradi
             if not is_admin:
                 return jsonify({'error': 'Faqat rahbar tasdiqlaydi'}), 403
-            if task.status != 'review':
-                return jsonify({'error': 'Faqat tekshiruvdagi vazifa ustida amal qilinadi'}), 400
+            role_val = claims.get('role', '')
+            # 'review' holatidan har qanday rahbar amal qiladi.
+            # Tugallangan vazifani qaytarish faqat boshqarma rahbari va yuqori rollarga
+            # ruxsat (bo'lim rahbari tasdiqlagan ishda kamchilik topsa qayta yuklaydi).
+            if task.status == 'review':
+                pass
+            elif task.status == 'completed' and new_status == 'returned':
+                if not is_admin_or_above(role_val):
+                    return jsonify({'error': "Tugallangan vazifani qayta yuklash faqat boshqarma rahbari huquqi"}), 403
+            else:
+                return jsonify({'error': 'Bu holatda amal qilib bo\'lmaydi'}), 400
             if new_status == 'completed':
                 task.completed_at = datetime.now(timezone.utc)
             else:
