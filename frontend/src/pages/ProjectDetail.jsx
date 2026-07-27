@@ -189,6 +189,7 @@ export default function ProjectDetail() {
     setEditStages(project.stages.map(s => ({
       id: s.id,
       name: s.name,
+      start_date: s.start_date ? s.start_date.split('T')[0] : '',
       deadline: s.deadline ? s.deadline.split('T')[0] : '',
       assign_type: s.assignees?.length > 0 ? 'individual' : 'team',
       team_id: s.team_id ? String(s.team_id) : '',
@@ -214,6 +215,7 @@ export default function ProjectDetail() {
       for (const s of editStages.filter(s => s.id && !deletedStageIds.has(s.id))) {
         await api.put(`/projects/${id}/stages/${s.id}`, {
           name: s.name,
+          start_date: s.start_date ? new Date(s.start_date + 'T00:00:00').toISOString() : null,
           deadline: s.deadline ? new Date(s.deadline + 'T23:59:59').toISOString() : null,
           team_id: s.assign_type === 'team' ? (parseInt(s.team_id) || null) : null,
           assignee_id: s.assign_type === 'team' ? (parseInt(s.assignee_id) || null) : null,
@@ -224,6 +226,7 @@ export default function ProjectDetail() {
       for (const s of editStages.filter(s => !s.id)) {
         await api.post(`/projects/${id}/stages`, {
           name: s.name,
+          start_date: s.start_date ? new Date(s.start_date + 'T00:00:00').toISOString() : null,
           deadline: s.deadline ? new Date(s.deadline + 'T23:59:59').toISOString() : null,
           team_id: s.assign_type === 'team' ? (parseInt(s.team_id) || null) : null,
           assignee_id: s.assign_type === 'team' ? (parseInt(s.assignee_id) || null) : null,
@@ -255,7 +258,7 @@ export default function ProjectDetail() {
   }
 
   const addEditStage = () => {
-    setEditStages([...editStages, { id: null, name: '', deadline: '', assign_type: 'team', team_id: '', assignee_id: '', assignee_ids: [] }])
+    setEditStages([...editStages, { id: null, name: '', start_date: '', deadline: '', assign_type: 'team', team_id: '', assignee_id: '', assignee_ids: [] }])
   }
 
   const removeEditStage = (idx) => {
@@ -384,6 +387,11 @@ export default function ProjectDetail() {
                         onChange={e => updateEditStage(idx, 'name', e.target.value)}
                         placeholder="Bosqich nomi" />
                       <div className="stage-edit-row">
+                        <div style={{ flex: 1 }}>
+                          <label style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, display: 'block' }}>Boshlash sanasi</label>
+                          <input type="date" className="form-input" value={stage.start_date || ''}
+                            onChange={e => updateEditStage(idx, 'start_date', e.target.value)} />
+                        </div>
                         <div style={{ flex: 1 }}>
                           <label style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, display: 'block' }}>Tugatish muddati</label>
                           <input type="date" className="form-input" value={stage.deadline}

@@ -8,7 +8,7 @@ export default function CreateProject() {
   const [users, setUsers] = useState([])
   const [form, setForm] = useState({
     name: '', description: '', start_date: '', deadline: '',
-    stages: [{ name: '', deadline: '', assign_type: 'team', team_id: '', assignee_id: '', assignee_ids: [] }],
+    stages: [{ name: '', start_date: '', deadline: '', assign_type: 'team', team_id: '', assignee_id: '', assignee_ids: [] }],
   })
   const [files, setFiles] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -26,7 +26,7 @@ export default function CreateProject() {
 
   const addStage = () => setForm({
     ...form,
-    stages: [...form.stages, { name: '', deadline: '', assign_type: 'team', team_id: '', assignee_id: '' }],
+    stages: [...form.stages, { name: '', start_date: '', deadline: '', assign_type: 'team', team_id: '', assignee_id: '' }],
   })
 
   const removeStage = (idx) => {
@@ -87,6 +87,7 @@ export default function CreateProject() {
       if (form.deadline) fd.append('deadline', new Date(form.deadline + 'T23:59:59').toISOString())
       fd.append('stages', JSON.stringify(validStages.map(s => ({
         name: s.name,
+        start_date: s.start_date ? new Date(s.start_date + 'T00:00:00').toISOString() : null,
         deadline: s.deadline ? new Date(s.deadline + 'T23:59:59').toISOString() : null,
         team_id: s.assign_type === 'team' && s.team_id ? parseInt(s.team_id) : null,
         assignee_id: s.assign_type === 'team' && s.team_id && s.assignee_id ? parseInt(s.assignee_id) : null,
@@ -163,6 +164,13 @@ export default function CreateProject() {
                         onChange={e => updateStage(idx, 'name', e.target.value)}
                         placeholder="Bosqich nomi" />
                       <div className="stage-edit-row">
+                        <div style={{ flex: 1 }}>
+                          <label style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, display: 'block' }}>
+                            Boshlash sanasi
+                          </label>
+                          <input type="date" className="form-input" value={stage.start_date || ''}
+                            onChange={e => updateStage(idx, 'start_date', e.target.value)} />
+                        </div>
                         <div style={{ flex: 1 }}>
                           <label style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, display: 'block' }}>
                             Tugatish muddati

@@ -199,15 +199,22 @@ def update_task(task_id):
 def _task_assignable_workers(role, dept_id, div_id):
     """Vazifani kimga yuklash mumkin — ierarxiya bo'yicha:
        - superadmin/direksiya: barcha faol xodimlar (user + dept_admin)
-       - boshqarma rahbari (admin): o'z boshqarmasidagi bo'lim rahbarlari
-         (bo'lim rahbari keyin o'z xodimlariga yuklaydi) + o'z boshqarmasidagi user'lar
+       - boshqarma rahbari (admin): o'z boshqarmasidagi bo'lim rahbarlari va user'lar
+         (bevosita department_id yoki bo'lim orqali division.department_id ham hisoblanadi)
        - bo'lim rahbari (department_admin): o'z bo'limidagi xodimlar (user)
     """
+    from app.models import Division
     q = User.query.filter(User.is_active == True, User.role.in_(['user', 'department_admin']))
     if role in ('superadmin', 'director', 'deputy_director'):
         pass  # hamma
     elif role == 'admin' and dept_id:
-        q = q.filter_by(department_id=dept_id)
+        # Boshqarma xodimlari: bevosita department_id yoki bo'lim orqali
+        # (dept_admin ba'zan bevosita department_id ga biriktirilmagan, faqat division bor)
+        div_ids = [d.id for d in Division.query.filter_by(department_id=dept_id).all()]
+        cond = User.department_id == dept_id
+        if div_ids:
+            cond = db.or_(cond, User.division_id.in_(div_ids))
+        q = q.filter(cond)
     elif role == 'department_admin' and div_id:
         q = q.filter_by(division_id=div_id, role='user')
     else:

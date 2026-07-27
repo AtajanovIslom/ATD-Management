@@ -160,6 +160,7 @@ def create_project():
     all_team_ids = set()
     for i, stage_obj in enumerate(stages_data):
         s_name = stage_obj.get('name', '').strip() if isinstance(stage_obj, dict) else str(stage_obj).strip()
+        s_start_date = stage_obj.get('start_date') if isinstance(stage_obj, dict) else None
         s_deadline = stage_obj.get('deadline') if isinstance(stage_obj, dict) else None
         s_team_id = stage_obj.get('team_id') if isinstance(stage_obj, dict) else None
         s_assignee_id = stage_obj.get('assignee_id') if isinstance(stage_obj, dict) else None
@@ -171,6 +172,7 @@ def create_project():
             name=s_name,
             order=i + 1,
             status='in_progress' if i == 0 else 'pending',
+            start_date=parse_datetime(s_start_date) if s_start_date else None,
             deadline=parse_datetime(s_deadline) if s_deadline else None,
             team_id=s_team_id,
             assignee_id=s_assignee_id,
@@ -310,6 +312,8 @@ def update_stage(project_id, stage_id):
     if is_admin:
         if 'name' in data:
             stage.name = data['name'].strip()
+        if 'start_date' in data:
+            stage.start_date = parse_datetime(data['start_date']) if data['start_date'] else None
         if 'deadline' in data:
             stage.deadline = parse_datetime(data['deadline']) if data['deadline'] else None
         if 'team_id' in data:
@@ -347,6 +351,7 @@ def add_stage(project_id):
         name=name,
         order=max_order + 1,
         status='pending',
+        start_date=parse_datetime(data['start_date']) if data.get('start_date') else None,
         deadline=parse_datetime(data['deadline']) if data.get('deadline') else None,
         team_id=data.get('team_id') or None,
         assignee_id=data.get('assignee_id') or None,

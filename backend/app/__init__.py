@@ -53,6 +53,7 @@ def create_app():
 
         migrations = [
             "ALTER TABLE project_stages ADD COLUMN IF NOT EXISTS deadline TIMESTAMP",
+            "ALTER TABLE project_stages ADD COLUMN IF NOT EXISTS start_date TIMESTAMP",
             "ALTER TABLE project_stages ADD COLUMN IF NOT EXISTS team_id INTEGER REFERENCES teams(id)",
             "ALTER TABLE projects ADD COLUMN IF NOT EXISTS start_date TIMESTAMP",
             "ALTER TABLE project_stages ADD COLUMN IF NOT EXISTS assignee_id INTEGER REFERENCES users(id)",

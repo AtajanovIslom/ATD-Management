@@ -787,10 +787,11 @@ class ProjectStage(db.Model):
     name = db.Column(db.String(255), nullable=False)
     order = db.Column(db.Integer, nullable=False)
     status = db.Column(db.String(50), default='pending')
+    start_date = db.Column(db.DateTime)  # rejalashtirilgan boshlash sanasi
     deadline = db.Column(db.DateTime)
     team_id = db.Column(db.Integer, db.ForeignKey('teams.id'))
     assignee_id = db.Column(db.Integer, db.ForeignKey('users.id'))
-    started_at = db.Column(db.DateTime)
+    started_at = db.Column(db.DateTime)  # amalda boshlangan vaqt
     completed_at = db.Column(db.DateTime)
 
     team = db.relationship('Team', lazy=True)
@@ -816,6 +817,7 @@ class ProjectStage(db.Model):
             'name': self.name,
             'order': self.order,
             'status': self.status,
+            'start_date': self.start_date.isoformat() if self.start_date else None,
             'deadline': self.deadline.isoformat() if self.deadline else None,
             'team_id': self.team_id,
             'team_name': self.team.name if self.team else None,
