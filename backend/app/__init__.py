@@ -194,12 +194,17 @@ def create_app():
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(50)",
             "ALTER TABLE users ALTER COLUMN department SET DEFAULT ''",
         ]
+        # Har bir migratsiya o'z tranzaksiyasida bajariladi — bittasi xato bersa
+        # keyingilariga ta'sir qilmasin. Ilgari umumiy commit edi, bir SQL rollback
+        # bo'lsa PostgreSQL keyingi execute'larni ham rad etardi va ba'zi ustunlar
+        # qo'shilmasdan qolardi (masalan project_stages.start_date).
         for sql in migrations:
             try:
                 db.session.execute(db.text(sql))
-            except Exception:
+                db.session.commit()
+            except Exception as e:
                 db.session.rollback()
-        db.session.commit()
+                print(f"Migratsiya xatosi: {str(e)[:120]}")
 
         if not User.query.filter(User.role.in_(['admin', 'superadmin'])).first():
             db.session.add(User(
