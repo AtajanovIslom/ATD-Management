@@ -20,7 +20,9 @@ export default function CreateTask() {
       api.get('/users'),
     ]).then(([teamsRes, usersRes]) => {
       setTeams(teamsRes.data)
-      setUsers(usersRes.data.filter(u => u.role === 'user' && u.is_active))
+      // Individual xodim tanlashda ijrochi bo'la oladigan rollar:
+      // xodim (user) + bo'lim rahbari (department_admin). Yuqori rahbarlar chiqmaydi.
+      setUsers(usersRes.data.filter(u => (u.role === 'user' || u.role === 'department_admin') && u.is_active))
     }).catch(console.error)
   }, [])
 
