@@ -149,9 +149,10 @@ export default function TaskDetail() {
     }
   }
 
+  // Ijrochi bo'lgan har kim (rahbarlar ham) hisobot topshira oladi —
+  // ijrochi ekanligi rol emas, biriktirish bilan aniqlanadi.
   const canUserReport = (() => {
     if (!task) return false
-    if (isAdmin) return false
     if (task.status === 'completed') return false
     if (task.assignee_id === user.id) return true
     if (task.assignees?.some(a => a.id === user.id)) return true

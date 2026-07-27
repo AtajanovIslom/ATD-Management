@@ -146,27 +146,34 @@ def update_task(task_id):
 
     new_status = data.get('status')
     if new_status:
-        if not is_any_admin(claims.get('role', '')):
-            if new_status == 'review':
-                user = User.query.get(user_id)
-                user_team_ids = {t.id for t in user.teams} if user else set()
-                assignee_ids = {a.id for a in task.assignees}
-                can = task.assignee_id == user_id or user_id in assignee_ids or (task.team_id in user_team_ids)
-                if not can:
-                    return jsonify({'error': 'Sizda bu vazifani bajarildi deb yuborish huquqi yo\'q'}), 403
-                if not TaskReport.query.filter_by(task_id=task.id).first():
-                    return jsonify({'error': 'Avval hisobot topshiring'}), 400
-            else:
-                return jsonify({'error': 'Faqat admin status o\'zgartirishi mumkin'}), 403
-        else:
-            if new_status == 'completed' and task.status != 'review':
-                return jsonify({'error': 'Avval hodim bajarildi deb yuborishi kerak'}), 400
-            if new_status == 'returned' and task.status != 'review':
-                return jsonify({'error': 'Faqat tekshiruvdagi vazifani qaytarish mumkin'}), 400
+        # Ijrochi ekanini tekshiramiz (rol emas — chunki bo'lim rahbari ham
+        # o'ziga yuklangan vazifani "bajardim" deb yuborishi mumkin)
+        user = User.query.get(user_id)
+        user_team_ids = {t.id for t in user.teams} if user else set()
+        assignee_ids = {a.id for a in task.assignees}
+        is_assignee = task.assignee_id == user_id or user_id in assignee_ids or (task.team_id in user_team_ids)
+        is_admin = is_any_admin(claims.get('role', ''))
+
+        if new_status == 'review':
+            # Ijrochi (rahbar bo'lsa ham) "bajardim" deb yuboradi
+            if not is_assignee:
+                return jsonify({'error': 'Sizda bu vazifani bajarildi deb yuborish huquqi yo\'q'}), 403
+            if not TaskReport.query.filter_by(task_id=task.id).first():
+                return jsonify({'error': 'Avval hisobot topshiring'}), 400
+        elif new_status in ('completed', 'returned'):
+            # Faqat rahbar tasdiqlaydi/qaytaradi va faqat review holatidan
+            if not is_admin:
+                return jsonify({'error': 'Faqat rahbar tasdiqlaydi'}), 403
+            if task.status != 'review':
+                return jsonify({'error': 'Faqat tekshiruvdagi vazifa ustida amal qilinadi'}), 400
             if new_status == 'completed':
                 task.completed_at = datetime.now(timezone.utc)
             else:
                 task.completed_at = None
+        else:
+            # active/in_progress kabi holatlarga faqat rahbar (yoki o'zi ijrochi)
+            if not is_admin and not is_assignee:
+                return jsonify({'error': 'Ruxsat yo\'q'}), 403
 
         task.status = new_status
 
@@ -289,9 +296,9 @@ def create_task_report(task_id):
     if not content:
         return jsonify({'error': 'Hisobot matni kiritilishi shart'}), 400
 
-    if is_any_admin(claims.get('role', '')):
-        return jsonify({'error': 'Adminlar hisobot topshirmaydi'}), 403
-
+    # Rol emas, ijrochi ekanligiga qarab tekshiramiz. Bo'lim/boshqarma rahbari
+    # ham o'ziga vazifa yuklangan bo'lsa hisobot topshirishi kerak — natija
+    # yuqori rahbarga ko'rinadi va statistikaga qo'shiladi.
     user = User.query.get(user_id)
     user_team_ids = {t.id for t in user.teams} if user else set()
     assignee_ids = {a.id for a in task.assignees}
