@@ -30,6 +30,10 @@ export default function TaskDetail() {
   const [reportText, setReportText] = useState('')
   const [reportFiles, setReportFiles] = useState([])
   const [loading, setLoading] = useState(true)
+  const [assignModal, setAssignModal] = useState(false)
+  const [workers, setWorkers] = useState([])
+  const [selectedWorker, setSelectedWorker] = useState('')
+  const [reassignBusy, setReassignBusy] = useState(false)
 
   useEffect(() => { loadData() }, [id])
 
@@ -97,6 +101,31 @@ export default function TaskDetail() {
     }
   }
 
+  const openAssign = async () => {
+    setSelectedWorker('')
+    setAssignModal(true)
+    try {
+      const res = await api.get('/tasks/assignable-workers')
+      setWorkers(res.data)
+    } catch {
+      setWorkers([])
+    }
+  }
+
+  const handleReassign = async () => {
+    if (!selectedWorker) return
+    setReassignBusy(true)
+    try {
+      const res = await api.post(`/tasks/${id}/reassign`, { user_id: parseInt(selectedWorker) })
+      setTask(res.data)
+      setAssignModal(false)
+    } catch (err) {
+      alert(err.response?.data?.error || 'Xatolik yuz berdi')
+    } finally {
+      setReassignBusy(false)
+    }
+  }
+
   const handleReport = async () => {
     if (!reportText.trim()) return
     try {
@@ -143,12 +172,56 @@ export default function TaskDetail() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {/* Xodimga yuklash — rahbarlarga. Yakunlangan va tekshiruvdagi vazifani
+              yuklab bo'lmaydi (backend ham buni qaytaradi) */}
+          {isAdmin && task.status !== 'completed' && task.status !== 'review' && (
+            <button className="btn btn-primary btn-sm" onClick={openAssign}>
+              👤 Xodimga yuklash
+            </button>
+          )}
           {isAdmin && (
             <button className="btn btn-danger btn-sm" onClick={handleDelete}>O'chirish</button>
           )}
           <button className="btn btn-outline btn-sm" onClick={() => navigate(-1)}>← Orqaga</button>
         </div>
       </div>
+
+      {assignModal && (
+        <div className="modal-overlay" onClick={() => setAssignModal(false)}>
+          <div className="modal" style={{ maxWidth: 460 }} onClick={e => e.stopPropagation()}>
+            <h2 style={{ marginBottom: 4 }}>👤 Vazifani xodimga yuklash</h2>
+            <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>
+              Joriy ijrochi: <strong>{task.assignee_name || task.assignee_names?.join(', ') || task.team_name || '—'}</strong>
+            </p>
+
+            <div className="form-group">
+              <label>Yangi ijrochi</label>
+              <select className="form-input" value={selectedWorker}
+                onChange={e => setSelectedWorker(e.target.value)}>
+                <option value="">— Tanlang —</option>
+                {workers.map(w => (
+                  <option key={w.id} value={w.id}>
+                    {w.full_name} {w.position ? `(${w.position})` : ''} {w.role === 'department_admin' ? '— Bo\'lim rahbari' : ''}
+                  </option>
+                ))}
+              </select>
+              {workers.length === 0 && (
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+                  Yuklash uchun xodim topilmadi
+                </div>
+              )}
+            </div>
+
+            <div className="modal-actions">
+              <button className="btn btn-outline" onClick={() => setAssignModal(false)}>Bekor</button>
+              <button className="btn btn-primary" onClick={handleReassign}
+                disabled={!selectedWorker || reassignBusy}>
+                {reassignBusy ? 'Yuklanmoqda...' : 'Yuklash'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, marginBottom: 16 }}>
         <div className="card">

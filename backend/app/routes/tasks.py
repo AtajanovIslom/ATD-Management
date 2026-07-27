@@ -5,7 +5,10 @@ from flask import Blueprint, request, jsonify, send_from_directory
 from flask_jwt_extended import jwt_required, get_jwt, get_jwt_identity
 from app import db
 from app.models import Task, TaskReport, TaskAttachment, ReportAttachment, Team, User
-from app.utils import get_scope, is_any_admin, is_superadmin, dept_user_ids, div_user_ids
+from app.utils import (
+    get_scope, is_any_admin, is_admin_or_above, is_superadmin,
+    dept_user_ids, div_user_ids, log_audit,
+)
 
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'uploads')
 ALLOWED_EXTENSIONS = {'doc', 'docx', 'xls', 'xlsx', 'pdf', 'txt', 'png', 'jpg', 'jpeg', 'zip', 'rar', 'pptx'}
@@ -173,6 +176,81 @@ def update_task(task_id):
         if 'description' in data:
             task.description = data['description']
 
+    db.session.commit()
+    return jsonify(task.to_dict())
+
+
+def _task_assignable_workers(role, dept_id, div_id):
+    """Vazifani kimga yuklash mumkin — ierarxiya bo'yicha:
+       - superadmin/direksiya: barcha faol xodimlar (user + dept_admin)
+       - boshqarma rahbari (admin): o'z boshqarmasidagi bo'lim rahbarlari
+         (bo'lim rahbari keyin o'z xodimlariga yuklaydi) + o'z boshqarmasidagi user'lar
+       - bo'lim rahbari (department_admin): o'z bo'limidagi xodimlar (user)
+    """
+    q = User.query.filter(User.is_active == True, User.role.in_(['user', 'department_admin']))
+    if role in ('superadmin', 'director', 'deputy_director'):
+        pass  # hamma
+    elif role == 'admin' and dept_id:
+        q = q.filter_by(department_id=dept_id)
+    elif role == 'department_admin' and div_id:
+        q = q.filter_by(division_id=div_id, role='user')
+    else:
+        return []
+    return q.order_by(User.full_name).all()
+
+
+@tasks_bp.route('/assignable-workers', methods=['GET'])
+@jwt_required()
+def task_assignable_workers():
+    """Joriy rahbar vazifani yuklab bera oladigan xodimlar ro'yxati."""
+    role, dept_id, div_id = get_scope(get_jwt())
+    if not is_any_admin(role):
+        return jsonify([])
+    return jsonify([w.to_dict() for w in _task_assignable_workers(role, dept_id, div_id)])
+
+
+@tasks_bp.route('/<int:task_id>/reassign', methods=['POST'])
+@jwt_required()
+def reassign_task(task_id):
+    """Vazifani boshqa xodimga yuklash (assignee_id o'zgaradi).
+
+    Ruxsat: rahbarlar (admin/department_admin/superadmin). Xodim ierarxiyaga
+    mos bo'lishi shart: boshqarma rahbari -> o'z boshqarmasi ichida;
+    bo'lim rahbari -> o'z bo'limi ichida.
+    """
+    role, dept_id, div_id = get_scope(get_jwt())
+    if not is_any_admin(role):
+        return jsonify({'error': "Ruxsat yo'q"}), 403
+
+    task = Task.query.get_or_404(task_id)
+    if task.status == 'completed':
+        return jsonify({'error': "Yakunlangan vazifani qayta yuklab bo'lmaydi"}), 400
+    if task.status == 'review':
+        return jsonify({'error': "Tekshiruvdagi vazifa avval tasdiqlansin yoki qaytarilsin"}), 400
+
+    data = request.get_json() or {}
+    worker_id = data.get('user_id')
+    if not worker_id:
+        return jsonify({'error': 'user_id majburiy'}), 400
+
+    allowed = {w.id for w in _task_assignable_workers(role, dept_id, div_id)}
+    if int(worker_id) not in allowed:
+        return jsonify({'error': "Bu xodimga vazifani yuklash huquqingiz yo'q"}), 403
+
+    worker = User.query.get(int(worker_id))
+    if not worker or not worker.is_active:
+        return jsonify({'error': 'Xodim topilmadi'}), 404
+
+    prev_name = task.assignee.full_name if task.assignee else \
+                (', '.join(a.full_name for a in task.assignees) if task.assignees else '—')
+
+    task.assignee_id = worker.id
+    task.assignees = []  # M2M tozalanadi — yagona ijrochi bo'ladi
+    if task.status == 'returned':
+        task.status = 'active'  # yangi xodim uchun toza boshlash
+
+    log_audit('assign', 'task', task.id, entity_label=task.name,
+              details=f"{prev_name} -> {worker.full_name}")
     db.session.commit()
     return jsonify(task.to_dict())
 
