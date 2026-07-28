@@ -360,6 +360,18 @@ def assign(req_id):
     if not worker_id:
         return jsonify({'error': 'user_id majburiy'}), 400
 
+    # Tatildagi xodimga biriktirib bo'lmaydi
+    from app.models import Vacation
+    from datetime import date as _date
+    today = _date.today()
+    vac = Vacation.query.filter(
+        Vacation.user_id == int(worker_id),
+        Vacation.from_date <= today,
+        Vacation.to_date >= today,
+    ).first()
+    if vac:
+        return jsonify({'error': f"Bu xodim tatilda ({vac.type_label if hasattr(vac,'type_label') else vac.type}), biriktirib bo'lmaydi"}), 400
+
     allowed_ids = {w.id for w in _assignable_workers(role, dept_id, div_id)}
     if int(worker_id) not in allowed_ids:
         return jsonify({'error': "Bu xodimga biriktirish huquqingiz yo'q"}), 403

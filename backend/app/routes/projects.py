@@ -27,6 +27,26 @@ def is_admin_role():
     return is_admin_or_above(get_jwt().get('role', ''))
 
 
+def _check_no_vacation(user_ids):
+    """Berilgan xodimlar ichida bugun tatilda bo'lganlar bor bo'lsa,
+       xato javob qaytaradi (aks holda None)."""
+    from app.models import Vacation
+    from datetime import date as _date
+    ids = {int(x) for x in user_ids if x}
+    if not ids:
+        return None
+    today = _date.today()
+    vac = Vacation.query.filter(
+        Vacation.user_id.in_(ids),
+        Vacation.from_date <= today,
+        Vacation.to_date >= today,
+    ).all()
+    if vac:
+        names = ', '.join(v.user.full_name for v in vac if v.user)
+        return jsonify({'error': f"Tatildagi xodim(lar)ga vazifa yuklab bo'lmaydi: {names}"}), 400
+    return None
+
+
 def _scoped_projects(role, dept_id, div_id, user_id):
     """Rol bo'yicha ko'rinadigan loyihalar (ro'yxat va statistika uchun umumiy).
        - Superadmin/direksiya: barcha loyihalar
@@ -158,6 +178,19 @@ def create_project():
     )
     db.session.add(project)
     db.session.flush()
+
+    # Barcha bosqichlar ijrochilarini birlashtirib tatilda emasligini tekshiramiz
+    all_stage_users = set()
+    for st in stages_data:
+        if isinstance(st, dict):
+            if st.get('assignee_id'):
+                all_stage_users.add(int(st['assignee_id']))
+            for uid in st.get('assignee_ids', []):
+                if uid:
+                    all_stage_users.add(int(uid))
+    vac_err = _check_no_vacation(all_stage_users)
+    if vac_err:
+        return vac_err
 
     all_team_ids = set()
     for i, stage_obj in enumerate(stages_data):
@@ -322,6 +355,18 @@ def update_stage(project_id, stage_id):
             stage.deadline = parse_datetime(data['deadline']) if data['deadline'] else None
         if 'team_id' in data:
             stage.team_id = data['team_id'] or None
+        # Tatildagi xodimga biriktirib bo'lmaydi
+        candidate_ids = set()
+        if 'assignee_id' in data and data['assignee_id']:
+            candidate_ids.add(int(data['assignee_id']))
+        if 'assignee_ids' in data:
+            for uid in data.get('assignee_ids', []):
+                if uid:
+                    candidate_ids.add(int(uid))
+        if candidate_ids:
+            vac_err = _check_no_vacation(candidate_ids)
+            if vac_err:
+                return vac_err
         if 'assignee_id' in data:
             stage.assignee_id = data['assignee_id'] or None
         if 'assignee_ids' in data:
@@ -348,6 +393,18 @@ def add_stage(project_id):
     name = data.get('name', '').strip()
     if not name:
         return jsonify({'error': 'Bosqich nomi kiritilishi shart'}), 400
+
+    # Tatildagi xodimga biriktirib bo'lmaydi
+    candidate_ids = set()
+    if data.get('assignee_id'):
+        candidate_ids.add(int(data['assignee_id']))
+    for uid in data.get('assignee_ids', []):
+        if uid:
+            candidate_ids.add(int(uid))
+    if candidate_ids:
+        vac_err = _check_no_vacation(candidate_ids)
+        if vac_err:
+            return vac_err
 
     max_order = max((s.order for s in project.stages), default=0)
     stage = ProjectStage(

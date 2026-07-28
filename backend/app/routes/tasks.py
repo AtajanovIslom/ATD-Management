@@ -92,6 +92,25 @@ def create_task():
     if not name:
         return jsonify({'error': 'Vazifa nomi kiritilishi shart'}), 400
 
+    # Tatildagi xodimga vazifa yuklab bo'lmaydi (assignee_id yoki assignee_ids ichida)
+    from app.models import Vacation
+    from datetime import date as _date
+    today = _date.today()
+    check_ids = set()
+    if assignee_id:
+        check_ids.add(int(assignee_id))
+    for uid in assignee_ids or []:
+        check_ids.add(int(uid))
+    if check_ids:
+        vac = Vacation.query.filter(
+            Vacation.user_id.in_(check_ids),
+            Vacation.from_date <= today,
+            Vacation.to_date >= today,
+        ).all()
+        if vac:
+            names = ', '.join(v.user.full_name for v in vac if v.user)
+            return jsonify({'error': f"Tatildagi xodim(lar)ga vazifa yuklab bo'lmaydi: {names}"}), 400
+
     task = Task(
         name=name,
         description=description,
@@ -313,6 +332,19 @@ def reassign_task(task_id):
     ids = [int(x) for x in raw_ids if x]
     if not ids:
         return jsonify({'error': "Kamida bitta xodim tanlansin"}), 400
+
+    # Tatildagi xodimga vazifa yuklab bo'lmaydi (aniqroq xabar uchun oldin tekshiramiz)
+    from app.models import Vacation
+    from datetime import date as _date
+    today = _date.today()
+    vac = Vacation.query.filter(
+        Vacation.user_id.in_(ids),
+        Vacation.from_date <= today,
+        Vacation.to_date >= today,
+    ).all()
+    if vac:
+        names = ', '.join(v.user.full_name for v in vac if v.user)
+        return jsonify({'error': f"Tatildagi xodim(lar)ga vazifa yuklab bo'lmaydi: {names}"}), 400
 
     allowed = {w.id for w in _task_assignable_workers(role, dept_id, div_id)}
     for uid in ids:
