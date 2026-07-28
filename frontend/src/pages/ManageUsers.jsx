@@ -28,6 +28,9 @@ export default function ManageUsers() {
   const [showPasswords, setShowPasswords] = useState({})
   const [copiedId, setCopiedId] = useState(null)
   const [collapsed, setCollapsed] = useState({})
+  const [vacDialog, setVacDialog] = useState(null) // { user }
+  const [vacForm, setVacForm] = useState({ type: 'annual', from_date: '', to_date: '', note: '' })
+  const [vacBusy, setVacBusy] = useState(false)
 
   useEffect(() => { loadAll() }, [])
 
@@ -102,6 +105,50 @@ export default function ManageUsers() {
     setTimeout(() => setCopiedId(null), 2000)
   }
 
+  const openVacation = (user) => {
+    setVacForm({ type: 'annual', from_date: '', to_date: '', note: '' })
+    setVacDialog({ user })
+  }
+
+  const submitVacation = async () => {
+    if (!vacDialog?.user) return
+    if (!vacForm.from_date || !vacForm.to_date) {
+      alert("Sana tanlash shart")
+      return
+    }
+    setVacBusy(true)
+    try {
+      await api.post('/vacations', {
+        user_id: vacDialog.user.id,
+        type: vacForm.type,
+        from_date: vacForm.from_date,
+        to_date: vacForm.to_date,
+        note: vacForm.note.trim(),
+      })
+      setVacDialog(null)
+      loadAll()
+    } catch (err) {
+      alert(err.response?.data?.error || "Xatolik")
+    } finally {
+      setVacBusy(false)
+    }
+  }
+
+  const removeVacation = async (user) => {
+    if (!user.active_vacation) return
+    // Ro'yxatdan tatil ID sini olish uchun /vacations chaqiramiz
+    try {
+      const r = await api.get(`/vacations?user_id=${user.id}&active=1`)
+      const v = r.data[0]
+      if (!v) return
+      if (!window.confirm(`${user.full_name} tatilini bekor qilmoqchimisiz?`)) return
+      await api.delete(`/vacations/${v.id}`)
+      loadAll()
+    } catch (err) {
+      alert(err.response?.data?.error || "Xatolik")
+    }
+  }
+
   const handleDelete = async (user) => {
     if (!window.confirm(`${user.full_name}ni o'chirmoqchimisiz?`)) return
     await api.delete(`/users/${user.id}`)
@@ -135,7 +182,7 @@ export default function ManageUsers() {
 
   const toggleCollapse = (key) => setCollapsed(prev => ({ ...prev, [key]: !prev[key] }))
 
-  const tableProps = { showPasswords, copiedId, togglePassword, copyLink, openEdit, handleDelete }
+  const tableProps = { showPasswords, copiedId, togglePassword, copyLink, openEdit, handleDelete, openVacation, removeVacation }
 
   return (
     <div>
@@ -212,6 +259,54 @@ export default function ManageUsers() {
           </div>
         )
       })}
+
+      {vacDialog && (
+        <div className="modal-overlay" onClick={() => setVacDialog(null)}>
+          <div className="modal" style={{ maxWidth: 460 }} onClick={e => e.stopPropagation()}>
+            <h2 style={{ marginBottom: 4 }}>🏖 Tatil berish</h2>
+            <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>
+              Xodim: <strong style={{ color: 'var(--text)' }}>{vacDialog.user.full_name}</strong>
+            </p>
+
+            <div className="form-group">
+              <label>Tatil turi *</label>
+              <select className="form-input" value={vacForm.type}
+                onChange={e => setVacForm({ ...vacForm, type: e.target.value })}>
+                <option value="annual">Yillik tatil (otpuska)</option>
+                <option value="unpaid">Haq to'lanmaydigan (BS)</option>
+                <option value="sick">Kasallik (balnishniy)</option>
+              </select>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div className="form-group">
+                <label>Boshlash *</label>
+                <input type="date" className="form-input" value={vacForm.from_date}
+                  onChange={e => setVacForm({ ...vacForm, from_date: e.target.value })} />
+              </div>
+              <div className="form-group">
+                <label>Tugash *</label>
+                <input type="date" className="form-input" value={vacForm.to_date}
+                  onChange={e => setVacForm({ ...vacForm, to_date: e.target.value })} />
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label>Izoh (ixtiyoriy)</label>
+              <textarea className="form-input" rows={2} value={vacForm.note}
+                onChange={e => setVacForm({ ...vacForm, note: e.target.value })}
+                placeholder="Sabab, buyruq raqami va h.k." />
+            </div>
+
+            <div className="modal-actions">
+              <button className="btn btn-outline" onClick={() => setVacDialog(null)}>Bekor</button>
+              <button className="btn btn-primary" onClick={submitVacation} disabled={vacBusy}>
+                {vacBusy ? 'Saqlanmoqda...' : 'Rasmiylashtirish'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
@@ -292,7 +387,9 @@ export default function ManageUsers() {
   )
 }
 
-function UserTable({ users, showPasswords, copiedId, togglePassword, copyLink, openEdit, handleDelete }) {
+function UserTable({ users, showPasswords, copiedId, togglePassword, copyLink, openEdit, handleDelete, openVacation, removeVacation }) {
+  const vacColor = (t) => t === 'annual' ? '#3b82f6' : t === 'sick' ? '#ef4444' : '#f59e0b'
+  const fmt = (iso) => iso ? new Date(iso).toLocaleDateString('uz-UZ', { day: '2-digit', month: '2-digit' }) : ''
   return (
     <table>
       <thead>
@@ -309,7 +406,19 @@ function UserTable({ users, showPasswords, copiedId, togglePassword, copyLink, o
       <tbody>
         {users.map(u => (
           <tr key={u.id}>
-            <td><strong>{u.full_name}</strong></td>
+            <td>
+              <strong>{u.full_name}</strong>
+              {u.active_vacation && (
+                <div style={{
+                  marginTop: 2, fontSize: 10, fontWeight: 600, display: 'inline-block',
+                  marginLeft: 6, padding: '2px 6px', borderRadius: 4,
+                  background: `${vacColor(u.active_vacation.type)}22`,
+                  color: vacColor(u.active_vacation.type),
+                }} title={u.active_vacation.type_label}>
+                  🏖 {u.active_vacation.type === 'annual' ? 'Otpuska' : u.active_vacation.type === 'sick' ? 'Kasallik' : 'BS'} ({fmt(u.active_vacation.from_date)}—{fmt(u.active_vacation.to_date)})
+                </div>
+              )}
+            </td>
             <td>
               <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
                 {ROLE_LABELS[u.role] || u.role}
@@ -340,6 +449,17 @@ function UserTable({ users, showPasswords, copiedId, togglePassword, copyLink, o
               </td>
             )}
             <td style={{ whiteSpace: 'nowrap' }}>
+              {u.active_vacation ? (
+                <button className="btn btn-outline btn-sm" onClick={() => removeVacation(u)}
+                  title="Tatilni bekor qilish" style={{ marginRight: 4, color: '#f59e0b' }}>
+                  🏖 Bekor
+                </button>
+              ) : (
+                <button className="btn btn-outline btn-sm" onClick={() => openVacation(u)}
+                  title="Tatil berish" style={{ marginRight: 4 }}>
+                  🏖 Tatil
+                </button>
+              )}
               <button className="btn btn-outline btn-sm" onClick={() => openEdit(u)} style={{ marginRight: 4 }}>
                 Tahrirlash
               </button>

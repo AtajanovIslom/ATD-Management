@@ -427,6 +427,56 @@ class ReminderAttachment(db.Model):
         }
 
 
+class Vacation(db.Model):
+    """Xodim tatili (yillik, haqsiz, kasallik).
+
+    Rahbar (admin/department_admin/superadmin) hodimga tatil beradi.
+    Tatildagi xodimga vazifa/interaktiv ariza yuklab bo'lmaydi.
+    Xodim o'ziga o'zi tatil bera olmaydi.
+    """
+    __tablename__ = 'vacations'
+
+    TYPE_LABELS = {
+        'annual': 'Yillik tatil (otpuska)',
+        'unpaid': 'Haq to\'lanmaydigan (BS)',
+        'sick': 'Kasallik (balnishniy)',
+    }
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'),
+                        nullable=False, index=True)
+    type = db.Column(db.String(20), nullable=False)  # annual|unpaid|sick
+    from_date = db.Column(db.Date, nullable=False, index=True)
+    to_date = db.Column(db.Date, nullable=False, index=True)
+    note = db.Column(db.Text, default='')
+    granted_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+    user = db.relationship('User', foreign_keys=[user_id], lazy='joined')
+    granter = db.relationship('User', foreign_keys=[granted_by], lazy='joined')
+
+    def is_active_on(self, d=None):
+        from datetime import date as _date
+        d = d or _date.today()
+        return self.from_date <= d <= self.to_date
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'user_name': self.user.full_name if self.user else None,
+            'type': self.type,
+            'type_label': self.TYPE_LABELS.get(self.type, self.type),
+            'from_date': self.from_date.isoformat() if self.from_date else None,
+            'to_date': self.to_date.isoformat() if self.to_date else None,
+            'note': self.note or '',
+            'granted_by': self.granted_by,
+            'granter_name': self.granter.full_name if self.granter else None,
+            'is_active': self.is_active_on(),
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+        }
+
+
 class WorkLog(db.Model):
     """Xodimning kunlik ish hisoboti.
 
@@ -695,7 +745,27 @@ class User(db.Model):
             'division_is_service_provider': bool(div.is_service_provider) if div else False,
             'department_id': self.department_id,
             'department_name': dept.name if dept else None,
+            'active_vacation': self._active_vacation_dict(),
             'created_at': self.created_at.isoformat() if self.created_at else None,
+        }
+
+    def _active_vacation_dict(self):
+        """Bugun amalda bo'lgan tatil (agar bor bo'lsa) — assignee ro'yxatida
+        yon belgi sifatida ko'rsatish uchun."""
+        from datetime import date as _date
+        today = _date.today()
+        v = Vacation.query.filter(
+            Vacation.user_id == self.id,
+            Vacation.from_date <= today,
+            Vacation.to_date >= today,
+        ).order_by(Vacation.from_date.desc()).first()
+        if not v:
+            return None
+        return {
+            'type': v.type,
+            'type_label': Vacation.TYPE_LABELS.get(v.type, v.type),
+            'from_date': v.from_date.isoformat(),
+            'to_date': v.to_date.isoformat(),
         }
 
 

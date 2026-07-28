@@ -202,14 +202,15 @@ def _task_assignable_workers(role, dept_id, div_id):
        - boshqarma rahbari (admin): o'z boshqarmasidagi bo'lim rahbarlari va user'lar
          (bevosita department_id yoki bo'lim orqali division.department_id ham hisoblanadi)
        - bo'lim rahbari (department_admin): o'z bo'limidagi xodimlar (user)
+
+    Bugun tatilda bo'lgan xodimlar ro'yxatdan chiqarib tashlanadi.
     """
-    from app.models import Division
+    from app.models import Division, Vacation
+    from datetime import date as _date
     q = User.query.filter(User.is_active == True, User.role.in_(['user', 'department_admin']))
     if role in ('superadmin', 'director', 'deputy_director'):
         pass  # hamma
     elif role == 'admin' and dept_id:
-        # Boshqarma xodimlari: bevosita department_id yoki bo'lim orqali
-        # (dept_admin ba'zan bevosita department_id ga biriktirilmagan, faqat division bor)
         div_ids = [d.id for d in Division.query.filter_by(department_id=dept_id).all()]
         cond = User.department_id == dept_id
         if div_ids:
@@ -219,6 +220,13 @@ def _task_assignable_workers(role, dept_id, div_id):
         q = q.filter_by(division_id=div_id, role='user')
     else:
         return []
+    # Bugungi tatildagilar chiqarilsin
+    today = _date.today()
+    on_vacation = {v.user_id for v in Vacation.query.filter(
+        Vacation.from_date <= today, Vacation.to_date >= today
+    ).all()}
+    if on_vacation:
+        q = q.filter(~User.id.in_(on_vacation))
     return q.order_by(User.full_name).all()
 
 

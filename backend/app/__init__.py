@@ -30,6 +30,7 @@ def create_app():
     from app.routes.audit import audit_bp
     from app.routes.reminders import reminders_bp
     from app.routes.work_logs import work_logs_bp
+    from app.routes.vacations import vacations_bp
 
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(users_bp, url_prefix='/api/users')
@@ -46,6 +47,7 @@ def create_app():
     app.register_blueprint(audit_bp, url_prefix='/api/audit-logs')
     app.register_blueprint(reminders_bp, url_prefix='/api/reminders')
     app.register_blueprint(work_logs_bp, url_prefix='/api/work-logs')
+    app.register_blueprint(vacations_bp, url_prefix='/api/vacations')
 
     with app.app_context():
         from app.models import User
@@ -195,6 +197,17 @@ def create_app():
                     UPDATE service_departments SET multi_type = TRUE WHERE id = 4;
                 END IF;
             END $$;""",
+            """CREATE TABLE IF NOT EXISTS vacations (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                type VARCHAR(20) NOT NULL,
+                from_date DATE NOT NULL,
+                to_date DATE NOT NULL,
+                note TEXT DEFAULT '',
+                granted_by INTEGER NOT NULL REFERENCES users(id),
+                created_at TIMESTAMP DEFAULT NOW()
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_vacations_user_range ON vacations(user_id, from_date, to_date)",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS email VARCHAR(255)",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(50)",
             "ALTER TABLE users ALTER COLUMN department SET DEFAULT ''",

@@ -308,25 +308,28 @@ def walkin_create():
 
 
 def _assignable_workers(role, dept_id, div_id):
-    """Interaktiv arizalar biriktirish ierarxiyasi — kim kimga biriktira oladi:
-       - superadmin/direksiya: barcha bo'lim rahbarlari va provider bo'lim a'zolari
-       - boshqarma rahbari (admin): o'z boshqarmasidagi bo'lim rahbarlari
-       - bo'lim rahbari (department_admin): o'z bo'limidagi xodimlar
-    """
-    from app.models import Division
+    """Interaktiv arizalar biriktirish ierarxiyasi. Bugun tatildagilar chiqariladi."""
+    from app.models import Division, Vacation
+    from datetime import date as _date
     if role in ('superadmin', 'director', 'deputy_director'):
         provider_ids = [d.id for d in Division.query.filter_by(is_service_provider=True).all()]
         cond = User.role == 'department_admin'
         if provider_ids:
             cond = db.or_(cond, User.division_id.in_(provider_ids))
-        return User.query.filter(User.is_active == True).filter(cond).order_by(User.full_name).all()
-    if role == 'admin':
-        return (User.query.filter_by(is_active=True, role='department_admin', department_id=dept_id)
-                .order_by(User.full_name).all())
-    if role == 'department_admin':
-        return (User.query.filter_by(is_active=True, role='user', division_id=div_id)
-                .order_by(User.full_name).all())
-    return []
+        q = User.query.filter(User.is_active == True).filter(cond)
+    elif role == 'admin':
+        q = User.query.filter_by(is_active=True, role='department_admin', department_id=dept_id)
+    elif role == 'department_admin':
+        q = User.query.filter_by(is_active=True, role='user', division_id=div_id)
+    else:
+        return []
+    today = _date.today()
+    on_vacation = {v.user_id for v in Vacation.query.filter(
+        Vacation.from_date <= today, Vacation.to_date >= today
+    ).all()}
+    if on_vacation:
+        q = q.filter(~User.id.in_(on_vacation))
+    return q.order_by(User.full_name).all()
 
 
 @interactive_req_bp.route('/assignable-workers', methods=['GET'])

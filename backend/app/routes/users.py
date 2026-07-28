@@ -50,6 +50,16 @@ def get_workers():
         if provider_div_ids:
             q = q.filter(User.division_id.in_(provider_div_ids))
 
+    # Bugun tatilda bo'lgan xodimlar chiqariladi (vazifa/interaktiv yuklab bo'lmaydi)
+    from app.models import Vacation
+    from datetime import date as _date
+    today = _date.today()
+    on_vacation = {v.user_id for v in Vacation.query.filter(
+        Vacation.from_date <= today, Vacation.to_date >= today
+    ).all()}
+    if on_vacation:
+        q = q.filter(~User.id.in_(on_vacation))
+
     workers = q.order_by(User.full_name).all()
     return jsonify([w.to_dict() for w in workers])
 
