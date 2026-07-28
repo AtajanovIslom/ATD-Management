@@ -222,6 +222,48 @@ def _task_assignable_workers(role, dept_id, div_id):
     return q.order_by(User.full_name).all()
 
 
+@tasks_bp.route('/by-departments', methods=['GET'])
+@jwt_required()
+def tasks_by_departments():
+    """Barcha boshqarmalar vazifalari, boshqarma bo'yicha guruhlangan.
+       Faqat rahbarlar uchun (ko'rish uchun, read-only).
+       O'z boshqarmasi ham ro'yxatda birinchi qatorda ko'rinadi.
+    """
+    from app.models import Department
+    role, my_dept_id, _ = get_scope(get_jwt())
+    if not is_any_admin(role):
+        return jsonify({'error': "Ruxsat yo'q"}), 403
+
+    departments = Department.query.order_by(Department.name).all()
+    all_tasks = Task.query.order_by(Task.created_at.desc()).all()
+
+    # Vazifani boshqarmaga bog'lash: yaratuvchi yoki ijrochi(lar) qaysi boshqarmadan
+    def task_dept_ids(t):
+        ids = set()
+        if t.creator and t.creator.department_id:
+            ids.add(t.creator.department_id)
+        if t.assignee and t.assignee.department_id:
+            ids.add(t.assignee.department_id)
+        for a in t.assignees:
+            if a.department_id:
+                ids.add(a.department_id)
+        return ids
+
+    groups = []
+    for d in departments:
+        dept_tasks = [t.to_list_dict() for t in all_tasks if d.id in task_dept_ids(t)]
+        groups.append({
+            'department_id': d.id,
+            'department_name': d.name,
+            'is_own': d.id == my_dept_id,
+            'task_count': len(dept_tasks),
+            'tasks': dept_tasks,
+        })
+    # O'z boshqarmasi birinchi
+    groups.sort(key=lambda g: (not g['is_own'], g['department_name']))
+    return jsonify(groups)
+
+
 @tasks_bp.route('/assignable-workers', methods=['GET'])
 @jwt_required()
 def task_assignable_workers():

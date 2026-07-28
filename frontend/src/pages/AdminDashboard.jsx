@@ -7,6 +7,8 @@ export default function AdminDashboard() {
   const [taskStats, setTaskStats] = useState(null)
   const [projects, setProjects] = useState([])
   const [tasks, setTasks] = useState([])
+  const [byDeptGroups, setByDeptGroups] = useState([])
+  const [expandedDept, setExpandedDept] = useState({})
   const [loading, setLoading] = useState(true)
   const navigate = useNavigate()
 
@@ -24,6 +26,8 @@ export default function AdminDashboard() {
       setProjects(projRes.data)
       setTaskStats(taskStatsRes.data)
       setTasks(tasksRes.data)
+      // Boshqarmalar kesimida vazifalar (read-only)
+      api.get('/tasks/by-departments').then(r => setByDeptGroups(r.data)).catch(() => {})
     } catch (err) {
       console.error(err)
     } finally {
@@ -167,6 +171,78 @@ export default function AdminDashboard() {
           </div>
         )}
       </div>
+
+      {/* Boshqarmalar kesimida vazifalar (faqat ko'rish, boshqarma rahbarlariga
+          o'z boshqarmasidan tashqari boshqalarni ham ko'rsatadi) */}
+      {byDeptGroups.filter(g => !g.is_own).length > 0 && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <div style={{ marginBottom: 12 }}>
+            <h2 style={{ fontSize: 16, marginBottom: 4 }}>Boshqa boshqarmalar vazifalari</h2>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              Faqat ko'rish uchun — boshqarmalar kesimida
+            </p>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {byDeptGroups.filter(g => !g.is_own).map(g => {
+              const open = expandedDept[g.department_id]
+              return (
+                <div key={g.department_id} style={{ border: '1px solid var(--border)', borderRadius: 8 }}>
+                  <button type="button"
+                    onClick={() => setExpandedDept({ ...expandedDept, [g.department_id]: !open })}
+                    style={{
+                      width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      background: 'transparent', border: 'none', padding: '10px 12px',
+                      cursor: 'pointer', color: 'var(--text)', fontSize: 14, fontWeight: 600,
+                    }}>
+                    <span>🏢 {g.department_name}</span>
+                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                      {g.task_count} ta {open ? '▲' : '▼'}
+                    </span>
+                  </button>
+                  {open && (
+                    g.tasks.length === 0 ? (
+                      <div style={{ padding: '10px 14px', fontSize: 12, color: 'var(--text-muted)' }}>
+                        Vazifa yo'q
+                      </div>
+                    ) : (
+                      <div className="table-wrap" style={{ borderTop: '1px solid var(--border)' }}>
+                        <table>
+                          <thead>
+                            <tr>
+                              <th>Nomi</th>
+                              <th style={{ width: 130 }}>Holat</th>
+                              <th style={{ width: 180 }}>Ijrochi</th>
+                              <th style={{ width: 130 }}>Muddat</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {g.tasks.map(t => (
+                              <tr key={t.id}>
+                                <td style={{ fontSize: 13 }}>{t.name}</td>
+                                <td>
+                                  <span className={`badge ${statusClass(t.status)}`} style={{ fontSize: 11 }}>
+                                    {statusLabel(t.status)}
+                                  </span>
+                                </td>
+                                <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                                  {t.assignee_name || (t.assignee_names?.join(', ')) || t.team_name || '—'}
+                                </td>
+                                <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                                  {formatDate(t.deadline)}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
