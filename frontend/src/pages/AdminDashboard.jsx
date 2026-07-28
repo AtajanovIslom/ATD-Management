@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../api/axios'
+import { useAuth } from '../context/AuthContext'
 
 export default function AdminDashboard() {
+  const { isDeptAdmin } = useAuth()
   const [stats, setStats] = useState(null)
   const [taskStats, setTaskStats] = useState(null)
   const [projects, setProjects] = useState([])
@@ -13,6 +15,17 @@ export default function AdminDashboard() {
   const navigate = useNavigate()
 
   useEffect(() => { loadData() }, [])
+
+  const handleDeleteTask = async (e, task) => {
+    e.stopPropagation()  // kartochka klik'ini to'sish
+    if (!window.confirm(`"${task.name}" vazifasini o'chirmoqchimisiz?`)) return
+    try {
+      await api.delete(`/tasks/${task.id}`)
+      loadData()
+    } catch (err) {
+      alert(err.response?.data?.error || 'Xatolik')
+    }
+  }
 
   const loadData = async () => {
     try {
@@ -151,7 +164,8 @@ export default function AdminDashboard() {
         ) : (
           <div className="project-grid">
             {tasks.map((t, i) => (
-              <div key={t.id} className="project-card" onClick={() => navigate(`/tasks/${t.id}`)}>
+              <div key={t.id} className="project-card" onClick={() => navigate(`/tasks/${t.id}`)}
+                style={{ position: 'relative' }}>
                 <div className="project-card-header">
                   <span className="project-number">#{i + 1}</span>
                   <span className={`badge ${statusClass(t.status)}`}>{statusLabel(t.status)}</span>
@@ -166,6 +180,21 @@ export default function AdminDashboard() {
                   {t.assignee_names?.length > 0 && <span>👤 {t.assignee_names.join(', ')}</span>}
                   <span>📋 {t.report_count} hisobot</span>
                 </div>
+                {/* Tez o'chirish — rahbarlar uchun (test vazifalarni tozalash) */}
+                {isDeptAdmin && (
+                  <button
+                    onClick={(e) => handleDeleteTask(e, t)}
+                    title="Vazifani o'chirish"
+                    style={{
+                      position: 'absolute', top: 8, right: 8,
+                      background: 'transparent', border: '1px solid var(--border)',
+                      borderRadius: 6, padding: '2px 8px',
+                      fontSize: 13, color: '#ef4444', cursor: 'pointer',
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.1)' }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                  >🗑️</button>
+                )}
               </div>
             ))}
           </div>
