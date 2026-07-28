@@ -174,6 +174,11 @@ def create_app():
             )""",
             "CREATE INDEX IF NOT EXISTS idx_work_logs_user_date ON work_logs(user_id, work_date)",
             "ALTER TABLE work_logs ADD COLUMN IF NOT EXISTS interactive_request_id INTEGER REFERENCES interactive_requests(id) ON DELETE SET NULL",
+            "ALTER TABLE work_logs ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'pending'",
+            "ALTER TABLE work_logs ADD COLUMN IF NOT EXISTS approved_by INTEGER REFERENCES users(id)",
+            "ALTER TABLE work_logs ADD COLUMN IF NOT EXISTS approved_at TIMESTAMP",
+            "ALTER TABLE work_logs ADD COLUMN IF NOT EXISTS return_reason TEXT DEFAULT ''",
+            "CREATE INDEX IF NOT EXISTS idx_work_logs_status ON work_logs(status)",
             "ALTER TABLE reminders ADD COLUMN IF NOT EXISTS notify_interval INTEGER DEFAULT 1440",
             "ALTER TABLE reminders ADD COLUMN IF NOT EXISTS last_notified_at TIMESTAMP",
             # multi_type ilgari kodda qattiq yozilgan edi (MULTI_TYPE_DEPARTMENT_IDS={4}) —

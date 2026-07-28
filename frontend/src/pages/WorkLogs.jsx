@@ -18,6 +18,7 @@ export default function WorkLogs() {
   const [projects, setProjects] = useState([])
   const [tasks, setTasks] = useState([])
   const [interactiveReqs, setInteractiveReqs] = useState([])
+  const [todayTasks, setTodayTasks] = useState([])
   const [loading, setLoading] = useState(true)
   const [range, setRange] = useState({ from: '', to: '' })
   const [dialog, setDialog] = useState(null) // { mode: 'add'|'edit', item? }
@@ -40,6 +41,8 @@ export default function WorkLogs() {
   useEffect(() => {
     api.get('/projects').then(r => setProjects(r.data)).catch(() => {})
     api.get('/tasks').then(r => setTasks(Array.isArray(r.data) ? r.data : [])).catch(() => {})
+    // Bugungi tugallangan vazifalar (tizim avtomatik yig'adi)
+    api.get('/work-logs/completed-tasks').then(r => setTodayTasks(r.data)).catch(() => {})
     if (canInteractive) {
       api.get('/interactive-requests').then(r => setInteractiveReqs(r.data)).catch(() => {})
     }
@@ -104,6 +107,27 @@ export default function WorkLogs() {
         )}
       </div>
 
+      {/* Bugungi tugallangan vazifalar — tizim avtomatik yig'adi */}
+      {todayTasks.length > 0 && (
+        <div className="card" style={{ padding: 12, marginBottom: 12, borderLeft: '3px solid #10b981' }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#10b981', marginBottom: 8 }}>
+            ✅ Bugun tugallangan vazifalar ({todayTasks.length})
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {todayTasks.map(t => (
+              <div key={t.id} style={{ fontSize: 13, display: 'flex', gap: 8, alignItems: 'center' }}>
+                <span>📝</span>
+                <span style={{ fontWeight: 500 }}>{t.name}</span>
+                {t.is_overdue && (
+                  <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4,
+                    background: 'rgba(239,68,68,0.15)', color: '#ef4444' }}>kechikkan</span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <div className="card" style={{ padding: 30, textAlign: 'center', color: 'var(--text-muted)' }}>Yuklanmoqda...</div>
       ) : logs.length === 0 ? (
@@ -112,26 +136,52 @@ export default function WorkLogs() {
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {logs.map(w => (
-            <div key={w.id} className="card" style={{ padding: '12px 14px', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{w.content}</div>
-                <div style={{ fontSize: 11, marginTop: 6, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>📅 {formatDate(w.work_date)}</span>
-                  {w.ref_label && w.ref_label !== '—' && (
-                    <span style={{ color: 'var(--accent, #6366f1)', fontWeight: 600 }}>
-                      {w.project_name ? '🚀 ' : w.task_name ? '📝 ' : '🧩 '}
-                      {w.project_name || w.task_name || w.interactive_label}
-                    </span>
+          {logs.map(w => {
+            const borderColor = w.status === 'approved' ? '#10b981'
+              : w.status === 'returned' ? '#f59e0b'
+              : 'transparent'
+            return (
+              <div key={w.id} className="card" style={{
+                padding: '12px 14px', display: 'flex', gap: 12, alignItems: 'flex-start',
+                borderLeft: borderColor !== 'transparent' ? `3px solid ${borderColor}` : undefined,
+              }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{w.content}</div>
+                  <div style={{ fontSize: 11, marginTop: 6, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>📅 {formatDate(w.work_date)}</span>
+                    {w.ref_label && w.ref_label !== '—' && (
+                      <span style={{ color: 'var(--accent, #6366f1)', fontWeight: 600 }}>
+                        {w.project_name ? '🚀 ' : w.task_name ? '📝 ' : '🧩 '}
+                        {w.project_name || w.task_name || w.interactive_label}
+                      </span>
+                    )}
+                    {w.status === 'approved' && (
+                      <span style={{ color: '#10b981', fontWeight: 600 }}>
+                        ✓ Tasdiqlangan {w.approver_name ? `(${w.approver_name})` : ''}
+                      </span>
+                    )}
+                    {w.status === 'returned' && (
+                      <span style={{ color: '#f59e0b', fontWeight: 600 }}>
+                        ↩ Qaytarilgan
+                      </span>
+                    )}
+                  </div>
+                  {w.return_reason && (
+                    <div style={{ fontSize: 11, color: '#f59e0b', marginTop: 4, fontStyle: 'italic' }}>
+                      Sabab: {w.return_reason}
+                    </div>
                   )}
                 </div>
+                <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                  {/* Tasdiqlangan hisobotni faqat rahbar o'zgartiradi/o'chiradi */}
+                  {w.status !== 'approved' && (
+                    <button className="btn btn-outline btn-sm" onClick={() => setDialog({ mode: 'edit', item: w })}>✏️</button>
+                  )}
+                  <button className="btn btn-danger btn-sm" onClick={() => onDelete(w)}>🗑️</button>
+                </div>
               </div>
-              <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-                <button className="btn btn-outline btn-sm" onClick={() => setDialog({ mode: 'edit', item: w })}>✏️</button>
-                <button className="btn btn-danger btn-sm" onClick={() => onDelete(w)}>🗑️</button>
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
 

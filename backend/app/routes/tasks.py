@@ -294,28 +294,43 @@ def reassign_task(task_id):
         return jsonify({'error': "Tekshiruvdagi vazifa avval tasdiqlansin yoki qaytarilsin"}), 400
 
     data = request.get_json() or {}
-    worker_id = data.get('user_id')
-    if not worker_id:
-        return jsonify({'error': 'user_id majburiy'}), 400
+    # Bir yoki bir nechta xodim: user_ids (ro'yxat) ustunroq, user_id (bitta) — moslik uchun
+    raw_ids = data.get('user_ids')
+    if not raw_ids and data.get('user_id'):
+        raw_ids = [data.get('user_id')]
+    if not raw_ids:
+        return jsonify({'error': 'user_ids yoki user_id majburiy'}), 400
+
+    ids = [int(x) for x in raw_ids if x]
+    if not ids:
+        return jsonify({'error': "Kamida bitta xodim tanlansin"}), 400
 
     allowed = {w.id for w in _task_assignable_workers(role, dept_id, div_id)}
-    if int(worker_id) not in allowed:
-        return jsonify({'error': "Bu xodimga vazifani yuklash huquqingiz yo'q"}), 403
+    for uid in ids:
+        if uid not in allowed:
+            return jsonify({'error': "Ba'zi xodimlarga vazifani yuklash huquqingiz yo'q"}), 403
 
-    worker = User.query.get(int(worker_id))
-    if not worker or not worker.is_active:
-        return jsonify({'error': 'Xodim topilmadi'}), 404
+    workers = User.query.filter(User.id.in_(ids), User.is_active == True).all()
+    if len(workers) != len(ids):
+        return jsonify({'error': "Ba'zi xodimlar topilmadi yoki faol emas"}), 404
 
     prev_name = task.assignee.full_name if task.assignee else \
                 (', '.join(a.full_name for a in task.assignees) if task.assignees else '—')
 
-    task.assignee_id = worker.id
-    task.assignees = []  # M2M tozalanadi — yagona ijrochi bo'ladi
+    if len(workers) == 1:
+        # Bitta xodim — assignee_id, M2M tozalanadi
+        task.assignee_id = workers[0].id
+        task.assignees = []
+    else:
+        # Bir nechta xodim — M2M ga, assignee_id bo'shatiladi (yagona mas'ul yo'q)
+        task.assignee_id = None
+        task.assignees = list(workers)
     if task.status == 'returned':
-        task.status = 'active'  # yangi xodim uchun toza boshlash
+        task.status = 'active'
 
+    new_name = ', '.join(w.full_name for w in workers)
     log_audit('assign', 'task', task.id, entity_label=task.name,
-              details=f"{prev_name} -> {worker.full_name}")
+              details=f"{prev_name} -> {new_name}")
     db.session.commit()
     return jsonify(task.to_dict())
 

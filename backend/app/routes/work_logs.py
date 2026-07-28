@@ -12,12 +12,12 @@ Endpoint'lar:
   GET    /api/work-logs/department/export — o'sha hisobotlar Word (.docx)
 """
 import io
-from datetime import date as _date, datetime
+from datetime import date as _date, datetime, timezone, timedelta
 from flask import Blueprint, request, jsonify, send_file
 from flask_jwt_extended import jwt_required, get_jwt, get_jwt_identity
 from app import db
-from app.models import WorkLog, User
-from app.utils import get_scope, is_admin_or_above, log_audit
+from app.models import WorkLog, User, Task
+from app.utils import get_scope, is_admin_or_above, is_any_admin, log_audit
 
 work_logs_bp = Blueprint('work_logs', __name__)
 
@@ -147,15 +147,126 @@ def update(log_id):
     return jsonify(w.to_dict())
 
 
+def _can_manage_log(w, actor_id, role, dept_id, div_id):
+    """Foydalanuvchi hisobotni o'chira/tasdiqlaydi mi?
+       - egasi doim (o'zining hisoboti)
+       - superadmin/direksiya doim
+       - boshqarma rahbari — shu boshqarmadagi xodim hisobotini
+       - bo'lim rahbari — shu bo'limdagi xodim hisobotini
+    """
+    if w.user_id == actor_id:
+        return True
+    if not w.user:
+        return False
+    if role in ('superadmin', 'director', 'deputy_director'):
+        return True
+    if role == 'admin' and dept_id and w.user.department_id == dept_id:
+        return True
+    if role == 'department_admin' and div_id and w.user.division_id == div_id:
+        return True
+    return False
+
+
 @work_logs_bp.route('/<int:log_id>', methods=['DELETE'])
 @jwt_required()
 def delete(log_id):
     user_id = int(get_jwt_identity())
-    w = WorkLog.query.filter_by(id=log_id, user_id=user_id).first_or_404()
-    log_audit('delete', 'work_log', w.id, entity_label=w.content[:60])
+    role, dept_id, div_id = get_scope(get_jwt())
+    w = WorkLog.query.get_or_404(log_id)
+    if not _can_manage_log(w, user_id, role, dept_id, div_id):
+        return jsonify({'error': "Sizda o'chirish huquqi yo'q"}), 403
+    log_audit('delete', 'work_log', w.id,
+              entity_label=f"{w.user.full_name if w.user else '?'}: {w.content[:50]}")
     db.session.delete(w)
     db.session.commit()
     return jsonify({'message': "O'chirildi"})
+
+
+@work_logs_bp.route('/<int:log_id>/approve', methods=['POST'])
+@jwt_required()
+def approve(log_id):
+    """Rahbar hisobotni tasdiqlaydi."""
+    user_id = int(get_jwt_identity())
+    role, dept_id, div_id = get_scope(get_jwt())
+    if not is_any_admin(role):
+        return jsonify({'error': "Ruxsat yo'q"}), 403
+    w = WorkLog.query.get_or_404(log_id)
+    if not _can_manage_log(w, user_id, role, dept_id, div_id):
+        return jsonify({'error': "Sizda tasdiqlash huquqi yo'q"}), 403
+    if w.user_id == user_id:
+        return jsonify({'error': "O'z hisobotingizni o'zingiz tasdiqlay olmaysiz"}), 400
+
+    w.status = 'approved'
+    w.approved_by = user_id
+    w.approved_at = datetime.now(timezone.utc)
+    w.return_reason = ''
+    log_audit('approve', 'work_log', w.id,
+              entity_label=f"{w.user.full_name if w.user else '?'}: {w.content[:50]}")
+    db.session.commit()
+    return jsonify(w.to_dict())
+
+
+def _completed_tasks_for_users(user_ids, d_from, d_to):
+    """Berilgan foydalanuvchi(lar) sana oralig'ida tugallangan vazifalarni oladi.
+       Vazifa `completed_at` bo'yicha filtrlanadi.
+    """
+    if not user_ids:
+        return []
+    q = Task.query.filter(Task.status == 'completed')
+    q = q.filter(db.or_(
+        Task.assignee_id.in_(user_ids),
+        Task.assignees.any(User.id.in_(user_ids)),
+    ))
+    if d_from:
+        q = q.filter(Task.completed_at >= datetime.combine(d_from, datetime.min.time()))
+    if d_to:
+        q = q.filter(Task.completed_at <= datetime.combine(d_to, datetime.max.time()))
+    return q.order_by(Task.completed_at.desc()).all()
+
+
+@work_logs_bp.route('/completed-tasks', methods=['GET'])
+@jwt_required()
+def completed_tasks_mine():
+    """Xodimning tugallangan vazifalari (bugun yoki sana oralig'i).
+       Kunlik hisobot sahifasida ko'rsatish uchun.
+    """
+    user_id = int(get_jwt_identity())
+    d_from = _parse_date(request.args.get('from')) or _date.today()
+    d_to = _parse_date(request.args.get('to')) or d_from
+    tasks = _completed_tasks_for_users({user_id}, d_from, d_to)
+    return jsonify([{
+        'id': t.id,
+        'name': t.name,
+        'description': t.description or '',
+        'completed_at': t.completed_at.isoformat() if t.completed_at else None,
+        'deadline': t.deadline.isoformat() if t.deadline else None,
+        'is_overdue': t.is_overdue,
+    } for t in tasks])
+
+
+@work_logs_bp.route('/<int:log_id>/return', methods=['POST'])
+@jwt_required()
+def return_log(log_id):
+    """Rahbar hisobotni qaytaradi (sabab bilan)."""
+    user_id = int(get_jwt_identity())
+    role, dept_id, div_id = get_scope(get_jwt())
+    if not is_any_admin(role):
+        return jsonify({'error': "Ruxsat yo'q"}), 403
+    w = WorkLog.query.get_or_404(log_id)
+    if not _can_manage_log(w, user_id, role, dept_id, div_id):
+        return jsonify({'error': "Sizda qaytarish huquqi yo'q"}), 403
+
+    data = request.get_json() or {}
+    reason = (data.get('reason') or '').strip()
+    w.status = 'returned'
+    w.return_reason = reason
+    w.approved_by = user_id
+    w.approved_at = datetime.now(timezone.utc)
+    log_audit('return', 'work_log', w.id,
+              entity_label=f"{w.user.full_name if w.user else '?'}: {w.content[:50]}",
+              details=reason[:100])
+    db.session.commit()
+    return jsonify(w.to_dict())
 
 
 # =========================================================================
@@ -191,11 +302,51 @@ def _add_logs_table(doc, logs, with_employee=True):
             row[2].text = w.content or ''
 
 
-def _build_docx(title, subtitle, logs, group_by_division=False):
+def _add_tasks_table(doc, tasks, with_employee=True):
+    """Tugallangan vazifalar jadvalini hujjatga qo'shadi."""
+    from docx.shared import Pt
+
+    cols = ['Vazifa nomi', 'Xodim', 'Tugatilgan sana', 'Muddat', 'Holat'] if with_employee \
+        else ['Vazifa nomi', 'Tugatilgan sana', 'Muddat', 'Holat']
+    table = doc.add_table(rows=1, cols=len(cols))
+    table.style = 'Light Grid Accent 1'
+    hdr = table.rows[0].cells
+    for i, name in enumerate(cols):
+        hdr[i].text = name
+        for para in hdr[i].paragraphs:
+            for run in para.runs:
+                run.font.bold = True
+                run.font.size = Pt(10)
+
+    for t in tasks:
+        row = table.add_row().cells
+        completed = t.completed_at.strftime('%d.%m.%Y') if t.completed_at else '—'
+        deadline = t.deadline.strftime('%d.%m.%Y') if t.deadline else '—'
+        assignee_name = (
+            t.assignee.full_name if t.assignee
+            else ', '.join(a.full_name for a in t.assignees) if t.assignees
+            else '—'
+        )
+        state = 'Kechikkan' if t.is_overdue else 'Vaqtida'
+        if with_employee:
+            row[0].text = t.name
+            row[1].text = assignee_name
+            row[2].text = completed
+            row[3].text = deadline
+            row[4].text = state
+        else:
+            row[0].text = t.name
+            row[1].text = completed
+            row[2].text = deadline
+            row[3].text = state
+
+
+def _build_docx(title, subtitle, logs, tasks=None, group_by_division=False):
     """Hisobotlar ro'yxatidan .docx hujjat yasaydi va BytesIO qaytaradi.
 
-    group_by_division=True bo'lsa — hisobotlar bo'limlar kesimida guruhlanadi
-    (boshqarma rahbari eksporti uchun).
+    group_by_division=True — hisobotlar bo'limlar kesimida guruhlanadi (boshqarma
+    rahbari eksporti uchun). Vazifalar (tasks) bo'lsa oxirida alohida jadvalda
+    (boshqarma eksportida bo'limlar kesimida).
     """
     from docx import Document
     from docx.shared import Pt
@@ -210,20 +361,42 @@ def _build_docx(title, subtitle, logs, group_by_division=False):
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         p.runs[0].italic = True
 
+    # 1) Kunlik hisobotlar bo'limi
+    doc.add_heading("📓 Kunlik hisobotlar", level=2)
     if not logs:
         doc.add_paragraph("Ushbu davr uchun hisobot topilmadi.")
     elif group_by_division:
-        # Bo'limlar kesimida guruhlaymiz
         groups = {}
         for w in logs:
             div_name = (w.user.division.name if w.user and w.user.division else None) or "Bo'lim ko'rsatilmagan"
             groups.setdefault(div_name, []).append(w)
         for div_name in sorted(groups.keys()):
-            doc.add_heading(f"🏢 {div_name}", level=2)
+            doc.add_heading(f"🏢 {div_name}", level=3)
             _add_logs_table(doc, groups[div_name], with_employee=True)
             doc.add_paragraph()
     else:
         _add_logs_table(doc, logs, with_employee=True)
+
+    # 2) Tugallangan vazifalar bo'limi (agar berilgan bo'lsa)
+    if tasks is not None:
+        doc.add_paragraph()
+        doc.add_heading("✅ Bajarilgan vazifalar", level=2)
+        if not tasks:
+            doc.add_paragraph("Ushbu davr uchun tugallangan vazifa yo'q.")
+        elif group_by_division:
+            # Vazifalarni ijrochining bo'limi bo'yicha guruhlaymiz
+            groups = {}
+            for t in tasks:
+                # Birinchi ijrochi bo'limi
+                u = t.assignee or (t.assignees[0] if t.assignees else None)
+                div_name = (u.division.name if u and u.division else None) or "Bo'lim ko'rsatilmagan"
+                groups.setdefault(div_name, []).append(t)
+            for div_name in sorted(groups.keys()):
+                doc.add_heading(f"🏢 {div_name}", level=3)
+                _add_tasks_table(doc, groups[div_name], with_employee=True)
+                doc.add_paragraph()
+        else:
+            _add_tasks_table(doc, tasks, with_employee=len(tasks) > 0 and any(t.assignees or t.assignee_id for t in tasks))
 
     doc.add_paragraph()
     footer = doc.add_paragraph(f"Yaratildi: {datetime.now().strftime('%d.%m.%Y %H:%M')}")
@@ -253,11 +426,13 @@ def export_mine():
     q = WorkLog.query.filter_by(user_id=user_id)
     q, d_from, d_to = _apply_date_range(q)
     logs = q.order_by(WorkLog.work_date.asc(), WorkLog.id.asc()).all()
+    tasks = _completed_tasks_for_users({user_id}, d_from, d_to)
 
     buf = _build_docx(
         title="Kunlik ish hisoboti",
         subtitle=f"{user.full_name if user else ''} | {_range_subtitle(d_from, d_to)}",
         logs=logs,
+        tasks=tasks,
     )
     fname = f"hisobot_{_date.today().isoformat()}.docx"
     return send_file(buf, as_attachment=True, download_name=fname,
@@ -324,10 +499,19 @@ def export_department():
     q, d_from, d_to = _apply_date_range(q)
     logs = q.order_by(WorkLog.work_date.asc(), WorkLog.user_id.asc(), WorkLog.id.asc()).all()
 
+    # Scope'dagi xodimlar bo'yicha tugallangan vazifalar
+    scope_ids = _department_scope_user_ids(role, dept_id, div_id, self_id)
+    if scope_ids is None:
+        # superadmin/direksiya — barcha xodimlar
+        scope_ids = {u.id for u in User.query.filter(User.role.in_(['user', 'department_admin']),
+                                                     User.is_active == True).all()}
+    tasks = _completed_tasks_for_users(scope_ids, d_from, d_to)
+
     buf = _build_docx(
         title="Boshqarma xodimlari kunlik hisobotlari",
         subtitle=_range_subtitle(d_from, d_to),
         logs=logs,
+        tasks=tasks,
         group_by_division=True,  # bo'limlar kesimida
     )
     fname = f"boshqarma_hisobot_{_date.today().isoformat()}.docx"

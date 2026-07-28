@@ -445,11 +445,17 @@ class WorkLog(db.Model):
     project_id = db.Column(db.Integer, db.ForeignKey('projects.id', ondelete='SET NULL'), nullable=True)
     task_id = db.Column(db.Integer, db.ForeignKey('tasks.id', ondelete='SET NULL'), nullable=True)
     interactive_request_id = db.Column(db.Integer, db.ForeignKey('interactive_requests.id', ondelete='SET NULL'), nullable=True)
+    # Status: pending (kutilmoqda), approved (tasdiqlangan), returned (qaytarilgan)
+    status = db.Column(db.String(20), default='pending', index=True)
+    approved_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    approved_at = db.Column(db.DateTime)
+    return_reason = db.Column(db.Text, default='')
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc),
                            onupdate=lambda: datetime.now(timezone.utc))
 
     user = db.relationship('User', foreign_keys=[user_id], lazy='joined')
+    approver = db.relationship('User', foreign_keys=[approved_by], lazy='joined')
     project = db.relationship('Project', foreign_keys=[project_id], lazy='joined')
     task = db.relationship('Task', foreign_keys=[task_id], lazy='joined')
     interactive_request = db.relationship('InteractiveRequest', foreign_keys=[interactive_request_id], lazy='joined')
@@ -481,6 +487,11 @@ class WorkLog(db.Model):
                 ", ".join(t.name for t in self.interactive_request.types) or self.interactive_request.tracking_id
             ) if self.interactive_request else None,
             'ref_label': self.ref_label(),
+            'status': self.status or 'pending',
+            'approved_by': self.approved_by,
+            'approver_name': self.approver.full_name if self.approver else None,
+            'approved_at': self.approved_at.isoformat() if self.approved_at else None,
+            'return_reason': self.return_reason or '',
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }

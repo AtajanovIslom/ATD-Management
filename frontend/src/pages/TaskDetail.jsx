@@ -34,7 +34,7 @@ export default function TaskDetail() {
   const [loading, setLoading] = useState(true)
   const [assignModal, setAssignModal] = useState(false)
   const [workers, setWorkers] = useState([])
-  const [selectedWorker, setSelectedWorker] = useState('')
+  const [selectedWorkers, setSelectedWorkers] = useState([])
   const [reassignBusy, setReassignBusy] = useState(false)
 
   useEffect(() => { loadData() }, [id])
@@ -104,7 +104,7 @@ export default function TaskDetail() {
   }
 
   const openAssign = async () => {
-    setSelectedWorker('')
+    setSelectedWorkers([])
     setAssignModal(true)
     try {
       const res = await api.get('/tasks/assignable-workers')
@@ -114,11 +114,17 @@ export default function TaskDetail() {
     }
   }
 
+  const toggleWorker = (uid) => {
+    setSelectedWorkers(prev => prev.includes(uid)
+      ? prev.filter(x => x !== uid)
+      : [...prev, uid])
+  }
+
   const handleReassign = async () => {
-    if (!selectedWorker) return
+    if (selectedWorkers.length === 0) return
     setReassignBusy(true)
     try {
-      const res = await api.post(`/tasks/${id}/reassign`, { user_id: parseInt(selectedWorker) })
+      const res = await api.post(`/tasks/${id}/reassign`, { user_ids: selectedWorkers })
       setTask(res.data)
       setAssignModal(false)
     } catch (err) {
@@ -198,27 +204,41 @@ export default function TaskDetail() {
             </p>
 
             <div className="form-group">
-              <label>Yangi ijrochi</label>
-              <select className="form-input" value={selectedWorker}
-                onChange={e => setSelectedWorker(e.target.value)}>
-                <option value="">— Tanlang —</option>
-                {workers.map(w => (
-                  <option key={w.id} value={w.id}>
-                    {w.full_name} {w.position ? `(${w.position})` : ''} {w.role === 'department_admin' ? '— Bo\'lim rahbari' : ''}
-                  </option>
-                ))}
-              </select>
-              {workers.length === 0 && (
-                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+              <label>Yangi ijrochi(lar) — bir yoki bir nechta</label>
+              {workers.length === 0 ? (
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', padding: 10 }}>
                   Yuklash uchun xodim topilmadi
                 </div>
+              ) : (
+                <div style={{
+                  display: 'flex', flexDirection: 'column', gap: 4,
+                  maxHeight: 260, overflowY: 'auto',
+                  border: '1px solid var(--border)', borderRadius: 8, padding: 8,
+                }}>
+                  {workers.map(w => (
+                    <label key={w.id} style={{
+                      display: 'flex', alignItems: 'center', gap: 8, fontSize: 13,
+                      cursor: 'pointer', padding: '5px 8px', borderRadius: 6,
+                      background: selectedWorkers.includes(w.id) ? 'var(--bg-input)' : 'transparent',
+                    }}>
+                      <input type="checkbox" checked={selectedWorkers.includes(w.id)}
+                        onChange={() => toggleWorker(w.id)} />
+                      <span style={{ color: 'var(--text-secondary)' }}>
+                        {w.full_name} {w.position ? `(${w.position})` : ''} {w.role === 'department_admin' ? '— Bo\'lim rahbari' : ''}
+                      </span>
+                    </label>
+                  ))}
+                </div>
               )}
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+                Tanlangan: {selectedWorkers.length}
+              </div>
             </div>
 
             <div className="modal-actions">
               <button className="btn btn-outline" onClick={() => setAssignModal(false)}>Bekor</button>
               <button className="btn btn-primary" onClick={handleReassign}
-                disabled={!selectedWorker || reassignBusy}>
+                disabled={selectedWorkers.length === 0 || reassignBusy}>
                 {reassignBusy ? 'Yuklanmoqda...' : 'Yuklash'}
               </button>
             </div>
