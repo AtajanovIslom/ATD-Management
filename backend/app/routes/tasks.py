@@ -226,12 +226,13 @@ def _task_assignable_workers(role, dept_id, div_id):
 @jwt_required()
 def tasks_by_departments():
     """Barcha boshqarmalar vazifalari, boshqarma bo'yicha guruhlangan.
-       Faqat rahbarlar uchun (ko'rish uchun, read-only).
-       O'z boshqarmasi ham ro'yxatda birinchi qatorda ko'rinadi.
+       Faqat boshqarma rahbari (admin) va yuqori rollar uchun — ular
+       kross-boshqarma ma'lumotini ko'radi. Bo'lim rahbari faqat o'z
+       bo'limini ko'radi (bu endpoint unga ochilmaydi).
     """
     from app.models import Department
     role, my_dept_id, _ = get_scope(get_jwt())
-    if not is_any_admin(role):
+    if not is_admin_or_above(role):
         return jsonify({'error': "Ruxsat yo'q"}), 403
 
     departments = Department.query.order_by(Department.name).all()

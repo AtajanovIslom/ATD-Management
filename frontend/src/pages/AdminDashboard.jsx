@@ -4,7 +4,7 @@ import api from '../api/axios'
 import { useAuth } from '../context/AuthContext'
 
 export default function AdminDashboard() {
-  const { isDeptAdmin } = useAuth()
+  const { isDeptAdmin, isAdmin } = useAuth()
   const [stats, setStats] = useState(null)
   const [taskStats, setTaskStats] = useState(null)
   const [projects, setProjects] = useState([])
@@ -39,8 +39,11 @@ export default function AdminDashboard() {
       setProjects(projRes.data)
       setTaskStats(taskStatsRes.data)
       setTasks(tasksRes.data)
-      // Boshqarmalar kesimida vazifalar (read-only)
-      api.get('/tasks/by-departments').then(r => setByDeptGroups(r.data)).catch(() => {})
+      // Boshqarmalar kesimida vazifalar (faqat boshqarma rahbari va yuqori,
+      // bo'lim rahbari boshqa boshqarmalarni ko'rmaydi)
+      if (isAdmin) {
+        api.get('/tasks/by-departments').then(r => setByDeptGroups(r.data)).catch(() => {})
+      }
     } catch (err) {
       console.error(err)
     } finally {
