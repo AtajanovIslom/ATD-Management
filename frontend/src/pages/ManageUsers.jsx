@@ -275,6 +275,7 @@ export default function ManageUsers() {
                 <option value="annual">Yillik tatil (otpuska)</option>
                 <option value="unpaid">Haq to'lanmaydigan (BS)</option>
                 <option value="sick">Kasallik (balnishniy)</option>
+                <option value="otgul">O'tgul (ishlab berilgan vaqt uchun)</option>
               </select>
             </div>
 
@@ -388,7 +389,15 @@ export default function ManageUsers() {
 }
 
 function UserTable({ users, showPasswords, copiedId, togglePassword, copyLink, openEdit, handleDelete, openVacation, removeVacation }) {
-  const vacColor = (t) => t === 'annual' ? '#3b82f6' : t === 'sick' ? '#ef4444' : '#f59e0b'
+  const vacColor = (t) => (
+    t === 'annual' ? '#3b82f6'   // ko'k
+    : t === 'sick' ? '#ef4444'   // qizil
+    : t === 'otgul' ? '#10b981'  // yashil
+    : '#f59e0b'                  // BS — sariq
+  )
+  const vacShort = (t) => (
+    t === 'annual' ? 'Otpuska' : t === 'sick' ? 'Kasallik' : t === 'otgul' ? "O'tgul" : 'BS'
+  )
   const fmt = (iso) => iso ? new Date(iso).toLocaleDateString('uz-UZ', { day: '2-digit', month: '2-digit' }) : ''
   return (
     <table>
@@ -415,7 +424,7 @@ function UserTable({ users, showPasswords, copiedId, togglePassword, copyLink, o
                   background: `${vacColor(u.active_vacation.type)}22`,
                   color: vacColor(u.active_vacation.type),
                 }} title={u.active_vacation.type_label}>
-                  🏖 {u.active_vacation.type === 'annual' ? 'Otpuska' : u.active_vacation.type === 'sick' ? 'Kasallik' : 'BS'} ({fmt(u.active_vacation.from_date)}—{fmt(u.active_vacation.to_date)})
+                  🏖 {vacShort(u.active_vacation.type)} ({fmt(u.active_vacation.from_date)}—{fmt(u.active_vacation.to_date)})
                 </div>
               )}
             </td>

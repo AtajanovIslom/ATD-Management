@@ -22,7 +22,7 @@ from app.utils import get_scope, is_any_admin, is_admin_or_above, log_audit
 
 vacations_bp = Blueprint('vacations', __name__)
 
-ALLOWED_TYPES = {'annual', 'unpaid', 'sick'}
+ALLOWED_TYPES = {'annual', 'unpaid', 'sick', 'otgul'}
 
 
 def _parse_date(s):

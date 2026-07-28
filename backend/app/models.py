@@ -440,6 +440,7 @@ class Vacation(db.Model):
         'annual': 'Yillik tatil (otpuska)',
         'unpaid': 'Haq to\'lanmaydigan (BS)',
         'sick': 'Kasallik (balnishniy)',
+        'otgul': "O'tgul (ishlab berilgan vaqt uchun)",
     }
 
     id = db.Column(db.Integer, primary_key=True)
