@@ -22,38 +22,40 @@ projects_bp = Blueprint('projects', __name__)
 
 
 def is_admin_role():
-    return is_any_admin(get_jwt().get('role', ''))
+    """Loyiha yaratish/tahrirlash/o'chirish uchun huquq — boshqarma rahbari va
+       yuqori. Bo'lim rahbari (department_admin) loyihalarga aralashmaydi."""
+    return is_admin_or_above(get_jwt().get('role', ''))
 
 
 def _scoped_projects(role, dept_id, div_id, user_id):
     """Rol bo'yicha ko'rinadigan loyihalar (ro'yxat va statistika uchun umumiy).
-       Bo'lim rahbari faqat o'z bo'limi, boshqarma rahbari faqat o'z boshqarmasi
-       (+ superadmin/direksiya yaratgan loyihalar).
+       - Superadmin/direksiya: barcha loyihalar
+       - Boshqarma rahbari (admin): o'z boshqarmasi + superadmin yaratganlar
+       - Bo'lim rahbari va oddiy xodim: faqat biriktirilgan loyihalar (o'ziga,
+         guruhiga yoki bosqichda ijrochilikka biriktirilgan)
     """
     if is_superadmin(role):
         return Project.query.order_by(Project.created_at.desc()).all()
     if role == 'admin' and dept_id:
         uid_set = dept_user_ids(dept_id); uid_set.add(user_id)
-    elif role == 'department_admin' and div_id:
-        uid_set = div_user_ids(div_id); uid_set.add(user_id)
-    else:
-        user = User.query.get(user_id)
-        team_ids = [t.id for t in user.teams] if user else []
-        conds = [
-            Project.stages.any(ProjectStage.assignee_id == user_id),
-            Project.stages.any(ProjectStage.assignees.any(User.id == user_id)),
-        ]
-        if team_ids:
-            conds.append(Project.teams.any(Team.id.in_(team_ids)))
-        return Project.query.filter(db.or_(*conds)).order_by(Project.created_at.desc()).all()
-    return Project.query.filter(
-        db.or_(
-            Project.created_by.in_(uid_set),
-            Project.stages.any(ProjectStage.assignee_id.in_(uid_set)),
-            Project.stages.any(ProjectStage.assignees.any(User.id.in_(uid_set))),
-            Project.creator.has(User.role.in_(FULL_ACCESS_ROLES)),
-        )
-    ).order_by(Project.created_at.desc()).all()
+        return Project.query.filter(
+            db.or_(
+                Project.created_by.in_(uid_set),
+                Project.stages.any(ProjectStage.assignee_id.in_(uid_set)),
+                Project.stages.any(ProjectStage.assignees.any(User.id.in_(uid_set))),
+                Project.creator.has(User.role.in_(FULL_ACCESS_ROLES)),
+            )
+        ).order_by(Project.created_at.desc()).all()
+    # Bo'lim rahbari va oddiy xodim — faqat biriktirilgan loyihalar
+    user = User.query.get(user_id)
+    team_ids = [t.id for t in user.teams] if user else []
+    conds = [
+        Project.stages.any(ProjectStage.assignee_id == user_id),
+        Project.stages.any(ProjectStage.assignees.any(User.id == user_id)),
+    ]
+    if team_ids:
+        conds.append(Project.teams.any(Team.id.in_(team_ids)))
+    return Project.query.filter(db.or_(*conds)).order_by(Project.created_at.desc()).all()
 
 
 @projects_bp.route('', methods=['GET'])
@@ -265,7 +267,9 @@ def delete_project(project_id):
 def update_stage(project_id, stage_id):
     claims = get_jwt()
     user_id = int(get_jwt_identity())
-    is_admin = is_any_admin(claims.get('role', ''))
+    # Bosqich tahrirlash (nomi/muddati/ijrochilari) faqat boshqarma rahbari+ ga.
+    # Status yuborish (review) esa ijrochi tomonidan (rol farq etmaydi).
+    is_admin = is_admin_or_above(claims.get('role', ''))
 
     stage = ProjectStage.query.get_or_404(stage_id)
     data = request.get_json()
@@ -617,7 +621,8 @@ def create_substage(project_id, stage_id):
     stage = ProjectStage.query.get_or_404(stage_id)
 
     claims = get_jwt()
-    is_admin = is_any_admin(claims.get('role', ''))
+    # Bo'lim rahbari loyihalarga aralashmaydi — faqat boshqarma rahbari+ bypass qiladi
+    is_admin = is_admin_or_above(claims.get('role', ''))
 
     if not is_admin:
         user = User.query.get(user_id)
@@ -655,7 +660,8 @@ def update_substage(project_id, stage_id, sub_id):
     sub = SubStage.query.get_or_404(sub_id)
     stage = ProjectStage.query.get_or_404(stage_id)
     claims = get_jwt()
-    is_admin = is_any_admin(claims.get('role', ''))
+    # Bo'lim rahbari loyihalarga aralashmaydi — faqat boshqarma rahbari+ bypass qiladi
+    is_admin = is_admin_or_above(claims.get('role', ''))
 
     if not is_admin:
         user = User.query.get(user_id)
@@ -693,7 +699,8 @@ def delete_substage(project_id, stage_id, sub_id):
     sub = SubStage.query.get_or_404(sub_id)
     stage = ProjectStage.query.get_or_404(stage_id)
     claims = get_jwt()
-    is_admin = is_any_admin(claims.get('role', ''))
+    # Bo'lim rahbari loyihalarga aralashmaydi — faqat boshqarma rahbari+ bypass qiladi
+    is_admin = is_admin_or_above(claims.get('role', ''))
 
     if not is_admin:
         user = User.query.get(user_id)

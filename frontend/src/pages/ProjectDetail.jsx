@@ -320,9 +320,10 @@ export default function ProjectDetail() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          {/* Tahrirlash — barcha rahbarlarga (bo'lim rahbari ham). O'chirish faqat
-              boshqarma rahbari va yuqori rollarga (bo'lim rahbariga ko'rinmaydi) */}
-          {isDeptAdmin && (
+          {/* Loyihaga aralashish faqat boshqarma rahbari va yuqori rollarga.
+              Bo'lim rahbari (department_admin) tahrirlash/o'chirish qilmaydi —
+              u loyihalarga faqat ijrochi bo'lgan hollarda kirishi mumkin */}
+          {isAdmin && (
             <button className="btn btn-outline btn-sm" onClick={() => editMode ? (setEditMode(false), setDeletedStageIds(new Set())) : openEditMode()}>
               {editMode ? 'Bekor qilish' : 'Tahrirlash'}
             </button>
