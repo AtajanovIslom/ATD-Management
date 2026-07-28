@@ -22,7 +22,10 @@ export default function CreateTask() {
       setTeams(teamsRes.data)
       // Individual xodim tanlashda ijrochi bo'la oladigan rollar:
       // xodim (user) + bo'lim rahbari (department_admin). Yuqori rahbarlar chiqmaydi.
-      setUsers(usersRes.data.filter(u => (u.role === 'user' || u.role === 'department_admin') && u.is_active))
+      // Tatildagi xodim ro'yxatda ko'rinmaydi (backend ham blok qiladi).
+      setUsers(usersRes.data.filter(u =>
+        (u.role === 'user' || u.role === 'department_admin') && u.is_active && !u.active_vacation
+      ))
     }).catch(console.error)
   }, [])
 

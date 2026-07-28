@@ -20,9 +20,11 @@ export default function CreateProject() {
       api.get('/users'),
     ]).then(([teamsRes, usersRes]) => {
       setTeams(teamsRes.data)
-      // Bosqichga individual xodim tanlashda ijrochi bo'la oladigan rollar:
-      // xodim (user) + bo'lim rahbari (department_admin)
-      setUsers(usersRes.data.filter(u => (u.role === 'user' || u.role === 'department_admin') && u.is_active))
+      // Bosqichga individual xodim tanlashda: xodim + bo'lim rahbari.
+      // Tatildagi xodim ro'yxatda ko'rinmaydi.
+      setUsers(usersRes.data.filter(u =>
+        (u.role === 'user' || u.role === 'department_admin') && u.is_active && !u.active_vacation
+      ))
     }).catch(console.error)
   }, [])
 

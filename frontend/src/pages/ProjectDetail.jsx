@@ -66,8 +66,10 @@ export default function ProjectDetail() {
   useEffect(() => {
     Promise.all([api.get('/teams'), api.get('/users')]).then(([tr, ur]) => {
       setTeams(tr.data)
-      // Bosqich individual ijrochilarida xodim + bo'lim rahbari chiqadi
-      setUsers(ur.data.filter(u => (u.role === 'user' || u.role === 'department_admin') && u.is_active))
+      // Bosqich individual ijrochilarida xodim + bo'lim rahbari. Tatildagilar chiqarilsin.
+      setUsers(ur.data.filter(u =>
+        (u.role === 'user' || u.role === 'department_admin') && u.is_active && !u.active_vacation
+      ))
     }).catch(console.error)
   }, [])
 
