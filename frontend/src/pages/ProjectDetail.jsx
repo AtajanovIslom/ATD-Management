@@ -598,8 +598,9 @@ export default function ProjectDetail() {
                         </button>
                       )}
                     </div>
-                    {/* Sub-stages section */}
-                    {(s.sub_stages?.length > 0 || canManageSubStages(s)) && (s.status === 'in_progress' || s.status === 'review' || s.sub_stages?.length > 0) && (
+                    {/* Ichki bosqichlar bo'limi — rahbar/ijrochi doim ko'radi (holat kuzatuvi uchun).
+                        Yaratish tugmasi esa quyida in_progress/review holatida ko'rinadi. */}
+                    {(s.sub_stages?.length > 0 || canManageSubStages(s)) && (
                       <div className="substages-section">
                         <button className="substage-toggle" onClick={() => toggleStageExpand(s.id)}>
                           {expandedStages[s.id] ? '▾' : '▸'} Ichki bosqichlar ({s.sub_stages?.length || 0})
