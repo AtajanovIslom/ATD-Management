@@ -58,6 +58,139 @@ def get_tasks():
     return jsonify([t.to_list_dict() for t in tasks])
 
 
+@tasks_bp.route('/browse', methods=['GET'])
+@jwt_required()
+def browse_tasks():
+    """Kengaytirilgan ro'yxat: filtr + guruhlash + paginatsiya.
+
+    Query params:
+      status  = active|in_progress|review|returned|completed|all  (default: all)
+      group   = department|team|none  (default: none)
+      q       = xodim ismi yoki tabel raqami (search)
+      from    = YYYY-MM-DD  — sana oralig'i (deadline yoki completed_at bo'yicha)
+      to      = YYYY-MM-DD
+      page    = 1..N   (default: 1)
+      per_page= 12     (default: 12)
+    """
+    from datetime import date as _date, datetime as _dt
+    from app.models import Department, User as UserModel
+
+    user_id = int(get_jwt_identity())
+    role, dept_id, div_id = get_scope(get_jwt())
+    all_tasks = _scoped_tasks(role, dept_id, div_id, user_id)
+
+    # Status
+    status = (request.args.get('status') or 'all').strip()
+    if status and status != 'all':
+        all_tasks = [t for t in all_tasks if (t.status or '') == status]
+
+    # Xodim/tabel qidiruv
+    q = (request.args.get('q') or '').strip().lower()
+    if q:
+        def match(t):
+            names = []
+            if t.assignee:
+                names.append(t.assignee.full_name.lower())
+                names.append((t.assignee.tab_number or '').lower())
+            for a in t.assignees:
+                names.append(a.full_name.lower())
+                names.append((a.tab_number or '').lower())
+            if t.team:
+                for m in t.team.members:
+                    names.append(m.full_name.lower())
+                    names.append((m.tab_number or '').lower())
+            return any(q in n for n in names)
+        all_tasks = [t for t in all_tasks if match(t)]
+
+    # Sana oralig'i — deadline yoki completed_at (mavjud bo'lganini olamiz)
+    def _pd(s):
+        try:
+            return _date.fromisoformat(s[:10]) if s else None
+        except Exception:
+            return None
+    d_from = _pd(request.args.get('from'))
+    d_to = _pd(request.args.get('to'))
+    if d_from or d_to:
+        def in_range(t):
+            ref = None
+            if t.completed_at:
+                ref = t.completed_at.date() if hasattr(t.completed_at, 'date') else t.completed_at
+            elif t.deadline:
+                ref = t.deadline.date() if hasattr(t.deadline, 'date') else t.deadline
+            elif t.start_date:
+                ref = t.start_date.date() if hasattr(t.start_date, 'date') else t.start_date
+            if not ref:
+                return False
+            if d_from and ref < d_from:
+                return False
+            if d_to and ref > d_to:
+                return False
+            return True
+        all_tasks = [t for t in all_tasks if in_range(t)]
+
+    total = len(all_tasks)
+
+    # Guruhlash
+    group = (request.args.get('group') or 'none').strip()
+    groups = []
+    if group == 'department':
+        by = {}
+        for t in all_tasks:
+            key_ids = set()
+            if t.assignee and t.assignee.department_id:
+                key_ids.add((t.assignee.department_id, t.assignee.managed_department.name if t.assignee.managed_department else None))
+            for a in t.assignees:
+                if a.department_id:
+                    dept_name = None
+                    d = Department.query.get(a.department_id)
+                    if d: dept_name = d.name
+                    key_ids.add((a.department_id, dept_name))
+            if not key_ids:
+                key_ids.add((0, 'Belgilanmagan'))
+            for did, dname in key_ids:
+                by.setdefault((did, dname), []).append(t)
+        # Har guruh alohida paginatsiya qilinmaydi — jami natijaga
+        for (did, dname), ts in sorted(by.items(), key=lambda x: (x[0][1] or '')):
+            groups.append({
+                'key': did, 'label': dname or 'Belgilanmagan',
+                'count': len(ts),
+                'tasks': [t.to_list_dict() for t in ts],
+            })
+    elif group == 'team':
+        by = {}
+        for t in all_tasks:
+            if t.team:
+                by.setdefault((t.team.id, t.team.name), []).append(t)
+            else:
+                by.setdefault((0, 'Guruhsiz'), []).append(t)
+        for (tid, tname), ts in sorted(by.items(), key=lambda x: x[0][1] or ''):
+            groups.append({
+                'key': tid, 'label': tname or 'Guruhsiz',
+                'count': len(ts),
+                'tasks': [t.to_list_dict() for t in ts],
+            })
+    else:
+        # Guruhlashsiz — paginatsiya
+        try:
+            page = max(1, int(request.args.get('page', 1)))
+            per_page = min(100, max(1, int(request.args.get('per_page', 12))))
+        except ValueError:
+            page = 1; per_page = 12
+        pages = (total + per_page - 1) // per_page or 1
+        page = min(page, pages)
+        start = (page - 1) * per_page
+        end = start + per_page
+        return jsonify({
+            'total': total,
+            'page': page,
+            'per_page': per_page,
+            'pages': pages,
+            'tasks': [t.to_list_dict() for t in all_tasks[start:end]],
+        })
+
+    return jsonify({'total': total, 'groups': groups, 'group': group})
+
+
 @tasks_bp.route('', methods=['POST'])
 @jwt_required()
 def create_task():

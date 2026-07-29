@@ -12,9 +12,29 @@ export default function AdminDashboard() {
   const [byDeptGroups, setByDeptGroups] = useState([])
   const [expandedDept, setExpandedDept] = useState({})
   const [loading, setLoading] = useState(true)
+
+  // "Barcha vazifalar" bo'limi uchun filter/pagination
+  const [taskFilter, setTaskFilter] = useState({
+    status: 'all', group: 'none', q: '', from: '', to: '', page: 1, per_page: 12,
+  })
+  const [browseData, setBrowseData] = useState({ total: 0, tasks: [], groups: null, pages: 1, page: 1 })
+  const [expandedGroup, setExpandedGroup] = useState({})
   const navigate = useNavigate()
 
   useEffect(() => { loadData() }, [])
+
+  // Filter/pagination o'zgarganida browse ni qayta yuklaymiz
+  useEffect(() => {
+    const params = new URLSearchParams()
+    Object.entries(taskFilter).forEach(([k, v]) => {
+      if (v !== '' && v !== null && v !== undefined) params.set(k, v)
+    })
+    api.get('/tasks/browse?' + params.toString())
+      .then(r => setBrowseData(r.data))
+      .catch(() => {})
+  }, [taskFilter])
+
+  const setF = (patch) => setTaskFilter(prev => ({ ...prev, ...patch, page: patch.page ?? 1 }))
 
   const handleDeleteTask = async (e, task) => {
     e.stopPropagation()  // kartochka klik'ini to'sish
@@ -145,62 +165,125 @@ export default function AdminDashboard() {
           </div>
         )}
       </div>
-      {/* Tasks section */}
+      {/* Tasks section — filter + guruhlash + paginatsiya */}
       <div className="card" style={{ marginTop: 16 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <h2 style={{ fontSize: 16 }}>Barcha vazifalar</h2>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+          <h2 style={{ fontSize: 16, margin: 0 }}>Barcha vazifalar
+            <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--text-muted)', fontWeight: 400 }}>
+              Jami: {browseData.total}
+            </span>
+          </h2>
           {taskStats && (
-            <div style={{ display: 'flex', gap: 12, fontSize: 12, flexWrap: 'wrap' }}>
-              <span style={{ color: 'var(--text-muted)' }}>Jami: <strong>{taskStats.total}</strong></span>
+            <div style={{ display: 'flex', gap: 10, fontSize: 12, flexWrap: 'wrap' }}>
               <span style={{ color: 'var(--warning)' }}>Tekshiruvda: <strong>{taskStats.review}</strong></span>
               <span style={{ color: 'var(--text-muted)' }}>Qaytarilgan: <strong>{taskStats.returned}</strong></span>
-              <span style={{ color: 'var(--success)' }}>Tugallangan: <strong>{taskStats.completed}</strong></span>
               {taskStats.overdue > 0 && <span style={{ color: '#ef4444' }}>Kechikkan: <strong>{taskStats.overdue}</strong></span>}
             </div>
           )}
         </div>
 
-        {tasks.length === 0 ? (
-          <div className="empty-state">
-            <p>Hali vazifa yaratilmagan</p>
+        {/* Filter panel */}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12, padding: 10,
+          background: 'var(--bg-input, rgba(255,255,255,0.02))', borderRadius: 8 }}>
+          {[
+            { v: 'all',         label: 'Barchasi' },
+            { v: 'active',      label: 'Faol' },
+            { v: 'in_progress', label: 'Jarayonda' },
+            { v: 'review',      label: 'Tekshiruvda' },
+            { v: 'completed',   label: 'Tugallangan' },
+          ].map(s => (
+            <button key={s.v} onClick={() => setF({ status: s.v })}
+              style={{
+                padding: '4px 12px', fontSize: 12, borderRadius: 6, cursor: 'pointer',
+                background: taskFilter.status === s.v ? 'var(--accent, #6366f1)' : 'transparent',
+                color: taskFilter.status === s.v ? '#fff' : 'var(--text)',
+                border: `1px solid ${taskFilter.status === s.v ? 'var(--accent, #6366f1)' : 'var(--border)'}`,
+                fontWeight: 500,
+              }}>{s.label}</button>
+          ))}
+          <div style={{ width: 1, height: 20, background: 'var(--border)' }} />
+          <select value={taskFilter.group} onChange={e => setF({ group: e.target.value })}
+            className="form-input" style={{ maxWidth: 160, padding: '4px 8px', fontSize: 12 }}>
+            <option value="none">Guruhlashsiz</option>
+            <option value="department">Boshqarmalar kesimida</option>
+            <option value="team">Guruhlar kesimida</option>
+          </select>
+          <input type="text" placeholder="Xodim FIO yoki tabel..."
+            value={taskFilter.q} onChange={e => setF({ q: e.target.value })}
+            className="form-input" style={{ maxWidth: 220, padding: '4px 8px', fontSize: 12 }} />
+          <input type="date" value={taskFilter.from} onChange={e => setF({ from: e.target.value })}
+            className="form-input" style={{ maxWidth: 140, padding: '4px 8px', fontSize: 12 }}
+            title="Dan (muddat/sana)" />
+          <input type="date" value={taskFilter.to} onChange={e => setF({ to: e.target.value })}
+            className="form-input" style={{ maxWidth: 140, padding: '4px 8px', fontSize: 12 }}
+            title="Gacha" />
+          {(taskFilter.q || taskFilter.from || taskFilter.to || taskFilter.status !== 'all' || taskFilter.group !== 'none') && (
+            <button className="btn btn-outline btn-sm" onClick={() =>
+              setTaskFilter({ status: 'all', group: 'none', q: '', from: '', to: '', page: 1, per_page: 12 })}>
+              Tozalash
+            </button>
+          )}
+        </div>
+
+        {/* Kontent: guruhlangan yoki paginatsiya bilan */}
+        {browseData.total === 0 ? (
+          <div className="empty-state"><p>Vazifa topilmadi</p></div>
+        ) : browseData.groups ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {browseData.groups.map(g => {
+              const open = expandedGroup[g.key] !== false  // default ochiq
+              return (
+                <div key={g.key} style={{ border: '1px solid var(--border)', borderRadius: 8 }}>
+                  <button type="button"
+                    onClick={() => setExpandedGroup({ ...expandedGroup, [g.key]: !open })}
+                    style={{
+                      width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      background: 'transparent', border: 'none', padding: '10px 12px',
+                      cursor: 'pointer', color: 'var(--text)', fontSize: 14, fontWeight: 600,
+                    }}>
+                    <span>{taskFilter.group === 'team' ? '👥' : '🏢'} {g.label}</span>
+                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{g.count} ta {open ? '▲' : '▼'}</span>
+                  </button>
+                  {open && (
+                    <div className="project-grid" style={{ padding: 10, borderTop: '1px solid var(--border)' }}>
+                      {g.tasks.map((t, i) => (
+                        <TaskCard key={t.id} t={t} i={i} navigate={navigate}
+                          isDeptAdmin={isDeptAdmin} handleDeleteTask={handleDeleteTask}
+                          statusClass={statusClass} statusLabel={statusLabel} formatDate={formatDate} />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
         ) : (
-          <div className="project-grid">
-            {tasks.map((t, i) => (
-              <div key={t.id} className="project-card" onClick={() => navigate(`/tasks/${t.id}`)}
-                style={{ position: 'relative' }}>
-                <div className="project-card-header">
-                  <span className="project-number">#{i + 1}</span>
-                  <span className={`badge ${statusClass(t.status)}`}>{statusLabel(t.status)}</span>
-                </div>
-                <h3 className="project-card-title">{t.name}</h3>
-                <div className="project-card-meta">
-                  <span>Muddat: {formatDate(t.deadline)}</span>
-                </div>
-                <div className="project-card-info">
-                  {t.team_name && <span>👥 {t.team_name}</span>}
-                  {t.assignee_name && <span>👤 {t.assignee_name}</span>}
-                  {t.assignee_names?.length > 0 && <span>👤 {t.assignee_names.join(', ')}</span>}
-                  <span>📋 {t.report_count} hisobot</span>
-                </div>
-                {/* Tez o'chirish — rahbarlar uchun (test vazifalarni tozalash) */}
-                {isDeptAdmin && (
-                  <button
-                    onClick={(e) => handleDeleteTask(e, t)}
-                    title="Vazifani o'chirish"
+          <>
+            <div className="project-grid">
+              {browseData.tasks.map((t, i) => (
+                <TaskCard key={t.id} t={t} i={i + (browseData.page - 1) * browseData.per_page}
+                  navigate={navigate} isDeptAdmin={isDeptAdmin} handleDeleteTask={handleDeleteTask}
+                  statusClass={statusClass} statusLabel={statusLabel} formatDate={formatDate} />
+              ))}
+            </div>
+            {browseData.pages > 1 && (
+              <div style={{ display: 'flex', justifyContent: 'center', gap: 4, marginTop: 12, flexWrap: 'wrap' }}>
+                <button className="btn btn-outline btn-sm" disabled={browseData.page <= 1}
+                  onClick={() => setTaskFilter(f => ({ ...f, page: f.page - 1 }))}>‹</button>
+                {Array.from({ length: browseData.pages }, (_, i) => i + 1).map(p => (
+                  <button key={p} className="btn btn-outline btn-sm"
+                    onClick={() => setTaskFilter(f => ({ ...f, page: p }))}
                     style={{
-                      position: 'absolute', top: 8, right: 8,
-                      background: 'transparent', border: '1px solid var(--border)',
-                      borderRadius: 6, padding: '2px 8px',
-                      fontSize: 13, color: '#ef4444', cursor: 'pointer',
-                    }}
-                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.1)' }}
-                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
-                  >🗑️</button>
-                )}
+                      background: browseData.page === p ? 'var(--accent, #6366f1)' : undefined,
+                      color: browseData.page === p ? '#fff' : undefined,
+                      minWidth: 32,
+                    }}>{p}</button>
+                ))}
+                <button className="btn btn-outline btn-sm" disabled={browseData.page >= browseData.pages}
+                  onClick={() => setTaskFilter(f => ({ ...f, page: f.page + 1 }))}>›</button>
               </div>
-            ))}
-          </div>
+            )}
+          </>
         )}
       </div>
 
@@ -274,6 +357,40 @@ export default function AdminDashboard() {
             })}
           </div>
         </div>
+      )}
+    </div>
+  )
+}
+
+
+function TaskCard({ t, i, navigate, isDeptAdmin, handleDeleteTask, statusClass, statusLabel, formatDate }) {
+  return (
+    <div className="project-card" onClick={() => navigate(`/tasks/${t.id}`)}
+      style={{ position: 'relative' }}>
+      <div className="project-card-header">
+        <span className="project-number">#{i + 1}</span>
+        <span className={`badge ${statusClass(t.status)}`}>{statusLabel(t.status)}</span>
+      </div>
+      <h3 className="project-card-title">{t.name}</h3>
+      <div className="project-card-meta">
+        <span>Muddat: {formatDate(t.deadline)}</span>
+      </div>
+      <div className="project-card-info">
+        {t.team_name && <span>👥 {t.team_name}</span>}
+        {t.assignee_name && <span>👤 {t.assignee_name}</span>}
+        {t.assignee_names?.length > 0 && <span>👤 {t.assignee_names.join(', ')}</span>}
+        <span>📋 {t.report_count} hisobot</span>
+      </div>
+      {isDeptAdmin && (
+        <button onClick={(e) => handleDeleteTask(e, t)} title="Vazifani o'chirish"
+          style={{
+            position: 'absolute', top: 8, right: 8,
+            background: 'transparent', border: '1px solid var(--border)',
+            borderRadius: 6, padding: '2px 8px', fontSize: 13, color: '#ef4444', cursor: 'pointer',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.1)' }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+        >🗑️</button>
       )}
     </div>
   )
