@@ -13,9 +13,9 @@ export default function AdminDashboard() {
   const [expandedDept, setExpandedDept] = useState({})
   const [loading, setLoading] = useState(true)
 
-  // "Barcha vazifalar" bo'limi uchun filter/pagination
+  // "Barcha vazifalar" bo'limi uchun filter/pagination — default Faol
   const [taskFilter, setTaskFilter] = useState({
-    status: 'all', group: 'none', q: '', from: '', to: '', page: 1, per_page: 12,
+    status: 'active', group: 'none', q: '', from: '', to: '', page: 1, per_page: 12,
   })
   const [browseData, setBrowseData] = useState({ total: 0, tasks: [], groups: null, pages: 1, page: 1 })
   const [expandedGroup, setExpandedGroup] = useState({})
@@ -167,59 +167,63 @@ export default function AdminDashboard() {
       </div>
       {/* Tasks section — filter + guruhlash + paginatsiya */}
       <div className="card" style={{ marginTop: 16 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
-          <h2 style={{ fontSize: 16, margin: 0 }}>Barcha vazifalar
-            <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--text-muted)', fontWeight: 400 }}>
-              Jami: {browseData.total}
-            </span>
-          </h2>
-          {taskStats && (
-            <div style={{ display: 'flex', gap: 10, fontSize: 12, flexWrap: 'wrap' }}>
-              <span style={{ color: 'var(--warning)' }}>Tekshiruvda: <strong>{taskStats.review}</strong></span>
-              <span style={{ color: 'var(--text-muted)' }}>Qaytarilgan: <strong>{taskStats.returned}</strong></span>
-              {taskStats.overdue > 0 && <span style={{ color: '#ef4444' }}>Kechikkan: <strong>{taskStats.overdue}</strong></span>}
-            </div>
-          )}
+        {/* Yuqori qator: sarlavha | Faol/Tugallangan tugmalari | search | sonlar */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+          <h2 style={{ fontSize: 16, margin: 0 }}>Barcha vazifalar</h2>
+
+          {/* Status tugmalari: Faol / Tugallangan (+ Barchasi kompakt) */}
+          <div style={{ display: 'flex', gap: 4 }}>
+            {[
+              { v: 'active',    label: 'Faol' },
+              { v: 'completed', label: 'Tugallangan' },
+              { v: 'all',       label: 'Barchasi' },
+            ].map(s => (
+              <button key={s.v} onClick={() => setF({ status: s.v })}
+                style={{
+                  padding: '4px 12px', fontSize: 12, borderRadius: 6, cursor: 'pointer',
+                  background: taskFilter.status === s.v ? 'var(--accent, #6366f1)' : 'transparent',
+                  color: taskFilter.status === s.v ? '#fff' : 'var(--text)',
+                  border: `1px solid ${taskFilter.status === s.v ? 'var(--accent, #6366f1)' : 'var(--border)'}`,
+                  fontWeight: 500,
+                }}>{s.label}</button>
+            ))}
+          </div>
+
+          {/* Search input */}
+          <input type="text" placeholder="🔍 Xodim FIO yoki tabel..."
+            value={taskFilter.q} onChange={e => setF({ q: e.target.value })}
+            className="form-input" style={{ maxWidth: 240, padding: '5px 10px', fontSize: 12, flex: '0 1 240px' }} />
+
+          {/* Sonlar o'ng chekkada */}
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 10, fontSize: 12, flexWrap: 'wrap' }}>
+            <span style={{ color: 'var(--text-muted)' }}>Jami: <strong>{browseData.total}</strong></span>
+            {taskStats && (
+              <>
+                <span style={{ color: 'var(--warning)' }}>Tekshiruvda: <strong>{taskStats.review}</strong></span>
+                <span style={{ color: 'var(--text-muted)' }}>Qaytarilgan: <strong>{taskStats.returned}</strong></span>
+                <span style={{ color: 'var(--success)' }}>Tugallangan: <strong>{taskStats.completed}</strong></span>
+                {taskStats.overdue > 0 && <span style={{ color: '#ef4444' }}>Kechikkan: <strong>{taskStats.overdue}</strong></span>}
+              </>
+            )}
+          </div>
         </div>
 
-        {/* Filter panel */}
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12, padding: 10,
-          background: 'var(--bg-input, rgba(255,255,255,0.02))', borderRadius: 8 }}>
-          {[
-            { v: 'all',         label: 'Barchasi' },
-            { v: 'active',      label: 'Faol' },
-            { v: 'in_progress', label: 'Jarayonda' },
-            { v: 'review',      label: 'Tekshiruvda' },
-            { v: 'completed',   label: 'Tugallangan' },
-          ].map(s => (
-            <button key={s.v} onClick={() => setF({ status: s.v })}
-              style={{
-                padding: '4px 12px', fontSize: 12, borderRadius: 6, cursor: 'pointer',
-                background: taskFilter.status === s.v ? 'var(--accent, #6366f1)' : 'transparent',
-                color: taskFilter.status === s.v ? '#fff' : 'var(--text)',
-                border: `1px solid ${taskFilter.status === s.v ? 'var(--accent, #6366f1)' : 'var(--border)'}`,
-                fontWeight: 500,
-              }}>{s.label}</button>
-          ))}
-          <div style={{ width: 1, height: 20, background: 'var(--border)' }} />
+        {/* Ikkinchi qator: sana oralig'i + guruhlash + tozalash (kompakt) */}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
+          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Sana:</span>
+          <input type="date" value={taskFilter.from} onChange={e => setF({ from: e.target.value })}
+            className="form-input" style={{ maxWidth: 140, padding: '4px 8px', fontSize: 12 }} title="Dan" />
+          <input type="date" value={taskFilter.to} onChange={e => setF({ to: e.target.value })}
+            className="form-input" style={{ maxWidth: 140, padding: '4px 8px', fontSize: 12 }} title="Gacha" />
           <select value={taskFilter.group} onChange={e => setF({ group: e.target.value })}
-            className="form-input" style={{ maxWidth: 160, padding: '4px 8px', fontSize: 12 }}>
+            className="form-input" style={{ maxWidth: 190, padding: '4px 8px', fontSize: 12 }}>
             <option value="none">Guruhlashsiz</option>
             <option value="department">Boshqarmalar kesimida</option>
             <option value="team">Guruhlar kesimida</option>
           </select>
-          <input type="text" placeholder="Xodim FIO yoki tabel..."
-            value={taskFilter.q} onChange={e => setF({ q: e.target.value })}
-            className="form-input" style={{ maxWidth: 220, padding: '4px 8px', fontSize: 12 }} />
-          <input type="date" value={taskFilter.from} onChange={e => setF({ from: e.target.value })}
-            className="form-input" style={{ maxWidth: 140, padding: '4px 8px', fontSize: 12 }}
-            title="Dan (muddat/sana)" />
-          <input type="date" value={taskFilter.to} onChange={e => setF({ to: e.target.value })}
-            className="form-input" style={{ maxWidth: 140, padding: '4px 8px', fontSize: 12 }}
-            title="Gacha" />
-          {(taskFilter.q || taskFilter.from || taskFilter.to || taskFilter.status !== 'all' || taskFilter.group !== 'none') && (
-            <button className="btn btn-outline btn-sm" onClick={() =>
-              setTaskFilter({ status: 'all', group: 'none', q: '', from: '', to: '', page: 1, per_page: 12 })}>
+          {(taskFilter.q || taskFilter.from || taskFilter.to || taskFilter.status !== 'active' || taskFilter.group !== 'none') && (
+            <button className="btn btn-outline btn-sm" style={{ padding: '3px 10px', fontSize: 11 }} onClick={() =>
+              setTaskFilter({ status: 'active', group: 'none', q: '', from: '', to: '', page: 1, per_page: 12 })}>
               Tozalash
             </button>
           )}

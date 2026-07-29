@@ -80,8 +80,12 @@ def browse_tasks():
     all_tasks = _scoped_tasks(role, dept_id, div_id, user_id)
 
     # Status
+    # 'active' — barcha ishdagi (active/in_progress/review/returned), completed emas
+    # boshqa qiymatlar — aynan shu status
     status = (request.args.get('status') or 'all').strip()
-    if status and status != 'all':
+    if status == 'active':
+        all_tasks = [t for t in all_tasks if (t.status or '') != 'completed']
+    elif status and status != 'all':
         all_tasks = [t for t in all_tasks if (t.status or '') == status]
 
     # Xodim/tabel qidiruv
