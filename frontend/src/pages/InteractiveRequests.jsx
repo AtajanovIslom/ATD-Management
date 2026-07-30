@@ -273,6 +273,10 @@ export default function InteractiveRequests() {
 
 function RequestDetail({ r, isMine, isAnyAdmin, onClose, onAction, onApprove, onEdit }) {
   const canEdit = isAnyAdmin && r.status !== 'completed' && r.status !== 'rejected'
+  // Tarixdan oxirgi "uzatish" yozuvini topamiz — ariza sizga peer bo'lim
+  // rahbaridan uzatilgan bo'lsa banner ko'rsatish uchun.
+  const lastTransfer = (r.history || []).slice().reverse().find(h => (h.note || '').startsWith('🔄'))
+  const isTransferredToMe = isMine && r.status === 'new' && !!lastTransfer
   return (
     <div className="card">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
@@ -287,6 +291,20 @@ function RequestDetail({ r, isMine, isAnyAdmin, onClose, onAction, onApprove, on
         </div>
         <button className="btn btn-outline btn-sm" onClick={onClose}>✕</button>
       </div>
+
+      {isTransferredToMe && (
+        <div style={{
+          padding: 10, marginBottom: 12,
+          background: 'rgba(59,130,246,0.08)',
+          border: '1px solid #3b82f6', borderRadius: 6,
+          fontSize: 13,
+        }}>
+          🔄 <strong>Sizga uzatildi:</strong> {lastTransfer.note}
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+            "Xodimga biriktirish" tugmasi orqali o'z xodimingizga topshiring.
+          </div>
+        </div>
+      )}
 
       <Section title="Arizachi">
         <Row label="Tabel">{r.tabel_num}</Row>
@@ -410,12 +428,16 @@ function RequestDetail({ r, isMine, isAnyAdmin, onClose, onAction, onApprove, on
 
 function ActionModal({ modal, workers, modalData, setModalData, onClose, onSubmit, busy }) {
   const titles = {
-    assign: '📌 Xodimga biriktirish',
+    assign: '📌 Xodimga biriktirish / uzatish',
     submit_review: '✅ Ariza bajarildi',
     return: '↩ Qaytarish',
     reject: '❌ Rad etish',
   }
   const t = modal.type
+
+  // O'z bo'lim xodimlari va peer bo'lim rahbarlarini ajratamiz
+  const ownWorkers = workers.filter(w => w.role !== 'department_admin')
+  const peerAdmins = workers.filter(w => w.role === 'department_admin')
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -424,16 +446,35 @@ function ActionModal({ modal, workers, modalData, setModalData, onClose, onSubmi
 
         {t === 'assign' && (
           <div className="form-group">
-            <label>Xodimni tanlang</label>
+            <label>Xodim yoki bo'lim rahbarini tanlang</label>
             <select className="form-input" value={modalData.user_id || ''}
               onChange={e => setModalData({ user_id: e.target.value })}>
               <option value="">— Tanlang —</option>
-              {workers.map(w => (
-                <option key={w.id} value={w.id}>
-                  {w.full_name} {w.position ? '· ' + w.position : ''}
-                </option>
-              ))}
+              {ownWorkers.length > 0 && (
+                <optgroup label="O'z xodimlaringiz">
+                  {ownWorkers.map(w => (
+                    <option key={w.id} value={w.id}>
+                      {w.full_name}{w.position ? ' · ' + w.position : ''}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              {peerAdmins.length > 0 && (
+                <optgroup label="🔄 Boshqa bo'lim rahbariga uzatish">
+                  {peerAdmins.map(w => (
+                    <option key={w.id} value={w.id}>
+                      {w.full_name}{w.division_name ? ' — ' + w.division_name : ''}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
             </select>
+            {peerAdmins.length > 0 && (
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
+                💡 Ariza boshqa bo'limga tegishli bo'lsa, tegishli bo'lim rahbariga uzating —
+                ular qabul qilib o'z xodimlariga biriktiradi.
+              </div>
+            )}
           </div>
         )}
 

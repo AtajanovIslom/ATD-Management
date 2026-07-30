@@ -405,7 +405,12 @@ def walkin_create():
 
 
 def _assignable_workers(role, dept_id, div_id):
-    """Interaktiv arizalar biriktirish ierarxiyasi. Bugun tatildagilar chiqariladi."""
+    """Interaktiv arizalar biriktirish ierarxiyasi. Bugun tatildagilar chiqariladi.
+
+    Servis xizmati yoqilgan bo'lim rahbari peer boshqa servis-provider bo'lim
+    rahbariga arizani "uzatishi" mumkin — shuning uchun ular ham ro'yxatga
+    qo'shiladi.
+    """
     from app.models import Division, Vacation
     from datetime import date as _date
     if role in ('superadmin', 'director', 'deputy_director'):
@@ -417,7 +422,19 @@ def _assignable_workers(role, dept_id, div_id):
     elif role == 'admin':
         q = User.query.filter_by(is_active=True, role='department_admin', department_id=dept_id)
     elif role == 'department_admin':
-        q = User.query.filter_by(is_active=True, role='user', division_id=div_id)
+        cond = db.and_(User.role == 'user', User.division_id == div_id)
+        own_div = Division.query.get(div_id) if div_id else None
+        if own_div and own_div.is_service_provider:
+            peer_div_ids = [d.id for d in Division.query.filter(
+                Division.is_service_provider == True, Division.id != div_id
+            ).all()]
+            if peer_div_ids:
+                cond = db.or_(
+                    cond,
+                    db.and_(User.role == 'department_admin',
+                            User.division_id.in_(peer_div_ids)),
+                )
+        q = User.query.filter(User.is_active == True).filter(cond)
     else:
         return []
     today = _date.today()
@@ -478,21 +495,36 @@ def assign(req_id):
         return jsonify({'error': 'Xodim topilmadi'}), 404
 
     actor = User.query.get(int(get_jwt_identity()))
+    actor_id = actor.id
     now = datetime.now(timezone.utc)
+
+    # Peer bo'lim rahbariga uzatish: dept_admin → boshqa dept_admin bo'lsa
+    # bu "uzatish" hisoblanadi, status yangi ko'rinishida qabul qiluvchiga
+    # tushadi (u o'z xodimiga biriktirish uchun).
+    is_transfer = (
+        role == 'department_admin'
+        and worker.role == 'department_admin'
+        and worker.id != actor_id
+    )
 
     prev_assignee = r.assignee.full_name if r.assignee else None
     r.assigned_to = worker.id
-    r.assigned_by = actor.id
+    r.assigned_by = actor_id
     r.assigned_at = now
-    r.status = 'in_progress'
+    new_status = 'new' if is_transfer else 'in_progress'
+    r.status = new_status
 
-    if prev_assignee and prev_assignee != worker.full_name:
+    if is_transfer:
+        target_div = worker.division.name if worker.division else worker.full_name
+        note = f"🔄 Bo'lim rahbari {actor.full_name} → {target_div} bo'limiga uzatildi ({worker.full_name})"
+    elif prev_assignee and prev_assignee != worker.full_name:
         note = f"{prev_assignee} → {worker.full_name} ga qayta biriktirildi"
     else:
         note = f"{worker.full_name} xodimga biriktirildi"
-    _log_history(r, 'in_progress', actor=actor, note=note)
+    _log_history(r, new_status, actor=actor, note=note)
 
-    log_audit('assign', 'interactive_request', r.id,
+    log_audit('transfer' if is_transfer else 'assign',
+              'interactive_request', r.id,
               entity_label=f"{r.tabel_num} → {worker.full_name}")
     db.session.commit()
     return jsonify(r.to_dict())
