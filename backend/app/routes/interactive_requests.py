@@ -200,26 +200,42 @@ def public_history_by_tabel(tabel_num):
 # ICHKI — TIZIM ICHIDA
 # =========================================================================
 
+def _list_scope_filter(q, role, dept_id, div_id, user_id):
+    """Interaktiv arizalar bo'yicha rol scope filtri (list va stats uchun umumiy).
+
+    Ko'rinish:
+      - admin+ (barcha boshqarma boshliqlari): hammasi
+      - department_admin (servis-provider bo'lim rahbari): o'z bo'limi
+        a'zolariga biriktirilganlar + biriktirilmagan yangi arizalar
+        (triage qilib xodimiga topshirishi yoki peer bo'lim rahbariga
+        uzatishi uchun)
+      - department_admin (servis-provider bo'lmagan): o'ziga yoki bo'lim
+        a'zolariga biriktirilganlar
+      - user: faqat o'ziga biriktirilganlar
+    """
+    from app.models import Division
+    if is_admin_or_above(role):
+        return q
+    if role == 'department_admin':
+        member_ids = div_user_ids(div_id) if div_id else set()
+        member_ids.add(user_id)
+        own_div = Division.query.get(div_id) if div_id else None
+        if own_div and own_div.is_service_provider:
+            return q.filter(db.or_(
+                InteractiveRequest.assigned_to.in_(member_ids),
+                InteractiveRequest.assigned_to.is_(None),
+            ))
+        return q.filter(InteractiveRequest.assigned_to.in_(member_ids))
+    return q.filter_by(assigned_to=user_id)
+
+
 @interactive_req_bp.route('', methods=['GET'])
 @jwt_required()
 def list_requests():
-    """Rol bo'yicha ko'rinish:
-       - superadmin/direksiya + boshqarma rahbari (admin): hammasi (triage uchun)
-       - bo'lim rahbari (department_admin): o'z bo'limi a'zolariga yoki o'ziga biriktirilganlar
-       - xodim (user): faqat o'ziga biriktirilganlar
-    """
     role, dept_id, div_id = get_scope(get_jwt())
     user_id = int(get_jwt_identity())
 
-    q = InteractiveRequest.query
-    if is_admin_or_above(role):
-        pass  # hammasini ko'radi
-    elif role == 'department_admin':
-        member_ids = div_user_ids(div_id) if div_id else set()
-        member_ids.add(user_id)
-        q = q.filter(InteractiveRequest.assigned_to.in_(member_ids))
-    else:
-        q = q.filter_by(assigned_to=user_id)
+    q = _list_scope_filter(InteractiveRequest.query, role, dept_id, div_id, user_id)
 
     for param, col in [
         ('status', InteractiveRequest.status),
@@ -671,12 +687,10 @@ def reject(req_id):
 @interactive_req_bp.route('/stats/summary', methods=['GET'])
 @jwt_required()
 def stats_summary():
-    role = get_jwt().get('role', '')
+    role, dept_id, div_id = get_scope(get_jwt())
     user_id = int(get_jwt_identity())
 
-    base = InteractiveRequest.query
-    if role == 'user' or not is_any_admin(role):
-        base = base.filter_by(assigned_to=user_id)
+    base = _list_scope_filter(InteractiveRequest.query, role, dept_id, div_id, user_id)
 
     rows = (base.with_entities(InteractiveRequest.status,
                                func.count(InteractiveRequest.id))
