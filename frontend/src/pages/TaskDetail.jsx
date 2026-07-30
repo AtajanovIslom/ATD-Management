@@ -36,6 +36,10 @@ export default function TaskDetail() {
   const [workers, setWorkers] = useState([])
   const [selectedWorkers, setSelectedWorkers] = useState([])
   const [reassignBusy, setReassignBusy] = useState(false)
+  const [editModal, setEditModal] = useState(false)
+  const [editName, setEditName] = useState('')
+  const [editDesc, setEditDesc] = useState('')
+  const [editBusy, setEditBusy] = useState(false)
 
   useEffect(() => { loadData() }, [id])
 
@@ -120,6 +124,29 @@ export default function TaskDetail() {
       : [...prev, uid])
   }
 
+  const openEdit = () => {
+    setEditName(task?.name || '')
+    setEditDesc(task?.description || '')
+    setEditModal(true)
+  }
+
+  const handleEditSave = async () => {
+    if (!editName.trim()) return
+    setEditBusy(true)
+    try {
+      const res = await api.put(`/tasks/${id}`, {
+        name: editName.trim(),
+        description: editDesc.trim(),
+      })
+      setTask(res.data)
+      setEditModal(false)
+    } catch (err) {
+      alert(err.response?.data?.error || 'Xatolik yuz berdi')
+    } finally {
+      setEditBusy(false)
+    }
+  }
+
   const handleReassign = async () => {
     if (selectedWorkers.length === 0) return
     setReassignBusy(true)
@@ -189,11 +216,42 @@ export default function TaskDetail() {
             </button>
           )}
           {isAdmin && (
+            <button className="btn btn-outline btn-sm" onClick={openEdit}>
+              ✏️ Tahrirlash
+            </button>
+          )}
+          {isAdmin && (
             <button className="btn btn-danger btn-sm" onClick={handleDelete}>O'chirish</button>
           )}
           <button className="btn btn-outline btn-sm" onClick={() => navigate(-1)}>← Orqaga</button>
         </div>
       </div>
+
+      {editModal && (
+        <div className="modal-overlay" onClick={() => setEditModal(false)}>
+          <div className="modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
+            <h2 style={{ marginBottom: 12 }}>✏️ Vazifani tahrirlash</h2>
+            <div className="form-group">
+              <label>Vazifa nomi *</label>
+              <input className="form-input" value={editName}
+                onChange={e => setEditName(e.target.value)} autoFocus />
+            </div>
+            <div className="form-group">
+              <label>Tavsif</label>
+              <textarea className="form-input" rows={4} value={editDesc}
+                onChange={e => setEditDesc(e.target.value)}
+                placeholder="Vazifa tavsifi..." />
+            </div>
+            <div className="modal-actions">
+              <button className="btn btn-outline" onClick={() => setEditModal(false)}>Bekor</button>
+              <button className="btn btn-primary" onClick={handleEditSave}
+                disabled={!editName.trim() || editBusy}>
+                {editBusy ? 'Saqlanmoqda...' : 'Saqlash'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {assignModal && (
         <div className="modal-overlay" onClick={() => setAssignModal(false)}>

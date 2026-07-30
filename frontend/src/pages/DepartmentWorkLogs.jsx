@@ -2,9 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import api from '../api/axios'
 
 /**
- * Boshqarma rahbari uchun: o'z boshqarmasi xodimlarining kunlik hisobotlari.
+ * Boshqarma/bo'lim rahbari uchun: o'z xodimlarining kunlik hisobotlari.
  *  - Sana oralig'i + xodim bo'yicha filtr
  *  - Word (.docx) yuklab olish
+ *  - Hisobotlar tasdiqlanishi shart emas — faqat ko'rish
  */
 const today = () => new Date().toISOString().slice(0, 10)
 
@@ -39,36 +40,6 @@ export default function DepartmentWorkLogs() {
     return [...map.entries()].map(([id, name]) => ({ id, name }))
   }, [logs])
 
-  const approve = async (w) => {
-    try {
-      await api.post(`/work-logs/${w.id}/approve`)
-      load()
-    } catch (err) {
-      alert(err.response?.data?.error || 'Xatolik')
-    }
-  }
-
-  const returnLog = async (w) => {
-    const reason = window.prompt("Qaytarish sababi (ixtiyoriy):", "")
-    if (reason === null) return  // Cancel
-    try {
-      await api.post(`/work-logs/${w.id}/return`, { reason })
-      load()
-    } catch (err) {
-      alert(err.response?.data?.error || 'Xatolik')
-    }
-  }
-
-  const removeLog = async (w) => {
-    if (!window.confirm(`${w.user_name} hisobotini o'chirmoqchimisiz?`)) return
-    try {
-      await api.delete(`/work-logs/${w.id}`)
-      load()
-    } catch (err) {
-      alert(err.response?.data?.error || 'Xatolik')
-    }
-  }
-
   const downloadWord = () => {
     const params = new URLSearchParams()
     if (range.from) params.set('from', range.from)
@@ -96,7 +67,7 @@ export default function DepartmentWorkLogs() {
         <div>
           <h1 style={{ margin: 0 }}>👥 Xodimlar kunlik hisobotlari</h1>
           <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>
-            Boshqarmangiz xodimlari bajargan ishlar
+            Xodimlaringizning kunlik hisobot matnlari
           </p>
         </div>
       </div>
@@ -141,68 +112,21 @@ export default function DepartmentWorkLogs() {
             <table>
               <thead>
                 <tr>
-                  <th style={{ width: 100 }}>Sana</th>
-                  <th style={{ width: 160 }}>Xodim</th>
-                  <th style={{ width: 150 }}>Loyiha / Vazifa</th>
-                  <th>Bajarilgan ish</th>
-                  <th style={{ width: 100 }}>Holat</th>
-                  <th style={{ width: 160 }}>Amallar</th>
+                  <th style={{ width: 110 }}>Sana</th>
+                  <th style={{ width: 200 }}>Xodim</th>
+                  <th>Hisobot matni</th>
                 </tr>
               </thead>
               <tbody>
                 {logs.map(w => (
                   <tr key={w.id}>
-                    <td style={{ fontSize: 12 }}>{formatDate(w.work_date)}</td>
-                    <td style={{ fontSize: 12 }}>
+                    <td style={{ fontSize: 12, verticalAlign: 'top' }}>{formatDate(w.work_date)}</td>
+                    <td style={{ fontSize: 12, verticalAlign: 'top' }}>
                       <strong>{w.user_name}</strong>
                       {w.user_position && <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>{w.user_position}</div>}
                     </td>
-                    <td style={{ fontSize: 12 }}>
-                      {w.ref_label && w.ref_label !== '—' ? (
-                        <span>{w.project_name ? '🚀 ' : w.task_name ? '📝 ' : '🧩 '}{w.project_name || w.task_name || w.interactive_label}</span>
-                      ) : <span style={{ color: 'var(--text-muted)' }}>—</span>}
-                    </td>
-                    <td style={{ fontSize: 13, whiteSpace: 'pre-wrap' }}>
+                    <td style={{ fontSize: 13, whiteSpace: 'pre-wrap', verticalAlign: 'top' }}>
                       {w.content}
-                      {w.return_reason && (
-                        <div style={{ fontSize: 11, color: '#ef4444', marginTop: 4 }}>
-                          ↩ {w.return_reason}
-                        </div>
-                      )}
-                    </td>
-                    <td>
-                      {w.status === 'approved' && (
-                        <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 4, background: 'rgba(16,185,129,0.15)', color: '#10b981' }}>
-                          ✓ Tasdiqlangan
-                        </span>
-                      )}
-                      {w.status === 'returned' && (
-                        <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 4, background: 'rgba(245,158,11,0.15)', color: '#f59e0b' }}>
-                          ↩ Qaytarilgan
-                        </span>
-                      )}
-                      {(!w.status || w.status === 'pending') && (
-                        <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 4, background: 'var(--bg-input)', color: 'var(--text-muted)' }}>
-                          ⏳ Kutilmoqda
-                        </span>
-                      )}
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                        {w.status !== 'approved' && (
-                          <button className="btn btn-outline btn-sm" title="Tasdiqlash"
-                            onClick={() => approve(w)}
-                            style={{ padding: '2px 8px', fontSize: 12, color: '#10b981' }}>✓</button>
-                        )}
-                        {w.status !== 'returned' && (
-                          <button className="btn btn-outline btn-sm" title="Qaytarish"
-                            onClick={() => returnLog(w)}
-                            style={{ padding: '2px 8px', fontSize: 12, color: '#f59e0b' }}>↩</button>
-                        )}
-                        <button className="btn btn-outline btn-sm" title="O'chirish"
-                          onClick={() => removeLog(w)}
-                          style={{ padding: '2px 8px', fontSize: 12, color: '#ef4444' }}>🗑️</button>
-                      </div>
                     </td>
                   </tr>
                 ))}

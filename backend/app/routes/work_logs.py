@@ -426,13 +426,11 @@ def export_mine():
     q = WorkLog.query.filter_by(user_id=user_id)
     q, d_from, d_to = _apply_date_range(q)
     logs = q.order_by(WorkLog.work_date.asc(), WorkLog.id.asc()).all()
-    tasks = _completed_tasks_for_users({user_id}, d_from, d_to)
 
     buf = _build_docx(
         title="Kunlik ish hisoboti",
         subtitle=f"{user.full_name if user else ''} | {_range_subtitle(d_from, d_to)}",
         logs=logs,
-        tasks=tasks,
     )
     fname = f"hisobot_{_date.today().isoformat()}.docx"
     return send_file(buf, as_attachment=True, download_name=fname,
@@ -499,19 +497,10 @@ def export_department():
     q, d_from, d_to = _apply_date_range(q)
     logs = q.order_by(WorkLog.work_date.asc(), WorkLog.user_id.asc(), WorkLog.id.asc()).all()
 
-    # Scope'dagi xodimlar bo'yicha tugallangan vazifalar
-    scope_ids = _department_scope_user_ids(role, dept_id, div_id, self_id)
-    if scope_ids is None:
-        # superadmin/direksiya — barcha xodimlar
-        scope_ids = {u.id for u in User.query.filter(User.role.in_(['user', 'department_admin']),
-                                                     User.is_active == True).all()}
-    tasks = _completed_tasks_for_users(scope_ids, d_from, d_to)
-
     buf = _build_docx(
         title="Boshqarma xodimlari kunlik hisobotlari",
         subtitle=_range_subtitle(d_from, d_to),
         logs=logs,
-        tasks=tasks,
         group_by_division=True,  # bo'limlar kesimida
     )
     fname = f"boshqarma_hisobot_{_date.today().isoformat()}.docx"
