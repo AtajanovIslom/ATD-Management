@@ -432,19 +432,36 @@ def submit_review(req_id):
     return jsonify(r.to_dict())
 
 
+def _can_review(role, div_id, user_id, req):
+    """Rahbar arizani review qila oladimi (approve/return/reject)?
+       - admin+ (boshqarma rahbari va yuqori): hammasi
+       - department_admin (bo'lim rahbari): faqat o'z bo'limi a'zolariga yoki
+         o'ziga biriktirilgan arizalar
+    """
+    if is_admin_or_above(role):
+        return True
+    if role == 'department_admin':
+        member_ids = div_user_ids(div_id) if div_id else set()
+        member_ids.add(user_id)
+        return req.assigned_to in member_ids
+    return False
+
+
 @interactive_req_bp.route('/<int:req_id>/approve', methods=['POST'])
 @jwt_required()
 def approve(req_id):
     """Rahbar: 'Tasdiqlandi' → status = completed (yakuniy)"""
-    role = get_jwt().get('role', '')
-    if not is_admin_or_above(role):
-        return jsonify({'error': "Ruxsat yo'q"}), 403
+    role, dept_id, div_id = get_scope(get_jwt())
+    user_id = int(get_jwt_identity())
 
     r = InteractiveRequest.query.get_or_404(req_id)
+    if not _can_review(role, div_id, user_id, r):
+        return jsonify({'error': "Ruxsat yo'q"}), 403
+
     if r.status != 'pending_review':
         return jsonify({'error': "Faqat 'Tasdiqlash kutilmoqda' arizani tasdiqlash mumkin"}), 400
 
-    actor = User.query.get(int(get_jwt_identity()))
+    actor = User.query.get(user_id)
 
     r.status = 'completed'
     r.reviewed_by = actor.id
@@ -460,11 +477,13 @@ def approve(req_id):
 @jwt_required()
 def return_to_worker(req_id):
     """Rahbar: 'Qaytarildi' — ish chala, xodim qayta bajaradi (status → in_progress)"""
-    role = get_jwt().get('role', '')
-    if not is_admin_or_above(role):
-        return jsonify({'error': "Ruxsat yo'q"}), 403
+    role, dept_id, div_id = get_scope(get_jwt())
+    user_id = int(get_jwt_identity())
 
     r = InteractiveRequest.query.get_or_404(req_id)
+    if not _can_review(role, div_id, user_id, r):
+        return jsonify({'error': "Ruxsat yo'q"}), 403
+
     if r.status != 'pending_review':
         return jsonify({'error': "Faqat 'Tasdiqlash kutilmoqda' arizani qaytarish mumkin"}), 400
 
@@ -473,7 +492,7 @@ def return_to_worker(req_id):
     if not reason:
         return jsonify({'error': "Qaytarish sababi kiritilishi shart"}), 400
 
-    actor = User.query.get(int(get_jwt_identity()))
+    actor = User.query.get(user_id)
 
     r.status = 'in_progress'
     r.return_count = (r.return_count or 0) + 1
@@ -491,11 +510,13 @@ def return_to_worker(req_id):
 @jwt_required()
 def reject(req_id):
     """Rahbar: rad etadi (butunlay bekor qiladi)"""
-    role = get_jwt().get('role', '')
-    if not is_admin_or_above(role):
-        return jsonify({'error': "Ruxsat yo'q"}), 403
+    role, dept_id, div_id = get_scope(get_jwt())
+    user_id = int(get_jwt_identity())
 
     r = InteractiveRequest.query.get_or_404(req_id)
+    if not _can_review(role, div_id, user_id, r):
+        return jsonify({'error': "Ruxsat yo'q"}), 403
+
     if r.status in ('completed', 'rejected'):
         return jsonify({'error': "Ariza allaqachon yakunlangan"}), 400
 
@@ -504,7 +525,7 @@ def reject(req_id):
     if not reason:
         return jsonify({'error': "Rad etish sababi kiritilishi shart"}), 400
 
-    actor = User.query.get(int(get_jwt_identity()))
+    actor = User.query.get(user_id)
 
     r.status = 'rejected'
     r.reject_reason = reason
