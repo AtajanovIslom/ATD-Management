@@ -260,6 +260,22 @@ def get_request(req_id):
     return jsonify(d)
 
 
+@interactive_req_bp.route('/<int:req_id>', methods=['DELETE'])
+@jwt_required()
+def delete_request(req_id):
+    """Arizani o'chirish. Faqat admin+ (boshqarma rahbari va yuqori)."""
+    role = get_jwt().get('role', '')
+    if not is_admin_or_above(role):
+        return jsonify({'error': "Ruxsat yo'q"}), 403
+
+    r = InteractiveRequest.query.get_or_404(req_id)
+    label = f"{r.tabel_num} — {', '.join(t.name for t in r.types)}"
+    db.session.delete(r)
+    log_audit('delete', 'interactive_request', req_id, entity_label=label)
+    db.session.commit()
+    return jsonify({'message': "O'chirildi"})
+
+
 @interactive_req_bp.route('/<int:req_id>', methods=['PUT'])
 @jwt_required()
 def edit_request(req_id):

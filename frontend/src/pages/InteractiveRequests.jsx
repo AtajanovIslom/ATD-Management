@@ -21,7 +21,7 @@ const STATUS = {
 }
 
 export default function InteractiveRequests() {
-  const { user, isAnyAdmin } = useAuth()
+  const { user, isAnyAdmin, isAdmin } = useAuth()
 
   const [items, setItems] = useState([])
   const [summary, setSummary] = useState({ total: 0, by_status: {} })
@@ -99,6 +99,17 @@ export default function InteractiveRequests() {
   }
 
   const isMine = (r) => r.assigned_to === user?.id
+
+  const handleDelete = async (req) => {
+    if (!window.confirm(`Ariza #${req.id} ni o'chirmoqchimisiz? Bu amalni qaytarib bo'lmaydi.`)) return
+    try {
+      await api.delete(`/interactive-requests/${req.id}`)
+      if (selected?.id === req.id) setSelected(null)
+      await load()
+    } catch (err) {
+      alert(err.response?.data?.error || 'Xatolik')
+    }
+  }
 
   if (loading) return <div className="loading">Yuklanmoqda...</div>
 
@@ -210,10 +221,12 @@ export default function InteractiveRequests() {
             r={selected}
             isMine={isMine(selected)}
             isAnyAdmin={isAnyAdmin}
+            isAdmin={isAdmin}
             onClose={() => setSelected(null)}
             onAction={(type, req) => { setModal({ type, req }); setModalData({}) }}
             onApprove={(req) => submitModalWith(req, 'approve')}
             onEdit={(req) => setEditReq(req)}
+            onDelete={handleDelete}
           />
         )}
       </div>
@@ -271,7 +284,7 @@ export default function InteractiveRequests() {
 
 /* -------------------------- Ariza tafsilotlari -------------------------- */
 
-function RequestDetail({ r, isMine, isAnyAdmin, onClose, onAction, onApprove, onEdit }) {
+function RequestDetail({ r, isMine, isAnyAdmin, isAdmin, onClose, onAction, onApprove, onEdit, onDelete }) {
   const canEdit = isAnyAdmin && r.status !== 'completed' && r.status !== 'rejected'
   // Tarixdan oxirgi "uzatish" yozuvini topamiz — ariza sizga peer bo'lim
   // rahbaridan uzatilgan bo'lsa banner ko'rsatish uchun.
@@ -416,6 +429,12 @@ function RequestDetail({ r, isMine, isAnyAdmin, onClose, onAction, onApprove, on
         {isAnyAdmin && r.status !== 'completed' && r.status !== 'rejected' && (
           <button className="btn btn-danger" onClick={() => onAction('reject', r)}>
             ❌ Rad etish
+          </button>
+        )}
+        {isAdmin && (
+          <button className="btn btn-danger" onClick={() => onDelete(r)}
+            title="Arizani butunlay o'chirish">
+            🗑️ O'chirish
           </button>
         )}
       </div>
