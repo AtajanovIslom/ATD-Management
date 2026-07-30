@@ -244,6 +244,103 @@ def get_request(req_id):
     return jsonify(d)
 
 
+@interactive_req_bp.route('/<int:req_id>', methods=['PUT'])
+@jwt_required()
+def edit_request(req_id):
+    """Ariza asosiy ma'lumotlarini tahrirlash (phone, tabel, department, types, comment).
+
+    Ruxsat: admin+ (barcha boshqarma boshliqlari) yoki bo'lim rahbari
+    (agar ariza uning bo'limi a'zosiga biriktirilgan bo'lsa).
+    Yakunlangan yoki rad etilgan arizani tahrirlab bo'lmaydi.
+    """
+    role, dept_id, div_id = get_scope(get_jwt())
+    user_id = int(get_jwt_identity())
+
+    r = InteractiveRequest.query.get_or_404(req_id)
+
+    # Ruxsat: admin+ hammasini, department_admin faqat o'z bo'limiga tegishlisini
+    if is_admin_or_above(role):
+        pass
+    elif role == 'department_admin':
+        member_ids = div_user_ids(div_id) if div_id else set()
+        member_ids.add(user_id)
+        if r.assigned_to and r.assigned_to not in member_ids:
+            return jsonify({'error': "Ruxsat yo'q"}), 403
+    else:
+        return jsonify({'error': "Ruxsat yo'q"}), 403
+
+    if r.status in ('completed', 'rejected'):
+        return jsonify({'error': "Yakunlangan arizani tahrirlab bo'lmaydi"}), 400
+
+    data = request.get_json() or {}
+    actor = User.query.get(user_id)
+
+    changed = []
+
+    if 'phone_num' in data:
+        v = (data.get('phone_num') or '').strip()
+        if not v:
+            return jsonify({'error': "phone_num bo'sh bo'lishi mumkin emas"}), 400
+        if v != r.phone_num:
+            r.phone_num = v
+            changed.append('telefon')
+
+    if 'tabel_num' in data:
+        v = (data.get('tabel_num') or '').strip()
+        if not v:
+            return jsonify({'error': "tabel_num bo'sh bo'lishi mumkin emas"}), 400
+        if v != r.tabel_num:
+            r.tabel_num = v
+            emp = fetch_employee_from_isup(v) or {}
+            r.full_name = emp.get('full_name') or ''
+            r.position = emp.get('position') or ''
+            r.division = emp.get('division') or ''
+            changed.append('tabel')
+
+    if 'comment' in data:
+        v = (data.get('comment') or '').strip()
+        if v != (r.comment or ''):
+            r.comment = v
+            changed.append('izoh')
+
+    new_dept_id = data.get('department_id')
+    new_type_ids = _read_type_ids(data) if ('type_ids' in data or 'type_id' in data or 'service_type' in data) else None
+
+    if new_dept_id or new_type_ids is not None:
+        dept_id_final = int(new_dept_id) if new_dept_id else r.department_id
+        dept = ServiceDepartment.query.get(dept_id_final)
+        if not dept:
+            return jsonify({'error': "Bo'lim topilmadi"}), 404
+
+        if new_type_ids is not None:
+            types, err = _resolve_types(new_type_ids, dept_id_final)
+            if err:
+                return jsonify({'error': err}), 400
+        else:
+            types = list(r.types)
+            for t in types:
+                if t.department_id != dept_id_final:
+                    return jsonify({'error': "Xizmat turlari yangi bo'limga mos emas — turlarini ham yangilang"}), 400
+
+        if dept_id_final != r.department_id:
+            r.department_id = dept_id_final
+            changed.append("xizmat bo'limi")
+        if new_type_ids is not None:
+            r.types = types
+            changed.append("xizmat turlari")
+
+    if changed:
+        _log_history(r, r.status, actor=actor,
+                     note="Tahrirlandi: " + ", ".join(changed))
+        log_audit('update', 'interactive_request', r.id,
+                  entity_label=r.tabel_num, details=", ".join(changed))
+        db.session.commit()
+
+    d = r.to_dict()
+    d['history'] = [h.to_public() for h in r.history]
+    return jsonify(d)
+
+
 @interactive_req_bp.route('/walkin', methods=['POST'])
 @jwt_required()
 def walkin_create():

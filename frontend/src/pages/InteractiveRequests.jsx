@@ -35,6 +35,7 @@ export default function InteractiveRequests() {
   const [busy, setBusy] = useState(false)
 
   const [walkinOpen, setWalkinOpen] = useState(false)
+  const [editReq, setEditReq] = useState(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -212,6 +213,7 @@ export default function InteractiveRequests() {
             onClose={() => setSelected(null)}
             onAction={(type, req) => { setModal({ type, req }); setModalData({}) }}
             onApprove={(req) => submitModalWith(req, 'approve')}
+            onEdit={(req) => setEditReq(req)}
           />
         )}
       </div>
@@ -236,6 +238,19 @@ export default function InteractiveRequests() {
           onCreated={async () => { setWalkinOpen(false); await load() }}
         />
       )}
+
+      {/* Ariza tahrirlash modal */}
+      {editReq && (
+        <EditModal
+          req={editReq}
+          onClose={() => setEditReq(null)}
+          onSaved={async (updated) => {
+            setEditReq(null)
+            await load()
+            if (selected?.id === updated.id) setSelected(updated)
+          }}
+        />
+      )}
     </div>
   )
 
@@ -256,7 +271,8 @@ export default function InteractiveRequests() {
 
 /* -------------------------- Ariza tafsilotlari -------------------------- */
 
-function RequestDetail({ r, isMine, isAnyAdmin, onClose, onAction, onApprove }) {
+function RequestDetail({ r, isMine, isAnyAdmin, onClose, onAction, onApprove, onEdit }) {
+  const canEdit = isAnyAdmin && r.status !== 'completed' && r.status !== 'rejected'
   return (
     <div className="card">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
@@ -346,6 +362,11 @@ function RequestDetail({ r, isMine, isAnyAdmin, onClose, onAction, onApprove }) 
 
       {/* Amallar */}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 14 }}>
+        {canEdit && (
+          <button className="btn btn-outline" onClick={() => onEdit(r)}>
+            ✏️ Tahrirlash
+          </button>
+        )}
         {isAnyAdmin && r.status === 'new' && (
           <button className="btn btn-primary" onClick={() => onAction('assign', r)}>
             📌 Xodimga biriktirish
@@ -694,6 +715,161 @@ function WalkinModal({ onClose, onCreated }) {
             <button type="button" className="btn btn-outline" onClick={onClose}>Bekor</button>
             <button type="submit" className="btn btn-primary" disabled={busy}>
               {busy ? 'Yaratilyapti...' : 'Ariza yaratish'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+
+/* -------------------------- Ariza tahrirlash --------------------------- */
+
+function EditModal({ req, onClose, onSaved }) {
+  const [depts, setDepts] = useState([])
+  const [types, setTypes] = useState([])
+  const [form, setForm] = useState({
+    phone_num: req.phone_num || '',
+    tabel_num: req.tabel_num || '',
+    department_id: String(req.department_id || ''),
+    type_ids: (req.types || []).map(t => t.id),
+    comment: req.comment || '',
+  })
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    api.get('/public/interactive/departments')
+      .then(r => setDepts(r.data))
+      .catch(() => setDepts([]))
+  }, [])
+
+  useEffect(() => {
+    if (!form.department_id) { setTypes([]); return }
+    api.get(`/public/interactive/departments/${form.department_id}/types`)
+      .then(r => setTypes(r.data))
+      .catch(() => setTypes([]))
+  }, [form.department_id])
+
+  const currentDept = depts.find(d => d.id === parseInt(form.department_id))
+  const isMulti = currentDept?.multi_type
+
+  const toggleType = (id) => {
+    setForm(f => {
+      if (isMulti) {
+        return { ...f, type_ids: f.type_ids.includes(id) ? f.type_ids.filter(x => x !== id) : [...f.type_ids, id] }
+      }
+      return { ...f, type_ids: [id] }
+    })
+  }
+
+  const submit = async (e) => {
+    e.preventDefault()
+    setError('')
+    if (!form.phone_num.trim() || !form.tabel_num.trim() || !form.department_id) {
+      setError("Majburiy maydonlarni to'ldiring"); return
+    }
+    if (form.type_ids.length === 0) {
+      setError("Kamida bitta xizmat turini tanlang"); return
+    }
+    setBusy(true)
+    try {
+      const res = await api.put(`/interactive-requests/${req.id}`, {
+        phone_num: form.phone_num.trim(),
+        tabel_num: form.tabel_num.trim(),
+        department_id: parseInt(form.department_id),
+        type_ids: form.type_ids,
+        comment: form.comment.trim(),
+      })
+      onSaved(res.data)
+    } catch (err) {
+      setError(err.response?.data?.error || 'Xatolik')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()}>
+        <h2>✏️ Arizani tahrirlash</h2>
+        <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
+          Tracking: <code>{req.tracking_id}</code>
+        </p>
+        {error && <div className="alert alert-error" style={{ marginBottom: 10 }}>{error}</div>}
+
+        <form onSubmit={submit}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div className="form-group">
+              <label>Tabel raqami *</label>
+              <input className="form-input" value={form.tabel_num}
+                onChange={e => setForm({ ...form, tabel_num: e.target.value.replace(/\D/g, '') })}
+                required />
+            </div>
+            <div className="form-group">
+              <label>Telefon raqami *</label>
+              <input className="form-input" value={form.phone_num}
+                onChange={e => setForm({ ...form, phone_num: e.target.value })}
+                required />
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label>Interaktiv xizmat kategoriyasi *</label>
+            <select className="form-input" value={form.department_id}
+              onChange={e => setForm({ ...form, department_id: e.target.value, type_ids: [] })}>
+              <option value="">— Tanlang —</option>
+              {depts.map(d => (
+                <option key={d.id} value={d.id}>
+                  {d.name} {d.multi_type ? '(bir nechta tanlash mumkin)' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {form.department_id && (
+            <div className="form-group">
+              <label>Xizmat turi {isMulti ? '(bir yoki bir nechta)' : ''}</label>
+              <div style={{
+                border: '1px solid var(--border)', borderRadius: 6,
+                maxHeight: 220, overflowY: 'auto', padding: 4,
+              }}>
+                {types.length === 0 ? (
+                  <p style={{ padding: 10, textAlign: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
+                    Bu bo'limda tur yo'q
+                  </p>
+                ) : types.map(t => (
+                  <label key={t.id} style={{
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    padding: '6px 10px', cursor: 'pointer', borderRadius: 4,
+                    background: form.type_ids.includes(t.id) ? 'rgba(99,102,241,0.1)' : 'transparent',
+                  }}>
+                    <input
+                      type={isMulti ? 'checkbox' : 'radio'} name="type"
+                      checked={form.type_ids.includes(t.id)}
+                      onChange={() => toggleType(t.id)}
+                    />
+                    <span style={{ fontSize: 13 }}>{t.name}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="form-group">
+            <label>Izoh</label>
+            <textarea className="form-input" rows={3}
+              value={form.comment}
+              onChange={e => setForm({ ...form, comment: e.target.value })}
+              placeholder="Muammo tafsilotlari..."
+            />
+          </div>
+
+          <div className="modal-actions">
+            <button type="button" className="btn btn-outline" onClick={onClose}>Bekor</button>
+            <button type="submit" className="btn btn-primary" disabled={busy}>
+              {busy ? 'Saqlanmoqda...' : 'Saqlash'}
             </button>
           </div>
         </form>

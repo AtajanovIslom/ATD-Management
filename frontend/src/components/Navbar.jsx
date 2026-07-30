@@ -79,9 +79,11 @@ export default function Navbar() {
         {canManageRoles && link('/roles', '🔑', 'Rol va huquqlar')}
         {isSuperAdmin && link('/audit-logs', '📋', 'Audit jurnali')}
 
-        {/* Interaktiv arizalar — faqat adminlar (boshqarma/bo'lim rahbari) va
-            "Interaktiv xizmat ko'rsatadi" deb belgilangan bo'lim a'zolariga */}
-        {(isDeptAdmin || user.division_is_service_provider) && (
+        {/* Interaktiv arizalar — faqat barcha boshqarma boshliqlari (admin+) va
+            "Interaktiv xizmat ko'rsatadi" deb belgilangan bo'lim a'zolariga
+            (bo'lim rahbari + xodim). Servis xizmati yoqilmagan bo'limlarga
+            ko'rinmaydi. */}
+        {(isAdmin || user.division_is_service_provider) && (
           <NavLink to="/interactive-requests" className={({ isActive }) => isActive ? 'active' : ''}>
             📥 Interaktiv arizalar
             {interactiveCount > 0 && (

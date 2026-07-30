@@ -50,8 +50,11 @@ export default function App() {
             <Route path="/interactive-services" element={<InteractiveServicesAdmin />} />
           )}
 
-          {/* Interaktiv arizalar — hamma rol (backend scope bilan filter qiladi) */}
-          <Route path="/interactive-requests" element={<InteractiveRequests />} />
+          {/* Interaktiv arizalar — faqat admin+ (barcha boshqarma boshliqlari) yoki
+              interaktiv xizmat ko'rsatadigan bo'lim a'zolari (bo'lim rahbari + xodim) */}
+          {(isAdmin || user.division_is_service_provider) && (
+            <Route path="/interactive-requests" element={<InteractiveRequests />} />
+          )}
 
           {/* Eslatmalarim — barcha foydalanuvchilar uchun */}
           <Route path="/reminders" element={<Reminders />} />
