@@ -21,6 +21,7 @@ import Reminders from './pages/Reminders'
 import WorkLogs from './pages/WorkLogs'
 import DepartmentWorkLogs from './pages/DepartmentWorkLogs'
 import ReminderNotification from './components/ReminderNotification'
+import TaskNotifier from './components/TaskNotifier'
 import Navbar from './components/Navbar'
 
 export default function App() {
@@ -41,6 +42,7 @@ export default function App() {
     <div className="app-layout">
       <Navbar />
       <ReminderNotification />
+      <TaskNotifier />
       <main className="main-content">
         <Routes>
           <Route path="/register/:token" element={<Register />} />

@@ -1056,8 +1056,11 @@ class Task(db.Model):
             'start_date': self.start_date.isoformat() if self.start_date else None,
             'deadline': self.deadline.isoformat() if self.deadline else None,
             'team_name': self.team.name if self.team else None,
+            'assignee_id': self.assignee_id,
             'assignee_name': self.assignee.full_name if self.assignee else None,
+            'assignee_ids': [a.id for a in self.assignees],
             'assignee_names': [a.full_name for a in self.assignees],
+            'created_by': self.created_by,
             'is_overdue': self.is_overdue,
             'report_count': len(self.reports),
         }

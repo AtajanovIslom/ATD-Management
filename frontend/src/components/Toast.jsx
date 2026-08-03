@@ -2,12 +2,26 @@ import { createContext, useContext, useState, useCallback } from 'react'
 
 const ToastContext = createContext(null)
 
+const ICONS = {
+  info: '📋',
+  success: '✅',
+  warning: '⚠️',
+  danger: '🔴',
+}
+
 export function ToastProvider({ children }) {
   const [toasts, setToasts] = useState([])
 
-  const addToast = useCallback((message, duration = 5000) => {
-    const id = Date.now()
-    setToasts(prev => [...prev, { id, message }])
+  const addToast = useCallback((message, opts = {}) => {
+    const {
+      title = null,
+      type = 'info',
+      duration = 6000,
+      onClick = null,
+    } = typeof opts === 'number' ? { duration: opts } : opts
+
+    const id = Date.now() + Math.random()
+    setToasts(prev => [...prev, { id, message, title, type, onClick }])
     setTimeout(() => {
       setToasts(prev => prev.map(t => t.id === id ? { ...t, exiting: true } : t))
       setTimeout(() => {
@@ -21,9 +35,16 @@ export function ToastProvider({ children }) {
       {children}
       <div className="toast-container">
         {toasts.map(t => (
-          <div key={t.id} className={`toast ${t.exiting ? 'toast-exit' : ''}`}>
-            <span className="toast-icon">📋</span>
-            <span>{t.message}</span>
+          <div
+            key={t.id}
+            className={`toast toast-${t.type} ${t.exiting ? 'toast-exit' : ''} ${t.onClick ? 'toast-clickable' : ''}`}
+            onClick={() => { if (t.onClick) t.onClick() }}
+          >
+            <span className="toast-icon">{ICONS[t.type] || ICONS.info}</span>
+            <div className="toast-body">
+              {t.title && <div className="toast-title">{t.title}</div>}
+              <div className="toast-message">{t.message}</div>
+            </div>
           </div>
         ))}
       </div>
