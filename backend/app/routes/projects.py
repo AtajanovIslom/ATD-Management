@@ -9,6 +9,7 @@ from app.utils import (
     get_scope, is_any_admin, is_admin_or_above, is_superadmin,
     dept_user_ids, div_user_ids, log_audit, FULL_ACCESS_ROLES,
 )
+from app.services import events
 
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'uploads')
 ALLOWED_EXTENSIONS = {'doc', 'docx', 'xls', 'xlsx', 'pdf', 'txt', 'png', 'jpg', 'jpeg', 'zip', 'rar', 'pptx'}
@@ -25,6 +26,14 @@ def is_admin_role():
     """Loyiha yaratish/tahrirlash/o'chirish uchun huquq — boshqarma rahbari va
        yuqori. Bo'lim rahbari (department_admin) loyihalarga aralashmaydi."""
     return is_admin_or_above(get_jwt().get('role', ''))
+
+
+def _stage_assignee_ids(stage):
+    """Bosqichga biriktirilgan xodimlar (yakka mas'ul + ko'p ijrochi)."""
+    ids = {a.id for a in stage.assignees}
+    if stage.assignee_id:
+        ids.add(stage.assignee_id)
+    return ids
 
 
 def _check_no_vacation(user_ids):
@@ -193,6 +202,7 @@ def create_project():
         return vac_err
 
     all_team_ids = set()
+    created_stages = []
     for i, stage_obj in enumerate(stages_data):
         s_name = stage_obj.get('name', '').strip() if isinstance(stage_obj, dict) else str(stage_obj).strip()
         s_start_date = stage_obj.get('start_date') if isinstance(stage_obj, dict) else None
@@ -217,6 +227,12 @@ def create_project():
             if u:
                 stage.assignees.append(u)
         db.session.add(stage)
+        created_stages.append(stage)
+
+    # Bosqich ID'lari bildirishnomada kerak — avval yozib olamiz
+    db.session.flush()
+    for stage in created_stages:
+        events.stage_assigned(stage, project)
 
     for tid in all_team_ids:
         team = Team.query.get(tid)
@@ -345,6 +361,7 @@ def update_stage(project_id, stage_id):
                      'completed': 'tugallandi', 'pending': 'kutilmoqda'}
         log_audit('update', 'project_stage', stage.id, entity_label=stage.name,
                   details=f"holat: {STATUS_UZ.get(new_status, new_status)}")
+        events.stage_status_changed(stage, stage.project, new_status)
 
     if is_admin:
         if 'name' in data:
@@ -367,6 +384,9 @@ def update_stage(project_id, stage_id):
             vac_err = _check_no_vacation(candidate_ids)
             if vac_err:
                 return vac_err
+        # Faqat yangi qo'shilganlarga xabar ketsin — ilgari ham biriktirilgan
+        # xodim har tahrirda takroriy bildirishnoma olmasligi kerak
+        before_ids = set(_stage_assignee_ids(stage))
         if 'assignee_id' in data:
             stage.assignee_id = data['assignee_id'] or None
         if 'assignee_ids' in data:
@@ -375,6 +395,9 @@ def update_stage(project_id, stage_id):
                 u = User.query.get(int(uid))
                 if u:
                     stage.assignees.append(u)
+        newly_assigned = [uid for uid in _stage_assignee_ids(stage) if uid not in before_ids]
+        if newly_assigned:
+            events.stage_assigned(stage, stage.project, newly_assigned)
 
     db.session.commit()
 
@@ -431,6 +454,7 @@ def add_stage(project_id):
     db.session.flush()
     log_audit('create', 'project_stage', stage.id, entity_label=stage.name,
               details=f"loyiha: {project.name}")
+    events.stage_assigned(stage, project)
     db.session.commit()
     return jsonify(project.to_dict()), 201
 

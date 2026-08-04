@@ -18,6 +18,10 @@ frontend/dist/
 .env
 backend/.env
 
+# Maxfiy kalitlar — Firebase service account va boshqalar
+backend/secrets/
+*firebase-adminsdk*.json
+
 # Uploads — foydalanuvchi yuklagan fayllar (Docker'da volume'da saqlanadi)
 backend/app/uploads/
 backend/uploads/

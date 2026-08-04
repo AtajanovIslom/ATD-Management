@@ -31,6 +31,13 @@ def create_app():
     from app.routes.reminders import reminders_bp
     from app.routes.work_logs import work_logs_bp
     from app.routes.vacations import vacations_bp
+    from app.routes.notifications import notifications_bp
+
+    # Import qilinishi shart: push navbatini commit'ga ulaydigan SQLAlchemy
+    # hodisa tinglovchilari shu modulda ro'yxatdan o'tadi.
+    from app.services import notifications as _notification_service  # noqa: F401
+    from app.services import firebase as _firebase
+    _firebase.check_config(app)
 
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(users_bp, url_prefix='/api/users')
@@ -48,6 +55,7 @@ def create_app():
     app.register_blueprint(reminders_bp, url_prefix='/api/reminders')
     app.register_blueprint(work_logs_bp, url_prefix='/api/work-logs')
     app.register_blueprint(vacations_bp, url_prefix='/api/vacations')
+    app.register_blueprint(notifications_bp, url_prefix='/api/notifications')
 
     with app.app_context():
         from app.models import User

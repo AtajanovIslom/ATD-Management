@@ -20,8 +20,14 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-1111}@db:5432/${POSTGRES_DB:-hisobot}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-me-in-prod}
+      # Firebase (mobil bildirishnomalar). Fayl volume orqali ulanadi —
+      # image ichiga yozilmaydi. Kalit bo'lmasa push jim o'chadi.
+      FIREBASE_CREDENTIALS_PATH: /app/secrets/firebase-service-account.json
+      PUSH_ENABLED: ${PUSH_ENABLED:-1}
+      FCM_ANDROID_CHANNEL_ID: ${FCM_ANDROID_CHANNEL_ID:-atd_high_importance}
     volumes:
       - uploads:/app/uploads
+      - ./backend/secrets:/app/secrets:ro
     depends_on:
       db:
         condition: service_healthy

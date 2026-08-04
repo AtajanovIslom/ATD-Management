@@ -31,6 +31,7 @@ from app.utils import (
     is_any_admin, is_admin_or_above, log_audit, fetch_employee_from_isup,
     get_scope, div_user_ids, dept_user_ids,
 )
+from app.services import events
 
 interactive_public_bp = Blueprint('interactive_public', __name__)
 interactive_req_bp = Blueprint('interactive_requests', __name__)
@@ -558,6 +559,7 @@ def assign(req_id):
     log_audit('transfer' if is_transfer else 'assign',
               'interactive_request', r.id,
               entity_label=f"{r.tabel_num} → {worker.full_name}")
+    events.interactive_assigned(r, worker.id, actor=actor, is_transfer=is_transfer)
     db.session.commit()
     return jsonify(r.to_dict())
 
@@ -589,6 +591,7 @@ def submit_review(req_id):
                  note=result or "Ish bajarildi, rahbar tekshiruvi kutilmoqda")
     log_audit('submit_review', 'interactive_request', r.id,
               entity_label=r.tabel_num)
+    events.interactive_status_changed(r, 'pending_review', actor=actor)
     db.session.commit()
     return jsonify(r.to_dict())
 
@@ -630,6 +633,7 @@ def approve(req_id):
 
     _log_history(r, 'completed', actor=actor, note="Rahbar tomonidan tasdiqlandi")
     log_audit('approve', 'interactive_request', r.id, entity_label=r.tabel_num)
+    events.interactive_status_changed(r, 'completed', actor=actor)
     db.session.commit()
     return jsonify(r.to_dict())
 
@@ -663,6 +667,7 @@ def return_to_worker(req_id):
                  note=f"Qaytarildi (#{r.return_count}): {reason}")
     log_audit('return', 'interactive_request', r.id,
               entity_label=r.tabel_num, details=reason)
+    events.interactive_status_changed(r, 'in_progress', actor=actor, reason=reason)
     db.session.commit()
     return jsonify(r.to_dict())
 
@@ -696,6 +701,7 @@ def reject(req_id):
     _log_history(r, 'rejected', actor=actor, note=reason)
     log_audit('reject', 'interactive_request', r.id,
               entity_label=r.tabel_num, details=reason)
+    events.interactive_status_changed(r, 'rejected', actor=actor, reason=reason)
     db.session.commit()
     return jsonify(r.to_dict())
 

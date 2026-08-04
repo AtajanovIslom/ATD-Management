@@ -9,6 +9,7 @@ from app.utils import (
     get_scope, is_any_admin, is_admin_or_above, is_superadmin,
     dept_user_ids, div_user_ids, log_audit,
 )
+from app.services import events
 
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'uploads')
 ALLOWED_EXTENSIONS = {'doc', 'docx', 'xls', 'xlsx', 'pdf', 'txt', 'png', 'jpg', 'jpeg', 'zip', 'rar', 'pptx'}
@@ -281,6 +282,7 @@ def create_task():
             )
             db.session.add(attachment)
 
+    events.task_assigned(task)
     db.session.commit()
     return jsonify(task.to_dict()), 201
 
@@ -341,6 +343,8 @@ def update_task(task_id):
                 return jsonify({'error': 'Ruxsat yo\'q'}), 403
 
         task.status = new_status
+        events.task_status_changed(task, new_status,
+                                   reason=(data.get('return_reason') or '').strip())
 
     if is_any_admin(claims.get('role', '')):
         if 'name' in data:
@@ -509,6 +513,7 @@ def reassign_task(task_id):
     new_name = ', '.join(w.full_name for w in workers)
     log_audit('assign', 'task', task.id, entity_label=task.name,
               details=f"{prev_name} -> {new_name}")
+    events.task_assigned(task, [w.id for w in workers])
     db.session.commit()
     return jsonify(task.to_dict())
 
@@ -589,6 +594,7 @@ def create_task_report(task_id):
     if task.status in ('active', 'in_progress', 'returned'):
         task.status = 'review'
         task.completed_at = None
+        events.task_status_changed(task, 'review')
 
     db.session.commit()
     return jsonify(report.to_dict()), 201

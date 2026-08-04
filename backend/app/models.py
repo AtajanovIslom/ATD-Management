@@ -1113,6 +1113,110 @@ class TaskReport(db.Model):
         }
 
 
+class DeviceToken(db.Model):
+    """Mobil qurilmaning FCM registratsiya tokeni.
+
+    Bitta xodimda bir nechta qurilma bo'lishi mumkin, shuning uchun user_id
+    bo'yicha ko'plik. `token` esa global unique — qurilma boshqa hisobga kirsa
+    token o'sha yozuvda yangi egasiga ko'chiriladi (nusxa yaratilmaydi), aks
+    holda eski egasining xabari begona telefonga tushib qolardi.
+    """
+    __tablename__ = 'device_tokens'
+
+    PLATFORMS = ('android', 'ios', 'web')
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'),
+                        nullable=False)
+    token = db.Column(db.Text, nullable=False, unique=True)
+    platform = db.Column(db.String(20), default='android')
+    device_info = db.Column(db.String(255), default='')  # model/OS — diagnostika uchun
+    is_active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=utc_naive_now)
+    last_used_at = db.Column(db.DateTime, default=utc_naive_now)
+
+    # Yagona so'rov shakli: "shu xodimlarning faol token'lari"
+    __table_args__ = (
+        db.Index('idx_device_tokens_user_active', 'user_id', 'is_active'),
+    )
+
+    user = db.relationship('User', foreign_keys=[user_id], lazy=True)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'platform': self.platform or 'android',
+            'device_info': self.device_info or '',
+            'is_active': bool(self.is_active),
+            # Token to'liq qaytarilmaydi — faqat oxirgi 8 belgi (qurilmani ajratish uchun)
+            'token_tail': (self.token or '')[-8:],
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'last_used_at': self.last_used_at.isoformat() if self.last_used_at else None,
+        }
+
+
+class Notification(db.Model):
+    """Xodimga yuborilgan bildirishnoma (mobil ilovadagi "Bildirishnomalar" ro'yxati).
+
+    Push yuborilishidan qat'i nazar shu yerda saqlanadi — telefon o'chiq bo'lsa
+    yoki token eskirgan bo'lsa ham xabar yo'qolmaydi, ilova ochilganda ko'rinadi.
+    """
+    __tablename__ = 'notifications'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'),
+                        nullable=False)
+
+    event = db.Column(db.String(50), nullable=False)
+    # task_assigned | task_review | task_completed | task_returned |
+    # stage_assigned | interactive_assigned | interactive_review | ...
+
+    title = db.Column(db.String(255), nullable=False)
+    body = db.Column(db.Text, default='')
+
+    entity_type = db.Column(db.String(50), default='')   # task | project_stage | interactive_request
+    entity_id = db.Column(db.Integer, nullable=True)
+
+    # Ilova ekranga o'tishi uchun qo'shimcha maydonlar (deadline, project_id, ...)
+    data = db.Column(db.JSON, default=dict)
+
+    actor_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    actor_name = db.Column(db.String(255), default='')
+
+    is_read = db.Column(db.Boolean, default=False)
+    read_at = db.Column(db.DateTime)
+    created_at = db.Column(db.DateTime, default=utc_naive_now)
+
+    actor = db.relationship('User', foreign_keys=[actor_id], lazy='joined')
+
+    # Jadval tez o'sadi, shuning uchun indekslar aynan ikkita so'rovga moslangan:
+    #   ro'yxat        — user_id bo'yicha filtr + sana bo'yicha teskari tartib
+    #   unread-count   — user_id + is_read
+    # Alohida `is_read` indeksi foydasiz bo'lardi: unda atigi ikki xil qiymat bor.
+    __table_args__ = (
+        db.Index('idx_notifications_user_created', 'user_id', created_at.desc()),
+        db.Index('idx_notifications_user_unread', 'user_id', 'is_read'),
+    )
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'event': self.event,
+            'title': self.title,
+            'body': self.body or '',
+            'entity_type': self.entity_type or '',
+            'entity_id': self.entity_id,
+            'data': self.data or {},
+            'actor_id': self.actor_id,
+            'actor_name': self.actor_name or (self.actor.full_name if self.actor else ''),
+            'is_read': bool(self.is_read),
+            'read_at': self.read_at.isoformat() if self.read_at else None,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+        }
+
+
 class ReportAttachment(db.Model):
     __tablename__ = 'report_attachments'
 
