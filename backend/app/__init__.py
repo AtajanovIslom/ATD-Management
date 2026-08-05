@@ -257,4 +257,15 @@ def create_app():
             except Exception:
                 db.session.rollback()
 
+        # Gunicorn `--preload` bilan ishga tushadi: create_app() master
+        # process'da bajariladi va shu yergacha ochilgan PostgreSQL ulanishlari
+        # pool'da qolib ketadi. Fork'dan keyin to'rtala worker o'sha bitta
+        # soketni birga ishlatadi — protokol buziladi va so'rovlar bir-birining
+        # javobini oladi ("PGRES_TUPLES_OK and no message from the libpq",
+        # "Could not locate column in row", "This result object does not
+        # return rows"). Shuning uchun import oxirida pool bo'shatiladi —
+        # har bir worker fork'dan keyin o'z ulanishini ochadi.
+        db.session.remove()
+        db.engine.dispose()
+
     return app
