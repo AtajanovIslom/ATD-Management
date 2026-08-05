@@ -23,16 +23,22 @@ export default function AdminDashboard() {
 
   useEffect(() => { loadData() }, [])
 
-  // Filter/pagination o'zgarganida browse ni qayta yuklaymiz
-  useEffect(() => {
+  // "Barcha vazifalar" ro'yxati. loadData() bunga tegmaydi, shuning uchun
+  // ro'yxatni o'zgartiradigan amallar (o'chirish) buni alohida chaqiradi —
+  // aks holda o'chirilgan vazifa ekranda qolib ketadi.
+  const loadBrowse = async () => {
     const params = new URLSearchParams()
     Object.entries(taskFilter).forEach(([k, v]) => {
       if (v !== '' && v !== null && v !== undefined) params.set(k, v)
     })
-    api.get('/tasks/browse?' + params.toString())
-      .then(r => setBrowseData(r.data))
-      .catch(() => {})
-  }, [taskFilter])
+    try {
+      const r = await api.get('/tasks/browse?' + params.toString())
+      setBrowseData(r.data)
+    } catch { /* ignore */ }
+  }
+
+  // Filter/pagination o'zgarganida browse ni qayta yuklaymiz
+  useEffect(() => { loadBrowse() }, [taskFilter])
 
   const setF = (patch) => setTaskFilter(prev => ({ ...prev, ...patch, page: patch.page ?? 1 }))
 
@@ -42,7 +48,15 @@ export default function AdminDashboard() {
     try {
       await api.delete(`/tasks/${task.id}`)
       loadData()
+      loadBrowse()
     } catch (err) {
+      // 404 — vazifani boshqa rahbar allaqachon o'chirgan. Ro'yxatni
+      // moslashtiramiz, chunki foydalanuvchi ko'zlagan natija baribir shu.
+      if (err.response?.status === 404) {
+        loadData()
+        loadBrowse()
+        return
+      }
       alert(err.response?.data?.error || 'Xatolik')
     }
   }
