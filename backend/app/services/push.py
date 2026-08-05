@@ -69,8 +69,11 @@ def _build_message(tokens, title, body, data, channel_id):
             priority='high',
             notification=messaging.AndroidNotification(
                 channel_id=channel_id,
-                # Eski Flutter setup'lari xabar bosilganini shu action orqali tutadi
-                click_action='FLUTTER_NOTIFICATION_CLICK',
+                # `click_action` ATAYLAB berilmaydi. U ko'rsatilsa Android shu
+                # nomdagi intent-filter'ga ega activity qidiradi va topmasa
+                # xabarni bosish hech qayerga olib bormaydi. Zamonaviy
+                # firebase_messaging plagini bosilishni o'zi ushlaydi
+                # (onMessageOpenedApp / getInitialMessage).
             ),
         ),
         apns=messaging.APNSConfig(
