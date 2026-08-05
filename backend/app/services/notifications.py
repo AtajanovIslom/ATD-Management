@@ -96,6 +96,31 @@ def notify(user_ids, *, event, title, body='', entity_type='', entity_id=None,
     return created
 
 
+def discard(entity_type, entity_ids):
+    """Obyekt o'chirilganda unga tegishli bildirishnomalarni ham olib tashlaydi.
+
+    `notifications` jadvalida tashqi kalit yo'q — u bir nechta obyekt turiga
+    ishora qiladi (task, project_stage, interactive_request), shuning uchun
+    kaskad o'chirish ishlamaydi. Tozalanmasa xodim bildirishnomani bosganda
+    "Ma'lumot topilmadi" degan bo'sh sahifaga tushardi.
+
+    commit() chaqiruvchi tomonidan bajariladi — o'chirish bilan bitta
+    tranzaksiyada ketsin.
+    """
+    from app.models import Notification
+
+    if isinstance(entity_ids, int):
+        entity_ids = [entity_ids]
+    ids = [int(i) for i in entity_ids or [] if i is not None]
+    if not ids:
+        return 0
+
+    return Notification.query.filter(
+        Notification.entity_type == entity_type,
+        Notification.entity_id.in_(ids),
+    ).delete(synchronize_session=False)
+
+
 def send_now(user_ids, *, title, body='', data=None):
     """Bazaga yozmasdan darhol push yuborish (test/diagnostika uchun).
 

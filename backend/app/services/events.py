@@ -7,7 +7,7 @@ route'larni titkilash shart emas.
 Barcha funksiyalar `db.session.commit()` chaqirmaydi — chaqiruvchi o'z
 tranzaksiyasida commit qiladi.
 """
-from app.services.notifications import notify
+from app.services.notifications import discard, notify
 
 # Hodisa kodlari — Flutter tomonda navigatsiya shular bo'yicha quriladi
 TASK_ASSIGNED = 'task_assigned'
@@ -63,6 +63,22 @@ def _request_label(req):
     types = ', '.join(t.name for t in req.types)
     who = req.full_name or req.tabel_num
     return f'{types} · {who}' if types else who
+
+
+# =========================================================================
+# O'CHIRISH
+# =========================================================================
+
+def task_deleted(task_id):
+    return discard('task', task_id)
+
+
+def stages_deleted(stage_ids):
+    return discard('project_stage', stage_ids)
+
+
+def interactive_deleted(request_id):
+    return discard('interactive_request', request_id)
 
 
 # =========================================================================

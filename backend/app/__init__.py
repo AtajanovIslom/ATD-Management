@@ -219,6 +219,20 @@ def create_app():
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS email VARCHAR(255)",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(50)",
             "ALTER TABLE users ALTER COLUMN department SET DEFAULT ''",
+            # Obyekti o'chirilgan bildirishnomalarni tozalash. `notifications`
+            # bir nechta jadvalga ishora qiladi (task/project_stage/
+            # interactive_request), shuning uchun tashqi kalit va kaskad yo'q.
+            # Endi o'chirish endpointlari o'zi tozalaydi, bu esa avvaldan
+            # qolganlarni olib tashlaydi va xavfsizlik to'ri bo'lib qoladi.
+            """DELETE FROM notifications WHERE entity_type = 'task'
+                AND entity_id IS NOT NULL
+                AND NOT EXISTS (SELECT 1 FROM tasks t WHERE t.id = entity_id)""",
+            """DELETE FROM notifications WHERE entity_type = 'project_stage'
+                AND entity_id IS NOT NULL
+                AND NOT EXISTS (SELECT 1 FROM project_stages s WHERE s.id = entity_id)""",
+            """DELETE FROM notifications WHERE entity_type = 'interactive_request'
+                AND entity_id IS NOT NULL
+                AND NOT EXISTS (SELECT 1 FROM interactive_requests r WHERE r.id = entity_id)""",
         ]
         # Har bir migratsiya o'z tranzaksiyasida bajariladi — bittasi xato bersa
         # keyingilariga ta'sir qilmasin. Ilgari umumiy commit edi, bir SQL rollback

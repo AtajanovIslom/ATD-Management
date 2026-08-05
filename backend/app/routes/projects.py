@@ -302,6 +302,9 @@ def delete_project(project_id):
 
     project = Project.query.get_or_404(project_id)
     log_audit('delete', 'project', project.id, entity_label=project.name)
+    # Bosqichlar kaskad bilan o'chadi — ularga ishora qiluvchi bildirishnomalar
+    # esa o'z-o'zidan ketmaydi (tashqi kalit yo'q), qo'lda tozalaymiz.
+    events.stages_deleted([s.id for s in project.stages])
     for att in project.attachments:
         filepath = os.path.join(UPLOAD_DIR, att.filename)
         if os.path.exists(filepath):
@@ -472,6 +475,7 @@ def delete_stage(project_id, stage_id):
     stage = ProjectStage.query.get_or_404(stage_id)
     log_audit('delete', 'project_stage', stage.id, entity_label=stage.name,
               details=f"loyiha: {project.name}")
+    events.stages_deleted(stage.id)
     db.session.delete(stage)
     db.session.flush()
 

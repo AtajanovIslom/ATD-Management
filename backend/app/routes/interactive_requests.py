@@ -271,6 +271,7 @@ def delete_request(req_id):
 
     r = InteractiveRequest.query.get_or_404(req_id)
     label = f"{r.tabel_num} — {', '.join(t.name for t in r.types)}"
+    events.interactive_deleted(r.id)
     db.session.delete(r)
     log_audit('delete', 'interactive_request', req_id, entity_label=label)
     db.session.commit()

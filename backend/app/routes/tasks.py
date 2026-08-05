@@ -526,6 +526,9 @@ def delete_task(task_id):
         return jsonify({'error': "Ruxsat yo'q"}), 403
 
     task = Task.query.get_or_404(task_id)
+    # Vazifa bilan birga unga ishora qiluvchi bildirishnomalar ham ketsin —
+    # aks holda xodim ularni bosganda bo'sh sahifaga tushardi.
+    events.task_deleted(task.id)
     db.session.delete(task)
     db.session.commit()
     return jsonify({'message': 'Vazifa o\'chirildi'})
