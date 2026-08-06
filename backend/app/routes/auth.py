@@ -1,5 +1,7 @@
-from flask import Blueprint, request, jsonify
-from flask_jwt_extended import create_access_token
+from flask import Blueprint, request, jsonify, current_app
+from flask_jwt_extended import (
+    create_access_token, create_refresh_token, jwt_required, get_jwt_identity,
+)
 from werkzeug.security import check_password_hash, generate_password_hash
 from app import db
 from app.models import User
@@ -8,16 +10,32 @@ from app.utils import validate_password, log_audit
 auth_bp = Blueprint('auth', __name__)
 
 
-def _make_token(user):
-    return create_access_token(
-        identity=str(user.id),
-        additional_claims={
-            'role': user.role,
-            'full_name': user.full_name,
-            'department_id': user.department_id,
-            'division_id': user.division_id,
-        }
-    )
+def _make_tokens(user):
+    """Access + refresh token juftligi.
+
+    Web faqat `token`dan foydalanadi (ortiqcha maydonlarni e'tiborsiz qoldiradi),
+    mobil ilova esa `refresh_token`ni xavfsiz xotirada saqlab, access token
+    muddati tugashiga yaqin /api/auth/refresh orqali sessiyani uzaytiradi.
+
+    `expires_in` — access token necha sekunddan keyin o'lishi. Mobil ilova
+    JWT'ni dekodlab o'tirmasligi uchun tayyor holda beriladi.
+    """
+    identity = str(user.id)
+    return {
+        'token': create_access_token(
+            identity=identity,
+            additional_claims={
+                'role': user.role,
+                'full_name': user.full_name,
+                'department_id': user.department_id,
+                'division_id': user.division_id,
+            }
+        ),
+        'refresh_token': create_refresh_token(identity=identity),
+        'expires_in': int(
+            current_app.config['JWT_ACCESS_TOKEN_EXPIRES'].total_seconds()
+        ),
+    }
 
 
 @auth_bp.route('/signup', methods=['POST'])
@@ -59,7 +77,7 @@ def signup():
     db.session.add(user)
     db.session.commit()
 
-    return jsonify({'token': _make_token(user), 'user': user.to_dict()}), 201
+    return jsonify({**_make_tokens(user), 'user': user.to_dict()}), 201
 
 
 @auth_bp.route('/login', methods=['POST'])
@@ -87,7 +105,35 @@ def login():
     ))
     _db.session.commit()
 
-    return jsonify({'token': _make_token(user), 'user': user.to_dict()})
+    return jsonify({**_make_tokens(user), 'user': user.to_dict()})
+
+
+@auth_bp.route('/refresh', methods=['POST'])
+@jwt_required(refresh=True)
+def refresh():
+    """Sessiyani uzaytirish — faqat refresh token bilan chaqiriladi.
+
+    Authorization: Bearer <refresh_token>
+
+    Har chaqiruvda YANGI refresh token qaytariladi (rotatsiya), ya'ni 15 kunlik
+    muddat shu paytdan boshlab qayta sanaladi. Mobil ilova buni har ochilganda
+    chaqirishi kerak — aks holda 12 soat ichida qayta kirgan xodimning muddati
+    surilmay qoladi.
+
+    Rol/bo'lim claim'lari va `user` obyekti bazadan qayta o'qiladi, shuning
+    uchun admin xodimni bloklagan yoki rolini o'zgartirgan bo'lsa, o'zgarish
+    keyingi refresh'da kuchga kiradi.
+    """
+    try:
+        user_id = int(get_jwt_identity())
+    except (TypeError, ValueError):
+        return jsonify({'error': 'Token yaroqsiz'}), 401
+
+    user = User.query.filter_by(id=user_id, is_active=True).first()
+    if not user:
+        return jsonify({'error': 'Foydalanuvchi topilmadi yoki faol emas'}), 401
+
+    return jsonify({**_make_tokens(user), 'user': user.to_dict()})
 
 
 @auth_bp.route('/register/<token>', methods=['GET'])
@@ -129,4 +175,4 @@ def complete_registration(token):
     user.registration_token = None
     db.session.commit()
 
-    return jsonify({'token': _make_token(user), 'user': user.to_dict()})
+    return jsonify({**_make_tokens(user), 'user': user.to_dict()})

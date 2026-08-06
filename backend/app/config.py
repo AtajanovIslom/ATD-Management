@@ -16,6 +16,12 @@ class Config:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', 'hisobot-secret-key-2024')
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=12)
+    # Mobil ilova uchun "sirpanuvchi sessiya": access token 12 soatda o'ladi,
+    # lekin ilova POST /api/auth/refresh orqali uni tiklaydi. Har refresh'da
+    # yangi refresh token beriladi (rotatsiya) — shuning uchun xodim 15 kun
+    # ichida bir marta kirsa ham muddat o'sha paytdan qayta sanaladi.
+    # 15 kun umuman kirmasa — refresh token o'ladi va login sahifasi chiqadi.
+    JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=15)
 
     # --- Firebase Cloud Messaging (mobil ilova bildirishnomalari) ---
     # Credential ikki usulda beriladi (birinchi topilgani ishlatiladi):
