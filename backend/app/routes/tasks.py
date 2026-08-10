@@ -356,12 +356,13 @@ def update_task(task_id):
     return jsonify(task.to_dict())
 
 
-def _task_assignable_workers(role, dept_id, div_id):
+def _task_assignable_workers(role, dept_id, div_id, user_id=None):
     """Vazifani kimga yuklash mumkin — ierarxiya bo'yicha:
        - superadmin/direksiya: barcha faol xodimlar (user + dept_admin)
        - boshqarma rahbari (admin): o'z boshqarmasidagi bo'lim rahbarlari va user'lar
          (bevosita department_id yoki bo'lim orqali division.department_id ham hisoblanadi)
-       - bo'lim rahbari (department_admin): o'z bo'limidagi xodimlar (user)
+       - bo'lim rahbari (department_admin): o'z bo'limidagi xodimlar (user) va o'zi
+         (bitta vazifani rahbar o'ziga ham, xodimlariga ham biriktira oladi)
 
     Bugun tatilda bo'lgan xodimlar ro'yxatdan chiqarib tashlanadi.
     """
@@ -377,7 +378,11 @@ def _task_assignable_workers(role, dept_id, div_id):
             cond = db.or_(cond, User.division_id.in_(div_ids))
         q = q.filter(cond)
     elif role == 'department_admin' and div_id:
-        q = q.filter_by(division_id=div_id, role='user')
+        cond = db.and_(User.division_id == div_id, User.role == 'user')
+        if user_id:
+            # Bo'lim rahbari o'zini ham ijrochi qilib qo'sha olsin
+            cond = db.or_(cond, User.id == user_id)
+        q = q.filter(cond)
     else:
         return []
     # Bugungi tatildagilar chiqarilsin
@@ -440,7 +445,8 @@ def task_assignable_workers():
     role, dept_id, div_id = get_scope(get_jwt())
     if not is_any_admin(role):
         return jsonify([])
-    return jsonify([w.to_dict() for w in _task_assignable_workers(role, dept_id, div_id)])
+    user_id = int(get_jwt_identity())
+    return jsonify([w.to_dict() for w in _task_assignable_workers(role, dept_id, div_id, user_id)])
 
 
 @tasks_bp.route('/<int:task_id>/reassign', methods=['POST'])
@@ -487,7 +493,7 @@ def reassign_task(task_id):
         names = ', '.join(v.user.full_name for v in vac if v.user)
         return jsonify({'error': f"Tatildagi xodim(lar)ga vazifa yuklab bo'lmaydi: {names}"}), 400
 
-    allowed = {w.id for w in _task_assignable_workers(role, dept_id, div_id)}
+    allowed = {w.id for w in _task_assignable_workers(role, dept_id, div_id, int(get_jwt_identity()))}
     for uid in ids:
         if uid not in allowed:
             return jsonify({'error': "Ba'zi xodimlarga vazifani yuklash huquqingiz yo'q"}), 403

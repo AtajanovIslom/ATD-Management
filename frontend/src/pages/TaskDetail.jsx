@@ -282,7 +282,10 @@ export default function TaskDetail() {
                       <input type="checkbox" checked={selectedWorkers.includes(w.id)}
                         onChange={() => toggleWorker(w.id)} />
                       <span style={{ color: 'var(--text-secondary)' }}>
-                        {w.full_name} {w.position ? `(${w.position})` : ''} {w.role === 'department_admin' ? '— Bo\'lim rahbari' : ''}
+                        {w.full_name} {w.position ? `(${w.position})` : ''} {
+                          w.id === user.id ? '— O\'zingiz'
+                            : w.role === 'department_admin' ? '— Bo\'lim rahbari' : ''
+                        }
                       </span>
                     </label>
                   ))}
