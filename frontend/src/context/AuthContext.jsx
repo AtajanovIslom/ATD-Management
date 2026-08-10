@@ -67,7 +67,10 @@ export function AuthProvider({ children }) {
 
     if (role === 'department_admin') {
       const deptAdminPerms = [
-        'project.view', 'task.create', 'task.edit',
+        // Bo'lim rahbari o'z bo'limi doirasida loyiha yaratadi va o'zi
+        // yaratgan loyihani tahrirlaydi
+        'project.view', 'project.create', 'project.edit',
+        'task.create', 'task.edit',
         'user.view', 'div.view', 'stats.view',
       ]
       return deptAdminPerms.includes(permission)

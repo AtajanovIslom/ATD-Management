@@ -71,6 +71,7 @@ export default function Navbar() {
 
         {!isAdmin && isDeptAdmin && (
           <>
+            {link('/create-project', '🚀', 'Loyiha yaratish')}
             {link('/create-task', '📝', 'Vazifa yaratish')}
             {link('/users', '🧑‍💻', "Bo'lim xodimlari")}
           </>

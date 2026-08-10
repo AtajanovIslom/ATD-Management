@@ -792,7 +792,7 @@ class Team(db.Model):
             'department_id': self.department_id,
             'department_name': self.department.name if self.department else None,
             'created_at': self.created_at.isoformat() if self.created_at else None,
-            'members': [{'id': m.id, 'full_name': m.full_name, 'position': m.position or '', 'department': m.department, 'department_id': m.department_id} for m in self.members],
+            'members': [{'id': m.id, 'full_name': m.full_name, 'position': m.position or '', 'department': m.department, 'department_id': m.department_id, 'division_id': m.division_id} for m in self.members],
         }
 
 

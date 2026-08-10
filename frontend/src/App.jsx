@@ -109,6 +109,7 @@ export default function App() {
           {!isAdmin && isDeptAdmin && (
             <>
               <Route path="/" element={<AdminDashboard />} />
+              <Route path="/create-project" element={<CreateProject />} />
               <Route path="/create-task" element={<CreateTask />} />
               <Route path="/users" element={<ManageUsers />} />
               <Route path="/statistics" element={<Statistics />} />

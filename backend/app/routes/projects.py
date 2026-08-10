@@ -22,10 +22,56 @@ def parse_datetime(s):
 projects_bp = Blueprint('projects', __name__)
 
 
-def is_admin_role():
-    """Loyiha yaratish/tahrirlash/o'chirish uchun huquq — boshqarma rahbari va
-       yuqori. Bo'lim rahbari (department_admin) loyihalarga aralashmaydi."""
-    return is_admin_or_above(get_jwt().get('role', ''))
+def can_create_project():
+    """Loyiha yaratish huquqi — boshqarma rahbari, yuqori rollar va bo'lim
+       rahbari (o'z bo'limi doirasida)."""
+    return is_any_admin(get_jwt().get('role', ''))
+
+
+def can_manage_project(project):
+    """Mavjud loyihani boshqarish (tahrirlash, bosqich qo'shish/o'chirish,
+       ijroni tekshirish) huquqi:
+       - boshqarma rahbari va yuqori: barcha loyihalar
+       - bo'lim rahbari: faqat o'zi yaratgan loyiha
+    """
+    role = get_jwt().get('role', '')
+    if is_admin_or_above(role):
+        return True
+    if role == 'department_admin' and project is not None:
+        return project.created_by == int(get_jwt_identity())
+    return False
+
+
+def _check_division_scope(user_ids, team_ids=()):
+    """Bo'lim rahbari bosqichga faqat o'z bo'limi xodimlarini (va o'zini)
+       biriktira oladi. Boshqa rollarga bu cheklov tegishli emas.
+       Muammo bo'lsa tayyor xato javobini qaytaradi (aks holda None)."""
+    role, _dept_id, div_id = get_scope(get_jwt())
+    if role != 'department_admin':
+        return None
+
+    me = int(get_jwt_identity())
+    ids = {int(x) for x in user_ids if x} - {me}
+    tids = {int(x) for x in team_ids if x}
+    if not ids and not tids:
+        return None
+    if not div_id:
+        return jsonify({'error': "Sizga bo'lim biriktirilmagan"}), 400
+
+    if ids:
+        outsiders = User.query.filter(
+            User.id.in_(ids),
+            db.or_(User.division_id != div_id, User.division_id.is_(None)),
+        ).all()
+        if outsiders:
+            names = ', '.join(u.full_name for u in outsiders)
+            return jsonify({'error': f"Faqat o'z bo'limingiz xodimlariga biriktira olasiz: {names}"}), 400
+
+    for tid in tids:
+        team = Team.query.get(tid)
+        if team and any(m.division_id != div_id for m in team.members):
+            return jsonify({'error': f"'{team.name}' guruhida boshqa bo'lim xodimlari bor — uni tanlay olmaysiz"}), 400
+    return None
 
 
 def _stage_assignee_ids(stage):
@@ -60,8 +106,9 @@ def _scoped_projects(role, dept_id, div_id, user_id):
     """Rol bo'yicha ko'rinadigan loyihalar (ro'yxat va statistika uchun umumiy).
        - Superadmin/direksiya: barcha loyihalar
        - Boshqarma rahbari (admin): o'z boshqarmasi + superadmin yaratganlar
-       - Bo'lim rahbari va oddiy xodim: faqat biriktirilgan loyihalar (o'ziga,
-         guruhiga yoki bosqichda ijrochilikka biriktirilgan)
+       - Bo'lim rahbari: o'zi yaratgan + biriktirilgan loyihalar
+       - Oddiy xodim: faqat biriktirilgan loyihalar (o'ziga, guruhiga yoki
+         bosqichda ijrochilikka biriktirilgan)
     """
     if is_superadmin(role):
         return Project.query.order_by(Project.created_at.desc()).all()
@@ -75,13 +122,16 @@ def _scoped_projects(role, dept_id, div_id, user_id):
                 Project.creator.has(User.role.in_(FULL_ACCESS_ROLES)),
             )
         ).order_by(Project.created_at.desc()).all()
-    # Bo'lim rahbari va oddiy xodim — faqat biriktirilgan loyihalar
+    # Bo'lim rahbari va oddiy xodim — biriktirilgan loyihalar
     user = User.query.get(user_id)
     team_ids = [t.id for t in user.teams] if user else []
     conds = [
         Project.stages.any(ProjectStage.assignee_id == user_id),
         Project.stages.any(ProjectStage.assignees.any(User.id == user_id)),
     ]
+    if role == 'department_admin':
+        # O'zi yaratgan loyiha bosqichlarida ijrochi bo'lmasa ham ko'rinsin
+        conds.append(Project.created_by == user_id)
     if team_ids:
         conds.append(Project.teams.any(Team.id.in_(team_ids)))
     return Project.query.filter(db.or_(*conds)).order_by(Project.created_at.desc()).all()
@@ -153,7 +203,7 @@ def get_project(project_id):
 @projects_bp.route('', methods=['POST'])
 @jwt_required()
 def create_project():
-    if not is_admin_role():
+    if not can_create_project():
         return jsonify({'error': 'Ruxsat yo\'q'}), 403
 
     import json
@@ -190,6 +240,7 @@ def create_project():
 
     # Barcha bosqichlar ijrochilarini birlashtirib tatilda emasligini tekshiramiz
     all_stage_users = set()
+    all_stage_teams = set()
     for st in stages_data:
         if isinstance(st, dict):
             if st.get('assignee_id'):
@@ -197,6 +248,11 @@ def create_project():
             for uid in st.get('assignee_ids', []):
                 if uid:
                     all_stage_users.add(int(uid))
+            if st.get('team_id'):
+                all_stage_teams.add(int(st['team_id']))
+    scope_err = _check_division_scope(all_stage_users, all_stage_teams)
+    if scope_err:
+        return scope_err
     vac_err = _check_no_vacation(all_stage_users)
     if vac_err:
         return vac_err
@@ -264,10 +320,10 @@ def create_project():
 @projects_bp.route('/<int:project_id>', methods=['PUT'])
 @jwt_required()
 def update_project(project_id):
-    if not is_admin_role():
+    project = Project.query.get_or_404(project_id)
+    if not can_manage_project(project):
         return jsonify({'error': 'Ruxsat yo\'q'}), 403
 
-    project = Project.query.get_or_404(project_id)
     data = request.get_json()
 
     if 'name' in data:
@@ -317,13 +373,13 @@ def delete_project(project_id):
 @projects_bp.route('/<int:project_id>/stages/<int:stage_id>', methods=['PUT'])
 @jwt_required()
 def update_stage(project_id, stage_id):
-    claims = get_jwt()
     user_id = int(get_jwt_identity())
-    # Bosqich tahrirlash (nomi/muddati/ijrochilari) faqat boshqarma rahbari+ ga.
-    # Status yuborish (review) esa ijrochi tomonidan (rol farq etmaydi).
-    is_admin = is_admin_or_above(claims.get('role', ''))
-
     stage = ProjectStage.query.get_or_404(stage_id)
+    # Bosqich tahrirlash (nomi/muddati/ijrochilari) va ijroni qabul qilish —
+    # loyihani boshqarish huquqi bo'lganlarga (bo'lim rahbari uchun: o'zi
+    # yaratgan loyiha). Status yuborish (review) esa ijrochi tomonidan.
+    is_admin = can_manage_project(stage.project)
+
     data = request.get_json()
 
     if 'status' in data:
@@ -367,6 +423,23 @@ def update_stage(project_id, stage_id):
         events.stage_status_changed(stage, stage.project, new_status)
 
     if is_admin:
+        candidate_ids = set()
+        if 'assignee_id' in data and data['assignee_id']:
+            candidate_ids.add(int(data['assignee_id']))
+        if 'assignee_ids' in data:
+            for uid in data.get('assignee_ids', []):
+                if uid:
+                    candidate_ids.add(int(uid))
+        # Bo'lim rahbari o'z bo'limidan tashqariga biriktira olmaydi
+        scope_err = _check_division_scope(candidate_ids, [data.get('team_id')])
+        if scope_err:
+            return scope_err
+        # Tatildagi xodimga biriktirib bo'lmaydi
+        if candidate_ids:
+            vac_err = _check_no_vacation(candidate_ids)
+            if vac_err:
+                return vac_err
+
         if 'name' in data:
             stage.name = data['name'].strip()
         if 'start_date' in data:
@@ -375,18 +448,6 @@ def update_stage(project_id, stage_id):
             stage.deadline = parse_datetime(data['deadline']) if data['deadline'] else None
         if 'team_id' in data:
             stage.team_id = data['team_id'] or None
-        # Tatildagi xodimga biriktirib bo'lmaydi
-        candidate_ids = set()
-        if 'assignee_id' in data and data['assignee_id']:
-            candidate_ids.add(int(data['assignee_id']))
-        if 'assignee_ids' in data:
-            for uid in data.get('assignee_ids', []):
-                if uid:
-                    candidate_ids.add(int(uid))
-        if candidate_ids:
-            vac_err = _check_no_vacation(candidate_ids)
-            if vac_err:
-                return vac_err
         # Faqat yangi qo'shilganlarga xabar ketsin — ilgari ham biriktirilgan
         # xodim har tahrirda takroriy bildirishnoma olmasligi kerak
         before_ids = set(_stage_assignee_ids(stage))
@@ -411,10 +472,10 @@ def update_stage(project_id, stage_id):
 @projects_bp.route('/<int:project_id>/stages', methods=['POST'])
 @jwt_required()
 def add_stage(project_id):
-    if not is_admin_role():
+    project = Project.query.get_or_404(project_id)
+    if not can_manage_project(project):
         return jsonify({'error': 'Ruxsat yo\'q'}), 403
 
-    project = Project.query.get_or_404(project_id)
     data = request.get_json()
     name = data.get('name', '').strip()
     if not name:
@@ -427,6 +488,9 @@ def add_stage(project_id):
     for uid in data.get('assignee_ids', []):
         if uid:
             candidate_ids.add(int(uid))
+    scope_err = _check_division_scope(candidate_ids, [data.get('team_id')])
+    if scope_err:
+        return scope_err
     if candidate_ids:
         vac_err = _check_no_vacation(candidate_ids)
         if vac_err:
@@ -465,10 +529,10 @@ def add_stage(project_id):
 @projects_bp.route('/<int:project_id>/stages/<int:stage_id>', methods=['DELETE'])
 @jwt_required()
 def delete_stage(project_id, stage_id):
-    if not is_admin_role():
+    project = Project.query.get_or_404(project_id)
+    if not can_manage_project(project):
         return jsonify({'error': 'Ruxsat yo\'q'}), 403
 
-    project = Project.query.get_or_404(project_id)
     if len(project.stages) <= 1:
         return jsonify({'error': 'Kamida bitta bosqich bo\'lishi kerak'}), 400
 
@@ -507,7 +571,9 @@ def create_report(project_id):
     if not content:
         return jsonify({'error': 'Hisobot matni kiritilishi shart'}), 400
 
-    if is_any_admin(claims.get('role', '')):
+    # Rahbar hisobot topshirmaydi. Bo'lim rahbari esa bosqichga ijrochi
+    # sifatida biriktirilgan bo'lsa — pastdagi tekshiruvdan o'tadi.
+    if is_admin_or_above(claims.get('role', '')):
         return jsonify({'error': 'Admin hisobot topshira olmaydi'}), 403
 
     project = Project.query.get_or_404(project_id)
@@ -704,10 +770,9 @@ def get_substages(project_id, stage_id):
 def create_substage(project_id, stage_id):
     user_id = int(get_jwt_identity())
     stage = ProjectStage.query.get_or_404(stage_id)
-
-    claims = get_jwt()
-    # Bo'lim rahbari loyihalarga aralashmaydi — faqat boshqarma rahbari+ bypass qiladi
-    is_admin = is_admin_or_above(claims.get('role', ''))
+    # Loyihani boshqaruvchi rahbar (bo'lim rahbari uchun: o'zi yaratgan loyiha)
+    # bypass qiladi, qolganlar faqat o'z bosqichi ichida
+    is_admin = can_manage_project(stage.project)
 
     if not is_admin:
         user = User.query.get(user_id)
@@ -744,9 +809,9 @@ def update_substage(project_id, stage_id, sub_id):
     user_id = int(get_jwt_identity())
     sub = SubStage.query.get_or_404(sub_id)
     stage = ProjectStage.query.get_or_404(stage_id)
-    claims = get_jwt()
-    # Bo'lim rahbari loyihalarga aralashmaydi — faqat boshqarma rahbari+ bypass qiladi
-    is_admin = is_admin_or_above(claims.get('role', ''))
+    # Loyihani boshqaruvchi rahbar (bo'lim rahbari uchun: o'zi yaratgan loyiha)
+    # bypass qiladi, qolganlar faqat o'z bosqichi ichida
+    is_admin = can_manage_project(stage.project)
 
     if not is_admin:
         user = User.query.get(user_id)
@@ -783,9 +848,9 @@ def delete_substage(project_id, stage_id, sub_id):
     user_id = int(get_jwt_identity())
     sub = SubStage.query.get_or_404(sub_id)
     stage = ProjectStage.query.get_or_404(stage_id)
-    claims = get_jwt()
-    # Bo'lim rahbari loyihalarga aralashmaydi — faqat boshqarma rahbari+ bypass qiladi
-    is_admin = is_admin_or_above(claims.get('role', ''))
+    # Loyihani boshqaruvchi rahbar (bo'lim rahbari uchun: o'zi yaratgan loyiha)
+    # bypass qiladi, qolganlar faqat o'z bosqichi ichida
+    is_admin = can_manage_project(stage.project)
 
     if not is_admin:
         user = User.query.get(user_id)

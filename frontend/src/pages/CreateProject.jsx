@@ -1,9 +1,13 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../api/axios'
+import { useAuth } from '../context/AuthContext'
 
 export default function CreateProject() {
   const navigate = useNavigate()
+  const { user, isAdmin } = useAuth()
+  // Bo'lim rahbari — faqat o'z bo'limi doirasida loyiha yaratadi
+  const onlyOwnDivision = !isAdmin
   const [teams, setTeams] = useState([])
   const [users, setUsers] = useState([])
   const [form, setForm] = useState({
@@ -19,8 +23,14 @@ export default function CreateProject() {
       api.get('/teams'),
       api.get('/users'),
     ]).then(([teamsRes, usersRes]) => {
-      setTeams(teamsRes.data)
-      // Bosqichga individual xodim tanlashda: xodim + bo'lim rahbari.
+      // Bo'lim rahbariga faqat butunlay o'z bo'limidan iborat guruhlar
+      // ko'rinadi — chunki u boshqa bo'lim xodimlarini yuklay olmaydi
+      setTeams(onlyOwnDivision
+        ? teamsRes.data.filter(t => (t.members || []).length > 0
+            && t.members.every(m => m.division_id === user.division_id))
+        : teamsRes.data)
+      // Bosqichga individual xodim tanlashda: xodim + bo'lim rahbari
+      // (bo'lim rahbari o'zini ham biriktira oladi).
       // Tatildagi xodim ro'yxatda ko'rinmaydi.
       setUsers(usersRes.data.filter(u =>
         (u.role === 'user' || u.role === 'department_admin') && u.is_active && !u.active_vacation
@@ -260,6 +270,7 @@ export default function CreateProject() {
                                   onChange={() => toggleStageAssignee(idx, u.id)} />
                                 <span style={{ color: 'var(--text-secondary)' }}>
                                   {u.full_name} {u.position ? `(${u.position})` : ''} — {u.department}
+                                  {u.id === user.id ? ' (o\'zingiz)' : ''}
                                 </span>
                               </label>
                             ))}

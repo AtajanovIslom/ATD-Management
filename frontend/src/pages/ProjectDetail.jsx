@@ -65,7 +65,10 @@ export default function ProjectDetail() {
 
   useEffect(() => {
     Promise.all([api.get('/teams'), api.get('/users')]).then(([tr, ur]) => {
-      setTeams(tr.data)
+      // Bo'lim rahbariga faqat butunlay o'z bo'limidan iborat guruhlar —
+      // u boshqa bo'lim xodimlariga bosqich yuklay olmaydi
+      setTeams(isAdmin ? tr.data : tr.data.filter(t => (t.members || []).length > 0
+        && t.members.every(m => m.division_id === user.division_id)))
       // Bosqich individual ijrochilarida xodim + bo'lim rahbari. Tatildagilar chiqarilsin.
       setUsers(ur.data.filter(u =>
         (u.role === 'user' || u.role === 'department_admin') && u.is_active && !u.active_vacation
@@ -151,8 +154,12 @@ export default function ProjectDetail() {
     setExpandedStages(prev => ({ ...prev, [stageId]: !prev[stageId] }))
   }
 
+  // Loyihani boshqarish huquqi: boshqarma rahbari va yuqori — barcha loyihalar,
+  // bo'lim rahbari — faqat o'zi yaratgan loyiha (backend ham shu qoidada)
+  const canManage = isAdmin || (isDeptAdmin && project?.created_by === user.id)
+
   const canManageSubStages = (s) => {
-    return isAdmin || s.assignee_id === user.id || s.assignees?.some(a => a.id === user.id) ||
+    return canManage || s.assignee_id === user.id || s.assignees?.some(a => a.id === user.id) ||
       (!s.assignee_id && !s.assignees?.length && s.team_members?.some(m => m.id === user.id))
   }
 
@@ -322,10 +329,10 @@ export default function ProjectDetail() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          {/* Loyihaga aralashish faqat boshqarma rahbari va yuqori rollarga.
-              Bo'lim rahbari (department_admin) tahrirlash/o'chirish qilmaydi —
-              u loyihalarga faqat ijrochi bo'lgan hollarda kirishi mumkin */}
-          {isAdmin && (
+          {/* Tahrirlash — loyihani boshqaruvchi rahbarga (bo'lim rahbari uchun:
+              o'zi yaratgan loyiha). O'chirish esa faqat boshqarma rahbari va
+              yuqori rollarga qoladi. */}
+          {canManage && (
             <button className="btn btn-outline btn-sm" onClick={() => editMode ? (setEditMode(false), setDeletedStageIds(new Set())) : openEditMode()}>
               {editMode ? 'Bekor qilish' : 'Tahrirlash'}
             </button>
@@ -582,17 +589,17 @@ export default function ProjectDetail() {
                           Bajarildi
                         </button>
                       )}
-                      {isAdmin && s.status === 'review' && (
+                      {canManage && s.status === 'review' && (
                         <button className="btn btn-success btn-sm" onClick={() => handleStageUpdate(s.id, 'completed')}>
                           ✓ Tasdiqlash
                         </button>
                       )}
-                      {isAdmin && s.status === 'review' && (
+                      {canManage && s.status === 'review' && (
                         <button className="btn btn-outline btn-sm" onClick={() => handleStageUpdate(s.id, 'in_progress')}>
                           ↩ Qaytarish
                         </button>
                       )}
-                      {isAdmin && s.status === 'pending' && (
+                      {canManage && s.status === 'pending' && (
                         <button className="btn btn-outline btn-sm" onClick={() => handleStageUpdate(s.id, 'in_progress')}>
                           ▶
                         </button>
