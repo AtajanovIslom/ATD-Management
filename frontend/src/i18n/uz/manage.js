@@ -158,4 +158,9 @@ export default {
   'pages.locked': "Bosh Administrator qatorini o'zgartirib bo'lmaydi",
   'pages.serviceNote': "Bo'linmasi «Interaktiv xizmat ko'rsatadi» deb belgilangan xodimlarga bu sahifa matritsadan qat'i nazar ochiq bo'ladi.",
   'pages.noAccess': "Sizning rolingizga hech qanday sahifa ochilmagan. Iltimos, Bosh Administratorga murojaat qiling.",
+  'pages.expandHint': "Xodimlar ro'yxatini ochish — har biriga alohida ruxsat berish mumkin",
+  'pages.override': 'shaxsiy',
+  'pages.overrideHint': "Bu xodimga alohida ruxsat berilgan — roldagi umumiy qiymat unga ta'sir qilmaydi",
+  'pages.resetUser': 'Shaxsiy sozlamani olib tashlash',
+  'pages.toRole': 'rolga',
 }

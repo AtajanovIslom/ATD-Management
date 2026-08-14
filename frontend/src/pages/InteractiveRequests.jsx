@@ -248,6 +248,7 @@ export default function InteractiveRequests() {
         <ActionModal
           modal={modal}
           workers={workers}
+          isAdmin={isAdmin}
           modalData={modalData}
           setModalData={setModalData}
           onClose={() => setModal(null)}
@@ -460,12 +461,106 @@ function RequestDetail({ r, isMine, isAnyAdmin, isAdmin, onClose, onAction, onAp
 
 /* -------------------------- Action modal ------------------------------- */
 
-function ActionModal({ modal, workers, modalData, setModalData, onClose, onSubmit, busy, t }) {
+/**
+ * Xodim tanlash — qidiruvli ro'yxat.
+ *
+ * Oddiy <select> o'rniga: xodim ko'p bo'lganda ism bo'yicha qidirish kerak.
+ * Ochilib-yopiladigan dropdown emas, doim ko'rinadigan ro'yxat — modal ichida
+ * u ancha barqaror ishlaydi (fokus/blur bilan bog'liq nosozliklar yo'q).
+ */
+function WorkerPicker({ groups, value, onChange, t }) {
+  const [query, setQuery] = useState('')
+  const q = query.trim().toLowerCase()
+
+  const matches = (w) => !q || [w.full_name, w.position, w.division_name]
+    .some(v => (v || '').toLowerCase().includes(q))
+
+  const visible = groups
+    .map(g => ({ ...g, items: g.items.filter(matches) }))
+    .filter(g => g.items.length > 0)
+
+  const total = visible.reduce((s, g) => s + g.items.length, 0)
+
+  return (
+    <div>
+      <input
+        className="form-input"
+        placeholder={t('ir.assign.search')}
+        value={query}
+        onChange={e => setQuery(e.target.value)}
+        style={{ marginBottom: 8 }}
+      />
+
+      <div style={{
+        maxHeight: 260, overflowY: 'auto',
+        border: '1px solid var(--border)', borderRadius: 8,
+      }}>
+        {total === 0 && (
+          <div style={{ padding: 16, textAlign: 'center', fontSize: 13, color: 'var(--text-muted)' }}>
+            {t('ir.assign.noMatch')}
+          </div>
+        )}
+
+        {visible.map(g => (
+          <div key={g.key}>
+            <div style={{
+              padding: '6px 10px', fontSize: 11, fontWeight: 700,
+              textTransform: 'uppercase', letterSpacing: 0.5,
+              color: 'var(--text-muted)', background: 'var(--bg-input, rgba(255,255,255,0.03))',
+              position: 'sticky', top: 0,
+            }}>
+              {g.label} ({g.items.length})
+            </div>
+            {g.items.map(w => {
+              const active = String(value) === String(w.id)
+              return (
+                <button
+                  key={w.id}
+                  type="button"
+                  onClick={() => onChange(String(w.id))}
+                  style={{
+                    display: 'block', width: '100%', textAlign: 'left',
+                    padding: '8px 10px', cursor: 'pointer',
+                    border: 'none', borderBottom: '1px solid var(--border)',
+                    background: active ? 'var(--accent-soft, rgba(99,102,241,0.14))' : 'transparent',
+                    color: 'inherit', font: 'inherit',
+                  }}
+                >
+                  <div style={{ fontSize: 13, fontWeight: active ? 700 : 500 }}>
+                    {active ? '✓ ' : ''}{w.full_name}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                    {[w.position, w.division_name].filter(Boolean).join(' · ') || '—'}
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+
+function ActionModal({ modal, workers, isAdmin, modalData, setModalData, onClose, onSubmit, busy, t }) {
   const kind = modal.type
 
-  // O'z bo'lim xodimlari va peer bo'lim rahbarlarini ajratamiz
-  const ownWorkers = workers.filter(w => w.role !== 'department_admin')
-  const peerAdmins = workers.filter(w => w.role === 'department_admin')
+  // Bo'lim rahbarlari alohida guruh. Boshqarma rahbari uchun ular o'z
+  // qo'l ostidagi rahbarlar, bo'lim rahbari uchun esa "boshqa bo'limga
+  // uzatish" — shuning uchun sarlavha ko'ruvchiga qarab o'zgaradi.
+  const admins = workers.filter(w => w.role === 'department_admin')
+  const plainWorkers = workers.filter(w => w.role !== 'department_admin')
+
+  const groups = isAdmin
+    ? [
+        { key: 'admins', label: t('ir.assign.deptAdmins'), items: admins },
+        { key: 'workers', label: t('ir.assign.workers'), items: plainWorkers },
+      ]
+    : [
+        { key: 'workers', label: t('ir.assign.ownWorkers'), items: plainWorkers },
+        { key: 'admins', label: t('ir.assign.peerAdmins'), items: admins },
+      ]
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -475,29 +570,13 @@ function ActionModal({ modal, workers, modalData, setModalData, onClose, onSubmi
         {kind === 'assign' && (
           <div className="form-group">
             <label>{t('ir.assign.label')}</label>
-            <select className="form-input" value={modalData.user_id || ''}
-              onChange={e => setModalData({ user_id: e.target.value })}>
-              <option value="">{t('users.select')}</option>
-              {ownWorkers.length > 0 && (
-                <optgroup label={t('ir.assign.ownWorkers')}>
-                  {ownWorkers.map(w => (
-                    <option key={w.id} value={w.id}>
-                      {w.full_name}{w.position ? ' · ' + w.position : ''}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-              {peerAdmins.length > 0 && (
-                <optgroup label={t('ir.assign.peerAdmins')}>
-                  {peerAdmins.map(w => (
-                    <option key={w.id} value={w.id}>
-                      {w.full_name}{w.division_name ? ' — ' + w.division_name : ''}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-            </select>
-            {peerAdmins.length > 0 && (
+            <WorkerPicker
+              groups={groups}
+              value={modalData.user_id || ''}
+              onChange={id => setModalData({ user_id: id })}
+              t={t}
+            />
+            {!isAdmin && admins.length > 0 && (
               <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
                 {t('ir.assign.hint')}
               </div>

@@ -454,7 +454,14 @@ def _assignable_workers(role, dept_id, div_id):
             cond = db.or_(cond, User.division_id.in_(provider_ids))
         q = User.query.filter(User.is_active == True).filter(cond)
     elif role == 'admin':
-        q = User.query.filter_by(is_active=True, role='department_admin', department_id=dept_id)
+        # Boshqarma rahbari o'z boshqarmasidagi bo'lim rahbarlariga ham,
+        # bevosita xodim/agentlarga ham yuklay oladi (ilgari faqat bo'lim
+        # rahbarlari edi — kichik bo'linmalarda oraliq bo'g'in ortiqcha).
+        q = User.query.filter(
+            User.is_active == True,
+            User.role.in_(('department_admin',) + tuple(WORKER_ROLES)),
+            User.department_id == dept_id,
+        )
     elif role == 'department_admin':
         cond = db.and_(User.role.in_(WORKER_ROLES), User.division_id == div_id)
         own_div = Division.query.get(div_id) if div_id else None

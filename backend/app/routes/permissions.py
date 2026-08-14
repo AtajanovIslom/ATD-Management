@@ -1,11 +1,12 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt, get_jwt_identity
 from app import db
-from app.models import User, Division, RolePage
+from app.models import User, Division, RolePage, UserPage
 from app.utils import (
     get_scope, is_superadmin, can_manage_roles, can_manage_page_access, log_audit,
     PAGES, PAGE_KEYS, LOCKED_ROLES, SERVICE_PROVIDER_PAGES,
-    DEFAULT_ROLE_PAGES, role_page_matrix, allowed_pages,
+    DEFAULT_ROLE_PAGES, role_page_matrix, allowed_pages, allowed_pages_for_user,
+    user_page_override,
 )
 
 permissions_bp = Blueprint('permissions', __name__)
@@ -114,10 +115,10 @@ def my_pages():
     """
     role, _, _ = get_scope(get_jwt())
     user = User.query.get(int(get_jwt_identity()))
-    div = user.division if user else None
-    is_provider = bool(div.is_service_provider) if div else False
 
-    pages = allowed_pages(role, is_provider)
+    # Shaxsiy sozlama bo'lsa u ustun; bo'lmasa roldagi qiymat. JWT eskirgan
+    # bo'lsa ham bazadagi rol ishlatiladi (user obyekti orqali).
+    pages = allowed_pages_for_user(user) if user else allowed_pages(role)
     return jsonify({'role': role, 'pages': pages, 'home': _home_path(pages)})
 
 
@@ -204,6 +205,118 @@ def set_page_access():
     return jsonify({'message': 'Saqlandi', 'matrix': role_page_matrix()})
 
 
+@permissions_bp.route('/page-access/users', methods=['GET'])
+@jwt_required()
+def page_access_users():
+    """Bitta roldagi xodimlar va ularning amaldagi sahifa ruxsatlari.
+
+    `?role=department_admin` — rol qatori ochilganda so'raladi. Bir roldagi
+    xodimlarga har xil oyna kerak bo'lishi mumkin, shuning uchun har biri
+    alohida sozlanadi.
+    """
+    role, _, _ = get_scope(get_jwt())
+    if not can_manage_page_access(role):
+        return jsonify({'error': "Ruxsat yo'q"}), 403
+
+    target = request.args.get('role')
+    if target not in VALID_ROLES:
+        return jsonify({'error': f"Noma'lum rol: {target}"}), 400
+
+    users = (User.query
+             .filter_by(role=target, is_active=True)
+             .order_by(User.full_name).all())
+
+    return jsonify([
+        {
+            'id': u.id,
+            'full_name': u.full_name,
+            'position': u.position or '',
+            'department_name': u.managed_department.name if u.managed_department else None,
+            'division_name': u.division.name if u.division else None,
+            'pages': allowed_pages_for_user(u),
+            # True — shaxsiy sozlama bor, roldagi qiymatdan ajralgan
+            'has_override': user_page_override(u.id) is not None,
+            'locked': u.role in LOCKED_ROLES,
+        }
+        for u in users
+    ])
+
+
+@permissions_bp.route('/page-access/user', methods=['PUT'])
+@jwt_required()
+def set_user_page_access():
+    """Bitta xodimga shaxsiy ruxsat berish.
+
+    Body: {"user_id": 12, "pages": ["dashboard", "statistics"]}
+    """
+    role, _, _ = get_scope(get_jwt())
+    if not can_manage_page_access(role):
+        return jsonify({'error': "Ruxsat yo'q"}), 403
+
+    data = request.get_json() or {}
+    user_id = data.get('user_id')
+    page_list = data.get('pages')
+
+    if not user_id or not isinstance(page_list, list):
+        return jsonify({'error': 'user_id va pages majburiy'}), 400
+
+    user = User.query.get_or_404(int(user_id))
+    if user.role in LOCKED_ROLES:
+        return jsonify({'error': "Bosh Administrator ruxsatini o'zgartirib bo'lmaydi"}), 400
+
+    wanted = {p for p in page_list if p in PAGE_KEYS}
+    unknown = set(page_list) - wanted
+    if unknown:
+        return jsonify({'error': f"Noma'lum sahifa: {', '.join(sorted(unknown))}"}), 400
+
+    existing = {up.page: up for up in UserPage.query.filter_by(user_id=user.id).all()}
+    for page in PAGE_KEYS:
+        allow = page in wanted
+        row = existing.get(page)
+        if row is None:
+            db.session.add(UserPage(user_id=user.id, page=page, allowed=allow))
+        elif bool(row.allowed) != allow:
+            row.allowed = allow
+
+    log_audit('update', 'user_pages', user.id, entity_label=user.full_name,
+              details=f"pages=[{','.join(sorted(wanted))}]")
+    db.session.commit()
+
+    return jsonify({
+        'message': 'Saqlandi',
+        'user_id': user.id,
+        'pages': allowed_pages_for_user(user),
+        'has_override': True,
+    })
+
+
+@permissions_bp.route('/page-access/user/reset', methods=['POST'])
+@jwt_required()
+def reset_user_page_access():
+    """Xodimning shaxsiy sozlamasini o'chirish — u yana rol qiymatiga qaytadi"""
+    role, _, _ = get_scope(get_jwt())
+    if not can_manage_page_access(role):
+        return jsonify({'error': "Ruxsat yo'q"}), 403
+
+    data = request.get_json() or {}
+    user_id = data.get('user_id')
+    if not user_id:
+        return jsonify({'error': 'user_id majburiy'}), 400
+
+    user = User.query.get_or_404(int(user_id))
+    UserPage.query.filter_by(user_id=user.id).delete(synchronize_session=False)
+    log_audit('reset', 'user_pages', user.id, entity_label=user.full_name,
+              details='rol qiymatiga qaytarildi')
+    db.session.commit()
+
+    return jsonify({
+        'message': 'Rol qiymatiga qaytarildi',
+        'user_id': user.id,
+        'pages': allowed_pages_for_user(user),
+        'has_override': False,
+    })
+
+
 @permissions_bp.route('/page-access/reset', methods=['POST'])
 @jwt_required()
 def reset_page_access():
@@ -219,12 +332,19 @@ def reset_page_access():
     target = data.get('role')
 
     q = RolePage.query
+    users_q = UserPage.query
     if target:
         if target not in VALID_ROLES:
             return jsonify({'error': f"Noma'lum rol: {target}"}), 400
         q = q.filter_by(role=target)
+        target_ids = [u.id for u in User.query.filter_by(role=target).all()]
+        users_q = users_q.filter(UserPage.user_id.in_(target_ids)) if target_ids else None
 
     q.delete(synchronize_session=False)
+    # Xodimlarning shaxsiy sozlamalari ham olib tashlanadi — aks holda
+    # "standart holatga qaytarildi" deb yozilsayu, ular kuchda qolib ketardi
+    if users_q is not None:
+        users_q.delete(synchronize_session=False)
     log_audit('reset', 'role_pages',
               entity_label=target or 'barcha rollar',
               details='standart qiymatlarga qaytarildi')

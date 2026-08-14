@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { Fragment, useState, useEffect } from 'react'
 import api from '../api/axios'
 import { useAuth } from '../context/AuthContext'
 import { useI18n } from '../i18n'
@@ -474,7 +474,74 @@ function PageAccessMatrix() {
   const [error, setError] = useState('')
   const [saved, setSaved] = useState(false)
 
+  // Rol qatori ochilganda o'sha roldagi xodimlar yuklanadi. Bir roldagi
+  // xodimlarga har xil oyna kerak bo'lishi mumkin — har biri alohida sozlanadi.
+  const [expanded, setExpanded] = useState(null)          // ochiq rol
+  const [usersByRole, setUsersByRole] = useState({})      // {role: [user, ...]}
+  const [loadingUsers, setLoadingUsers] = useState(null)  // yuklanayotgan rol
+  const [userDraft, setUserDraft] = useState({})          // {userId: Set(pageKey)}
+
   useEffect(() => { load() }, [])
+
+  const fetchRoleUsers = async (role) => {
+    setLoadingUsers(role)
+    try {
+      const res = await api.get('/permissions/page-access/users', { params: { role } })
+      setUsersByRole(prev => ({ ...prev, [role]: res.data }))
+      setUserDraft(prev => {
+        const next = { ...prev }
+        res.data.forEach(u => { next[u.id] = new Set(u.pages) })
+        return next
+      })
+    } catch (err) {
+      setError(err.response?.data?.error || t('state.error'))
+    } finally {
+      setLoadingUsers(null)
+    }
+  }
+
+  const toggleExpand = async (role) => {
+    if (expanded === role) { setExpanded(null); return }
+    setExpanded(role)
+    if (!usersByRole[role]) await fetchRoleUsers(role)
+  }
+
+  const toggleUserPage = (userId, pageKey) => {
+    setSaved(false)
+    setUserDraft(prev => {
+      const set = new Set(prev[userId] || [])
+      if (set.has(pageKey)) set.delete(pageKey)
+      else set.add(pageKey)
+      return { ...prev, [userId]: set }
+    })
+  }
+
+  // Xodimni rol qiymatiga qaytarish — shaxsiy sozlama serverdan o'chiriladi
+  const resetUser = async (u) => {
+    setSaving(true)
+    setError('')
+    try {
+      const res = await api.post('/permissions/page-access/user/reset', { user_id: u.id })
+      applyUserResult(res.data)
+    } catch (err) {
+      setError(err.response?.data?.error || t('state.error'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const applyUserResult = (payload) => {
+    setUsersByRole(prev => {
+      const next = { ...prev }
+      Object.keys(next).forEach(role => {
+        next[role] = next[role].map(u => u.id === payload.user_id
+          ? { ...u, pages: payload.pages, has_override: payload.has_override }
+          : u)
+      })
+      return next
+    })
+    setUserDraft(prev => ({ ...prev, [payload.user_id]: new Set(payload.pages) }))
+  }
 
   const load = async () => {
     setLoading(true)
@@ -538,16 +605,39 @@ function PageAccessMatrix() {
     })
     .map(r => r.value) : []
 
+  // O'zgargan xodimlar — yuklangan (ochilgan) rollar ichidan
+  const changedUsers = Object.values(usersByRole).flat().filter(u => {
+    if (u.locked) return false
+    const now = [...(userDraft[u.id] || [])].sort().join(',')
+    return now !== [...u.pages].sort().join(',')
+  })
+
+  const changeCount = changedRoles.length + changedUsers.length
+
   const save = async () => {
-    if (!changedRoles.length) return
+    if (!changeCount) return
     setSaving(true)
     setError('')
     try {
-      const matrix = {}
-      changedRoles.forEach(role => { matrix[role] = [...(draft[role] || [])] })
-      const res = await api.put('/permissions/page-access', { matrix })
-      setData(prev => ({ ...prev, matrix: res.data.matrix }))
-      setDraft(toDraft(res.data.matrix))
+      if (changedRoles.length) {
+        const matrix = {}
+        changedRoles.forEach(role => { matrix[role] = [...(draft[role] || [])] })
+        const res = await api.put('/permissions/page-access', { matrix })
+        setData(prev => ({ ...prev, matrix: res.data.matrix }))
+        setDraft(toDraft(res.data.matrix))
+      }
+      for (const u of changedUsers) {
+        const res = await api.put('/permissions/page-access/user', {
+          user_id: u.id,
+          pages: [...(userDraft[u.id] || [])],
+        })
+        applyUserResult(res.data)
+      }
+      // Rol qiymati o'zgargan bo'lsa, shaxsiy sozlamasi yo'q xodimlarning
+      // amaldagi ruxsati ham o'zgardi — ochiq ro'yxatni qayta o'qiymiz
+      if (expanded && changedRoles.includes(expanded)) {
+        await fetchRoleUsers(expanded)
+      }
       setSaved(true)
     } catch (err) {
       setError(err.response?.data?.error || t('state.error'))
@@ -564,6 +654,15 @@ function PageAccessMatrix() {
       const res = await api.post('/permissions/page-access/reset', {})
       setData(prev => ({ ...prev, matrix: res.data.matrix }))
       setDraft(toDraft(res.data.matrix))
+      // Shaxsiy sozlamalar ham o'chdi — ochiq rollar qayta yuklanadi
+      const openRoles = Object.keys(usersByRole)
+      setUsersByRole({})
+      setUserDraft({})
+      if (expanded && openRoles.includes(expanded)) {
+        const role = expanded
+        setExpanded(null)
+        await toggleExpand(role)
+      }
       setSaved(true)
     } catch (err) {
       setError(err.response?.data?.error || t('state.error'))
@@ -614,8 +713,11 @@ function PageAccessMatrix() {
             {data.roles.map(r => {
               const set = draft[r.value] || new Set()
               const isChanged = changedRoles.includes(r.value)
+              const isOpen = expanded === r.value
+              const roleUsers = usersByRole[r.value] || []
               return (
-                <tr key={r.value} style={{ background: isChanged ? 'rgba(99,102,241,0.06)' : 'transparent' }}>
+                <Fragment key={r.value}>
+                <tr style={{ background: isChanged ? 'rgba(99,102,241,0.06)' : 'transparent' }}>
                   <td style={{
                     padding: '8px 10px', borderBottom: '1px solid var(--border)',
                     position: 'sticky', left: 0, zIndex: 1,
@@ -631,9 +733,24 @@ function PageAccessMatrix() {
                       </span>
                       {r.locked && <span title={t('pages.locked')}>🔒</span>}
                     </div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 14 }}>
+                    {/* Sonini bosish — o'sha roldagi xodimlarni ochadi, har
+                        biriga alohida ruxsat berish uchun */}
+                    <button
+                      type="button"
+                      onClick={() => toggleExpand(r.value)}
+                      disabled={r.user_count === 0}
+                      title={r.user_count === 0 ? '' : t('pages.expandHint')}
+                      style={{
+                        marginLeft: 14, marginTop: 2, padding: 0, border: 'none',
+                        background: 'none', font: 'inherit', fontSize: 11,
+                        color: r.user_count === 0 ? 'var(--text-muted)' : 'var(--accent, #6366f1)',
+                        cursor: r.user_count === 0 ? 'default' : 'pointer',
+                        textDecoration: r.user_count === 0 ? 'none' : 'underline',
+                      }}
+                    >
+                      {r.user_count > 0 && (isOpen ? '▾ ' : '▸ ')}
                       {t('pages.userCount', { n: r.user_count })}
-                    </div>
+                    </button>
                   </td>
 
                   {data.pages.map(p => (
@@ -671,6 +788,72 @@ function PageAccessMatrix() {
                     )}
                   </td>
                 </tr>
+
+                {/* Roldagi xodimlar — har biriga alohida ruxsat */}
+                {isOpen && loadingUsers === r.value && (
+                  <tr>
+                    <td colSpan={data.pages.length + 2}
+                      style={{ padding: 12, fontSize: 12, color: 'var(--text-muted)' }}>
+                      {t('state.loading')}
+                    </td>
+                  </tr>
+                )}
+
+                {isOpen && roleUsers.map(u => {
+                  const uset = userDraft[u.id] || new Set()
+                  const uChanged = changedUsers.some(c => c.id === u.id)
+                  return (
+                    <tr key={`u-${u.id}`} style={{ background: uChanged ? 'rgba(99,102,241,0.06)' : 'transparent' }}>
+                      <td style={{
+                        padding: '6px 10px 6px 26px', borderBottom: '1px solid var(--border)',
+                        position: 'sticky', left: 0, zIndex: 1,
+                        background: uChanged ? 'var(--bg-input, rgba(99,102,241,0.06))' : 'var(--bg-card, var(--bg))',
+                        borderLeft: '3px solid ' + (ROLE_COLORS[r.value] || 'var(--border)'),
+                      }}>
+                        <div style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+                          {u.full_name}
+                          {u.has_override && (
+                            <span title={t('pages.overrideHint')} style={{
+                              fontSize: 9, padding: '1px 5px', borderRadius: 3, fontWeight: 700,
+                              background: 'rgba(99,102,241,0.18)', color: 'var(--accent, #6366f1)',
+                            }}>
+                              {t('pages.override')}
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                          {[u.position, u.division_name].filter(Boolean).join(' · ') || '—'}
+                        </div>
+                      </td>
+
+                      {data.pages.map(p => (
+                        <td key={p.key} style={{
+                          textAlign: 'center', padding: '6px', borderBottom: '1px solid var(--border)',
+                        }}>
+                          <input
+                            type="checkbox"
+                            checked={u.locked ? true : uset.has(p.key)}
+                            disabled={u.locked || saving}
+                            onChange={() => toggleUserPage(u.id, p.key)}
+                            style={{ width: 14, height: 14, cursor: u.locked ? 'not-allowed' : 'pointer' }}
+                          />
+                        </td>
+                      ))}
+
+                      <td style={{ padding: '6px', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>
+                        {!u.locked && u.has_override && (
+                          <button className="btn btn-outline btn-sm"
+                            style={{ padding: '2px 7px', fontSize: 10 }}
+                            onClick={() => resetUser(u)} disabled={saving}
+                            title={t('pages.resetUser')}>
+                            ↺ {t('pages.toRole')}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+                </Fragment>
               )
             })}
           </tbody>
@@ -681,15 +864,15 @@ function PageAccessMatrix() {
         display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
       }}>
         <div style={{ flex: 1, minWidth: 200, fontSize: 12, color: 'var(--text-muted)' }}>
-          {changedRoles.length > 0
-            ? `⚠️ ${t('pages.unsaved', { n: changedRoles.length })}`
+          {changeCount > 0
+            ? `⚠️ ${t('pages.unsaved', { n: changeCount })}`
             : saved ? `✅ ${t('pages.saved')}` : t('pages.hint')}
         </div>
         <button className="btn btn-outline" onClick={resetAll} disabled={saving}>
           {t('pages.resetAll')}
         </button>
         <button className="btn btn-primary" onClick={save}
-          disabled={saving || changedRoles.length === 0}>
+          disabled={saving || changeCount === 0}>
           {saving ? t('btn.saving') : t('btn.save')}
         </button>
       </div>

@@ -245,6 +245,17 @@ def create_app():
                 CONSTRAINT uq_role_pages_role_page UNIQUE (role, page)
             )""",
             "CREATE INDEX IF NOT EXISTS idx_role_pages_role ON role_pages(role)",
+            # Alohida xodimga berilgan ruxsat — roldagi qiymat ustidan ustunlik
+            # qiladi. Yozuv bo'lmasa rol qiymati ishlaydi.
+            """CREATE TABLE IF NOT EXISTS user_pages (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                page VARCHAR(50) NOT NULL,
+                allowed BOOLEAN NOT NULL DEFAULT TRUE,
+                updated_at TIMESTAMP DEFAULT NOW(),
+                CONSTRAINT uq_user_pages_user_page UNIQUE (user_id, page)
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_user_pages_user ON user_pages(user_id)",
         ]
         # Har bir migratsiya o'z tranzaksiyasida bajariladi — bittasi xato bersa
         # keyingilariga ta'sir qilmasin. Ilgari umumiy commit edi, bir SQL rollback

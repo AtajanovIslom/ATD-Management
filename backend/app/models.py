@@ -729,6 +729,37 @@ class RolePage(db.Model):
         }
 
 
+class UserPage(db.Model):
+    """Alohida xodimga berilgan sahifa ruxsati (rol qiymati ustidan).
+
+    Xodim uchun yozuv bo'lsa — uning ko'rinishi to'liq shu yozuvlar bilan
+    aniqlanadi va roli o'zgargani ta'sir qilmaydi. Yozuv bo'lmasa roldagi
+    umumiy qiymat ishlaydi. Bir bo'limda 8 ta rahbar bo'lib, ularning
+    ba'zilariga qo'shimcha oyna kerak bo'lgani uchun qo'shildi.
+    """
+    __tablename__ = 'user_pages'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'),
+                        nullable=False, index=True)
+    page = db.Column(db.String(50), nullable=False)
+    allowed = db.Column(db.Boolean, default=True, nullable=False)
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc),
+                           onupdate=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        db.UniqueConstraint('user_id', 'page', name='uq_user_pages_user_page'),
+    )
+
+    def to_dict(self):
+        return {
+            'user_id': self.user_id,
+            'page': self.page,
+            'allowed': bool(self.allowed),
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
 class User(db.Model):
     __tablename__ = 'users'
 

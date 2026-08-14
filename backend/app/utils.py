@@ -156,15 +156,62 @@ def role_page_matrix():
     return matrix
 
 
+def _sorted_pages(keys):
+    order = {k: i for i, k in enumerate(PAGE_KEYS)}
+    return sorted({k for k in keys if k in PAGE_KEYS}, key=lambda k: order.get(k, 999))
+
+
+def user_page_override(user_id):
+    """Xodimga alohida berilgan ruxsat: sahifalar ro'yxati yoki None.
+
+    None — shaxsiy sozlama yo'q, roldagi qiymat ishlaydi. Bo'sh ro'yxat esa
+    haqiqiy sozlama: "bu xodimga hech narsa ochilmagan".
+    """
+    try:
+        from app.models import UserPage
+        rows = UserPage.query.filter_by(user_id=user_id).all()
+    except Exception:
+        try:
+            from app import db as _db
+            _db.session.rollback()
+        except Exception:
+            pass
+        return None
+
+    if not rows:
+        return None
+    return _sorted_pages(r.page for r in rows if r.allowed)
+
+
 def allowed_pages(role, is_service_provider=False):
-    """Foydalanuvchi ko'ra oladigan sahifalar ro'yxati"""
+    """Rol bo'yicha sahifalar (shaxsiy sozlamasiz)"""
     pages = role_page_matrix().get(role, default_pages_for(role))
     if is_service_provider:
-        extra = [p for p in SERVICE_PROVIDER_PAGES if p not in pages]
-        if extra:
-            order = {k: i for i, k in enumerate(PAGE_KEYS)}
-            pages = sorted(pages + extra, key=lambda k: order.get(k, 999))
-    return pages
+        pages = _sorted_pages(list(pages) + list(SERVICE_PROVIDER_PAGES))
+    return list(pages)
+
+
+def allowed_pages_for_user(user):
+    """Aniq xodim ko'ra oladigan sahifalar.
+
+    Tartib: shaxsiy sozlama (user_pages) → roldagi qiymat (role_pages) →
+    standart qiymat. Bo'linmasi interaktiv xizmat ko'rsatsa, qo'shimcha
+    sahifa har qanday holatda ochiladi (avvalgi xatti-harakat).
+    """
+    if user is None:
+        return []
+    if user.role in LOCKED_ROLES:
+        return list(PAGE_KEYS)
+
+    div = user.division
+    is_provider = bool(div.is_service_provider) if div else False
+
+    override = user_page_override(user.id)
+    pages = override if override is not None else allowed_pages(user.role)
+
+    if is_provider:
+        pages = _sorted_pages(list(pages) + list(SERVICE_PROVIDER_PAGES))
+    return list(pages)
 
 
 def can_view_page(role, page_key, is_service_provider=False):
