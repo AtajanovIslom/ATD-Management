@@ -60,6 +60,7 @@ export default {
   'role.admin': 'Руководитель управления',
   'role.department_admin': 'Руководитель отдела',
   'role.user': 'Сотрудник',
+  'role.agent': 'Агент интерактивных услуг',
 
   // Общие названия полей
   'field.name': 'Название',

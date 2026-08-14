@@ -29,7 +29,7 @@ from app.models import (
 )
 from app.utils import (
     is_any_admin, is_admin_or_above, log_audit, fetch_employee_from_isup,
-    get_scope, div_user_ids, dept_user_ids,
+    get_scope, div_user_ids, dept_user_ids, WORKER_ROLES,
 )
 from app.services import events
 
@@ -456,7 +456,7 @@ def _assignable_workers(role, dept_id, div_id):
     elif role == 'admin':
         q = User.query.filter_by(is_active=True, role='department_admin', department_id=dept_id)
     elif role == 'department_admin':
-        cond = db.and_(User.role == 'user', User.division_id == div_id)
+        cond = db.and_(User.role.in_(WORKER_ROLES), User.division_id == div_id)
         own_div = Division.query.get(div_id) if div_id else None
         if own_div and own_div.is_service_provider:
             peer_div_ids = [d.id for d in Division.query.filter(

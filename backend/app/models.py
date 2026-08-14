@@ -700,6 +700,35 @@ class AdminPermission(db.Model):
         }
 
 
+class RolePage(db.Model):
+    """Rol ↔ sahifa ko'rinishi matritsasi.
+
+    Bir rol uchun yozuv bo'lsa — o'sha rolning ko'rinishi to'liq shu yozuvlar
+    bilan aniqlanadi (utils.DEFAULT_ROLE_PAGES o'rniga). Yozuv bo'lmasa
+    standart qiymat ishlaydi, shuning uchun bo'sh jadval = avvalgi xatti-harakat.
+    """
+    __tablename__ = 'role_pages'
+
+    id = db.Column(db.Integer, primary_key=True)
+    role = db.Column(db.String(30), nullable=False, index=True)
+    page = db.Column(db.String(50), nullable=False)
+    allowed = db.Column(db.Boolean, default=True, nullable=False)
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc),
+                           onupdate=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        db.UniqueConstraint('role', 'page', name='uq_role_pages_role_page'),
+    )
+
+    def to_dict(self):
+        return {
+            'role': self.role,
+            'page': self.page,
+            'allowed': bool(self.allowed),
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
 class User(db.Model):
     __tablename__ = 'users'
 

@@ -13,7 +13,72 @@ const ROLE_ICONS = {
 
 const TOP_ROLES = ['superadmin', 'director', 'deputy_director', 'admin']
 
+// Rol berish oynasida ko'rsatiladigan rollar (superadmin bu yerdan berilmaydi)
+const ASSIGNABLE_ROLES = [
+  'director', 'deputy_director', 'admin', 'department_admin', 'user', 'agent',
+]
+
+// Sahifa kaliti → menyu tarjimasi kaliti. Matritsada menyudagi nom ko'rinsin.
+const PAGE_LABEL_KEYS = {
+  dashboard: 'nav.dashboard',
+  reminders: 'nav.reminders',
+  work_logs: 'nav.workLogs',
+  department_work_logs: 'nav.departmentWorkLogs',
+  statistics: 'nav.statistics',
+  create_project: 'nav.createProject',
+  create_task: 'nav.createTask',
+  teams: 'nav.teams',
+  departments: 'nav.departments',
+  users: 'nav.users',
+  interactive_services: 'nav.interactiveServices',
+  interactive_requests: 'nav.interactiveRequests',
+  roles: 'nav.roles',
+  audit_logs: 'nav.auditLogs',
+}
+
+const ROLE_COLORS = {
+  superadmin: '#f59e0b', director: '#ef4444', deputy_director: '#f97316',
+  admin: '#6366f1', department_admin: '#10b981', user: '#64748b',
+  agent: '#0ea5e9',
+}
+
 export default function ManageRoles() {
+  const { canManagePageAccess } = useAuth()
+  const { t } = useI18n()
+  // Rol ↔ sahifa matritsasi faqat Bosh Administratorga ko'rinadi
+  const [tab, setTab] = useState('users')
+
+  return (
+    <div>
+      {canManagePageAccess && (
+        <div className="card" style={{ marginBottom: 16, display: 'flex', gap: 8, padding: 8 }}>
+          <TabButton active={tab === 'users'} onClick={() => setTab('users')}>
+            🧑‍💻 {t('roles.tab.users')}
+          </TabButton>
+          <TabButton active={tab === 'pages'} onClick={() => setTab('pages')}>
+            🗂️ {t('roles.tab.pages')}
+          </TabButton>
+        </div>
+      )}
+
+      {tab === 'pages' && canManagePageAccess ? <PageAccessMatrix /> : <UserRoles />}
+    </div>
+  )
+}
+
+function TabButton({ active, onClick, children }) {
+  return (
+    <button
+      onClick={onClick}
+      className={active ? 'btn btn-primary' : 'btn btn-outline'}
+      style={{ flex: 1, fontSize: 13 }}
+    >
+      {children}
+    </button>
+  )
+}
+
+function UserRoles() {
   const { user: currentUser } = useAuth()
   const { t } = useI18n()
   const [users, setUsers] = useState([])
@@ -77,7 +142,9 @@ export default function ManageRoles() {
   const handleRoleChange = (role) => {
     setNewRole(role)
     if (role === 'admin') setNewDivId('')
-    if (role === 'user' || role === 'director') { setNewDeptId(''); setNewDivId('') }
+    if (role === 'user' || role === 'agent' || role === 'director') {
+      setNewDeptId(''); setNewDivId('')
+    }
   }
 
   const saveRole = async () => {
@@ -221,8 +288,7 @@ export default function ManageRoles() {
             <div className="form-group">
               <label>{t('roles.field.role')}</label>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
-                {/* 5 rol variantlari */}
-                {['director', 'deputy_director', 'admin', 'department_admin', 'user'].map(value => ({
+                {ASSIGNABLE_ROLES.map(value => ({
                   value,
                   label: (ROLE_ICONS[value] || '') + roleLabel(t, value),
                   desc: t(`roles.desc.${value}`),
@@ -282,8 +348,10 @@ export default function ManageRoles() {
               </div>
             )}
 
-            {/* User uchun ham bo'lim tanlash (optional) */}
-            {newRole === 'user' && (
+            {/* Xodim va agent uchun ham bo'lim tanlash (ixtiyoriy).
+                Agentga interaktiv ariza biriktirilishi uchun uni xizmat
+                ko'rsatuvchi bo'limga qo'shib qo'yish kerak. */}
+            {(newRole === 'user' || newRole === 'agent') && (
               <>
                 <div className="form-group">
                   <label>{t('roles.field.departmentOptional')}</label>
@@ -324,18 +392,11 @@ export default function ManageRoles() {
 
 function RoleGroupHeader({ role, count }) {
   const { t } = useI18n()
-  const COLORS = {
-    superadmin: '#f59e0b',
-    director: '#ef4444',
-    admin: '#6366f1',
-    department_admin: '#10b981',
-    user: '#64748b',
-  }
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
       <span style={{
         width: 10, height: 10, borderRadius: '50%',
-        background: COLORS[role], flexShrink: 0,
+        background: ROLE_COLORS[role], flexShrink: 0,
       }} />
       <h3 style={{ fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, margin: 0 }}>
         {(ROLE_ICONS[role] || '') + roleLabel(t, role)}
@@ -349,10 +410,7 @@ function RoleGroupHeader({ role, count }) {
 
 function UserCard({ u, onEdit, readonly }) {
   const { t } = useI18n()
-  const roleColor = {
-    superadmin: '#f59e0b', director: '#ef4444', deputy_director: '#f97316',
-    admin: '#6366f1', department_admin: '#10b981', user: 'var(--text-muted)',
-  }[u.role] || 'var(--text-muted)'
+  const roleColor = ROLE_COLORS[u.role] || 'var(--text-muted)'
   return (
     <div style={{
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -395,5 +453,250 @@ function Empty() {
     <p style={{ fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', padding: '12px 0' }}>
       —
     </p>
+  )
+}
+
+
+// =========================================================================
+// ROL ↔ SAHIFA MATRITSASI — faqat Bosh Administrator uchun
+//
+// Ilgari qaysi rol qaysi sahifani ko'rishi App.jsx/Navbar.jsx ichida qattiq
+// yozilgan edi. Endi bu yerdan boshqariladi; standart qiymatlar avvalgi
+// holatning aynan o'zi, shuning uchun tegilmasa hech nima o'zgarmaydi.
+// =========================================================================
+
+function PageAccessMatrix() {
+  const { t } = useI18n()
+  const [data, setData] = useState(null)      // {roles, pages, matrix, defaults, ...}
+  const [draft, setDraft] = useState({})      // {role: Set(pageKey)}
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => { load() }, [])
+
+  const load = async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const res = await api.get('/permissions/page-access')
+      setData(res.data)
+      setDraft(toDraft(res.data.matrix))
+    } catch (err) {
+      setError(err.response?.data?.error || t('state.error'))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const toDraft = (matrix) => {
+    const d = {}
+    Object.entries(matrix || {}).forEach(([role, pages]) => { d[role] = new Set(pages) })
+    return d
+  }
+
+  const pageLabel = (p) => {
+    const key = PAGE_LABEL_KEYS[p.key]
+    if (!key) return p.label
+    const val = t(key)
+    return val === key ? p.label : val
+  }
+
+  const toggle = (role, pageKey) => {
+    setSaved(false)
+    setDraft(prev => {
+      const next = { ...prev }
+      const set = new Set(next[role] || [])
+      if (set.has(pageKey)) set.delete(pageKey)
+      else set.add(pageKey)
+      next[role] = set
+      return next
+    })
+  }
+
+  const setAll = (role, on) => {
+    setSaved(false)
+    setDraft(prev => ({
+      ...prev,
+      [role]: on ? new Set(data.pages.map(p => p.key)) : new Set(),
+    }))
+  }
+
+  const resetRole = (role) => {
+    setSaved(false)
+    setDraft(prev => ({ ...prev, [role]: new Set(data.defaults[role] || []) }))
+  }
+
+  // Serverdagi holatdan farq qiladigan rollar — faqat shular yuboriladi
+  const changedRoles = data ? data.roles
+    .filter(r => !r.locked)
+    .filter(r => {
+      const now = [...(draft[r.value] || [])].sort().join(',')
+      const before = [...(data.matrix[r.value] || [])].sort().join(',')
+      return now !== before
+    })
+    .map(r => r.value) : []
+
+  const save = async () => {
+    if (!changedRoles.length) return
+    setSaving(true)
+    setError('')
+    try {
+      const matrix = {}
+      changedRoles.forEach(role => { matrix[role] = [...(draft[role] || [])] })
+      const res = await api.put('/permissions/page-access', { matrix })
+      setData(prev => ({ ...prev, matrix: res.data.matrix }))
+      setDraft(toDraft(res.data.matrix))
+      setSaved(true)
+    } catch (err) {
+      setError(err.response?.data?.error || t('state.error'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const resetAll = async () => {
+    if (!window.confirm(t('pages.resetConfirm'))) return
+    setSaving(true)
+    setError('')
+    try {
+      const res = await api.post('/permissions/page-access/reset', {})
+      setData(prev => ({ ...prev, matrix: res.data.matrix }))
+      setDraft(toDraft(res.data.matrix))
+      setSaved(true)
+    } catch (err) {
+      setError(err.response?.data?.error || t('state.error'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) return <div className="loading">{t('state.loading')}</div>
+  if (!data) return <div className="alert alert-error">{error || t('state.error')}</div>
+
+  return (
+    <div>
+      <div className="page-header">
+        <h1>{t('pages.title')}</h1>
+        <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>{t('pages.subtitle')}</p>
+      </div>
+
+      {error && <div className="alert alert-error" style={{ marginBottom: 12 }}>{error}</div>}
+
+      <div className="card" style={{ marginBottom: 12, overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead>
+            <tr>
+              <th style={{
+                textAlign: 'left', padding: '8px 10px', position: 'sticky', left: 0,
+                background: 'var(--bg-card, var(--bg))', borderBottom: '2px solid var(--border)',
+                minWidth: 180, zIndex: 1,
+              }}>
+                {t('pages.col.role')}
+              </th>
+              {data.pages.map(p => (
+                <th key={p.key} style={{
+                  padding: '8px 6px', borderBottom: '2px solid var(--border)',
+                  fontWeight: 600, fontSize: 11, minWidth: 82, verticalAlign: 'bottom',
+                }}>
+                  <div style={{ fontSize: 15 }}>{p.icon}</div>
+                  <div>{pageLabel(p)}</div>
+                  {data.service_provider_pages.includes(p.key) && (
+                    <div title={t('pages.serviceNote')} style={{ color: '#0ea5e9', fontSize: 12 }}>ⓘ</div>
+                  )}
+                </th>
+              ))}
+              <th style={{ borderBottom: '2px solid var(--border)', minWidth: 110 }} />
+            </tr>
+          </thead>
+          <tbody>
+            {data.roles.map(r => {
+              const set = draft[r.value] || new Set()
+              const isChanged = changedRoles.includes(r.value)
+              return (
+                <tr key={r.value} style={{ background: isChanged ? 'rgba(99,102,241,0.06)' : 'transparent' }}>
+                  <td style={{
+                    padding: '8px 10px', borderBottom: '1px solid var(--border)',
+                    position: 'sticky', left: 0, zIndex: 1,
+                    background: isChanged ? 'var(--bg-input, rgba(99,102,241,0.06))' : 'var(--bg-card, var(--bg))',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{
+                        width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+                        background: ROLE_COLORS[r.value] || 'var(--text-muted)',
+                      }} />
+                      <span style={{ fontWeight: 600 }}>
+                        {(ROLE_ICONS[r.value] || '') + roleLabel(t, r.value)}
+                      </span>
+                      {r.locked && <span title={t('pages.locked')}>🔒</span>}
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 14 }}>
+                      {t('pages.userCount', { n: r.user_count })}
+                    </div>
+                  </td>
+
+                  {data.pages.map(p => (
+                    <td key={p.key} style={{
+                      textAlign: 'center', padding: '8px 6px',
+                      borderBottom: '1px solid var(--border)',
+                    }}>
+                      <input
+                        type="checkbox"
+                        checked={r.locked ? true : set.has(p.key)}
+                        disabled={r.locked || saving}
+                        onChange={() => toggle(r.value, p.key)}
+                        style={{ width: 16, height: 16, cursor: r.locked ? 'not-allowed' : 'pointer' }}
+                      />
+                    </td>
+                  ))}
+
+                  <td style={{ padding: '8px 6px', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>
+                    {!r.locked && (
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        <button className="btn btn-outline btn-sm" style={{ padding: '2px 7px', fontSize: 10 }}
+                          onClick={() => setAll(r.value, true)} disabled={saving}>
+                          {t('pages.all')}
+                        </button>
+                        <button className="btn btn-outline btn-sm" style={{ padding: '2px 7px', fontSize: 10 }}
+                          onClick={() => setAll(r.value, false)} disabled={saving}>
+                          {t('pages.none')}
+                        </button>
+                        <button className="btn btn-outline btn-sm" style={{ padding: '2px 7px', fontSize: 10 }}
+                          onClick={() => resetRole(r.value)} disabled={saving}
+                          title={t('pages.reset')}>
+                          ↺
+                        </button>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="card" style={{
+        display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+      }}>
+        <div style={{ flex: 1, minWidth: 200, fontSize: 12, color: 'var(--text-muted)' }}>
+          {changedRoles.length > 0
+            ? `⚠️ ${t('pages.unsaved', { n: changedRoles.length })}`
+            : saved ? `✅ ${t('pages.saved')}` : t('pages.hint')}
+        </div>
+        <button className="btn btn-outline" onClick={resetAll} disabled={saving}>
+          {t('pages.resetAll')}
+        </button>
+        <button className="btn btn-primary" onClick={save}
+          disabled={saving || changedRoles.length === 0}>
+          {saving ? t('btn.saving') : t('btn.save')}
+        </button>
+      </div>
+
+      <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 12 }}>
+        ⓘ {t('pages.serviceNote')}
+      </p>
+    </div>
   )
 }

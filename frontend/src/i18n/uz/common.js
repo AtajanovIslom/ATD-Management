@@ -60,6 +60,7 @@ export default {
   'role.admin': 'Boshqarma Rahbari',
   'role.department_admin': "Bo'lim Rahbari",
   'role.user': 'Xodim',
+  'role.agent': 'Interaktiv xizmat agenti',
 
   // Umumiy maydon nomlari
   'field.name': 'Nomi',

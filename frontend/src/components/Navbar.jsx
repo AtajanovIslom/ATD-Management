@@ -14,7 +14,7 @@ const ROLE_ICONS = {
 }
 
 export default function Navbar() {
-  const { user, logout, isAdmin, isSuperAdmin, isDeptAdmin, canManageRoles } = useAuth()
+  const { user, logout, isAdmin, canView } = useAuth()
   const { theme, toggleTheme } = useTheme()
   const { t } = useI18n()
   const [interactiveCount, setInteractiveCount] = useState(0)
@@ -55,42 +55,25 @@ export default function Navbar() {
           </div>
         </div>
       </div>
+      {/* Menyu bandlari rol ↔ sahifa matritsasidan chiziladi (backend:
+          /permissions/my-pages). Bosh Administrator uni /roles sahifasidagi
+          "Rol va sahifalar" bo'limida o'zgartiradi. */}
       <nav className="sidebar-nav">
-        {link('/', '📊', t('nav.dashboard'), true)}
-        {link('/reminders', '🗓️', t('nav.reminders'))}
-        {/* Kunlik hisobotim — faqat oddiy xodimlarda (rahbarlar hisobot topshirmaydi) */}
-        {!isDeptAdmin && link('/work-logs', '📓', t('nav.workLogs'))}
-        {isDeptAdmin && link('/department-work-logs', '👥', t('nav.departmentWorkLogs'))}
+        {canView('dashboard') && link('/', '📊', t('nav.dashboard'), true)}
+        {canView('reminders') && link('/reminders', '🗓️', t('nav.reminders'))}
+        {canView('work_logs') && link('/work-logs', '📓', t('nav.workLogs'))}
+        {canView('department_work_logs') && link('/department-work-logs', '👥', t('nav.departmentWorkLogs'))}
+        {canView('statistics') && link('/statistics', '📈', t('nav.statistics'))}
+        {canView('create_project') && link('/create-project', '🚀', t('nav.createProject'))}
+        {canView('create_task') && link('/create-task', '📝', t('nav.createTask'))}
+        {canView('teams') && link('/teams', '👥', t('nav.teams'))}
+        {canView('departments') && link('/departments', '🏢', t('nav.departments'))}
+        {/* Boshqarma rahbari va yuqorisi butun xodimlar ro'yxatini, bo'lim
+            rahbari faqat o'z bo'limini ko'radi — sarlavha shunga qarab */}
+        {canView('users') && link('/users', '🧑‍💻', isAdmin ? t('nav.users') : t('nav.deptUsers'))}
+        {canView('interactive_services') && link('/interactive-services', '🧩', t('nav.interactiveServices'))}
 
-        {isDeptAdmin && link('/statistics', '📈', t('nav.statistics'))}
-
-        {isAdmin && (
-          <>
-            {link('/create-project', '🚀', t('nav.createProject'))}
-            {link('/create-task', '📝', t('nav.createTask'))}
-            {link('/teams', '👥', t('nav.teams'))}
-            {link('/departments', '🏢', t('nav.departments'))}
-            {link('/users', '🧑‍💻', t('nav.users'))}
-            {link('/interactive-services', '🧩', t('nav.interactiveServices'))}
-          </>
-        )}
-
-        {!isAdmin && isDeptAdmin && (
-          <>
-            {link('/create-project', '🚀', t('nav.createProject'))}
-            {link('/create-task', '📝', t('nav.createTask'))}
-            {link('/users', '🧑‍💻', t('nav.deptUsers'))}
-          </>
-        )}
-
-        {canManageRoles && link('/roles', '🔑', t('nav.roles'))}
-        {isSuperAdmin && link('/audit-logs', '📋', t('nav.auditLogs'))}
-
-        {/* Interaktiv arizalar — faqat barcha boshqarma boshliqlari (admin+) va
-            "Interaktiv xizmat ko'rsatadi" deb belgilangan bo'lim a'zolariga
-            (bo'lim rahbari + xodim). Servis xizmati yoqilmagan bo'limlarga
-            ko'rinmaydi. */}
-        {(isAdmin || user.division_is_service_provider) && (
+        {canView('interactive_requests') && (
           <NavLink to="/interactive-requests" className={({ isActive }) => isActive ? 'active' : ''}>
             📥 {t('nav.interactiveRequests')}
             {interactiveCount > 0 && (
@@ -105,6 +88,8 @@ export default function Navbar() {
           </NavLink>
         )}
 
+        {canView('roles') && link('/roles', '🔑', t('nav.roles'))}
+        {canView('audit_logs') && link('/audit-logs', '📋', t('nav.auditLogs'))}
       </nav>
       <div className="sidebar-footer">
         <LanguageSwitcher variant="compact" />

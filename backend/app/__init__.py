@@ -233,6 +233,18 @@ def create_app():
             """DELETE FROM notifications WHERE entity_type = 'interactive_request'
                 AND entity_id IS NOT NULL
                 AND NOT EXISTS (SELECT 1 FROM interactive_requests r WHERE r.id = entity_id)""",
+            # Rol ↔ sahifa matritsasi. Bo'sh jadval = utils.DEFAULT_ROLE_PAGES,
+            # ya'ni avvalgi qattiq yozilgan ko'rinish. Bosh Administrator
+            # /roles sahifasidan o'zgartirgandagina yozuv paydo bo'ladi.
+            """CREATE TABLE IF NOT EXISTS role_pages (
+                id SERIAL PRIMARY KEY,
+                role VARCHAR(30) NOT NULL,
+                page VARCHAR(50) NOT NULL,
+                allowed BOOLEAN NOT NULL DEFAULT TRUE,
+                updated_at TIMESTAMP DEFAULT NOW(),
+                CONSTRAINT uq_role_pages_role_page UNIQUE (role, page)
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_role_pages_role ON role_pages(role)",
         ]
         # Har bir migratsiya o'z tranzaksiyasida bajariladi — bittasi xato bersa
         # keyingilariga ta'sir qilmasin. Ilgari umumiy commit edi, bir SQL rollback

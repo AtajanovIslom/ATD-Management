@@ -1,12 +1,17 @@
 from flask import Blueprint, request, jsonify
-from flask_jwt_extended import jwt_required, get_jwt
+from flask_jwt_extended import jwt_required, get_jwt, get_jwt_identity
 from app import db
-from app.models import User, Division
-from app.utils import get_scope, is_superadmin, can_manage_roles, log_audit
+from app.models import User, Division, RolePage
+from app.utils import (
+    get_scope, is_superadmin, can_manage_roles, can_manage_page_access, log_audit,
+    PAGES, PAGE_KEYS, LOCKED_ROLES, SERVICE_PROVIDER_PAGES,
+    DEFAULT_ROLE_PAGES, role_page_matrix, allowed_pages,
+)
 
 permissions_bp = Blueprint('permissions', __name__)
 
-VALID_ROLES = ('superadmin', 'director', 'deputy_director', 'admin', 'department_admin', 'user')
+VALID_ROLES = ('superadmin', 'director', 'deputy_director', 'admin',
+               'department_admin', 'user', 'agent')
 
 ROLE_LABELS = {
     'superadmin': 'Bosh Administrator',
@@ -15,6 +20,7 @@ ROLE_LABELS = {
     'admin': "Boshqarma Rahbari",
     'department_admin': "Bo'lim Rahbari",
     'user': 'Xodim',
+    'agent': 'Interaktiv xizmat agenti',
 }
 
 
@@ -92,6 +98,139 @@ def get_user_role(user_id):
 
     user = User.query.get_or_404(user_id)
     return jsonify(_user_dict(user))
+
+
+# =========================================================================
+# ROL ↔ SAHIFA MATRITSASI
+# =========================================================================
+
+@permissions_bp.route('/my-pages', methods=['GET'])
+@jwt_required()
+def my_pages():
+    """Joriy foydalanuvchi ko'ra oladigan sahifalar — frontend nav/route uchun.
+
+    Har ochilishda so'raladi, shuning uchun Bosh Administrator matritsani
+    o'zgartirsa xodim qayta login qilmasdan (sahifa yangilanishida) ko'radi.
+    """
+    role, _, _ = get_scope(get_jwt())
+    user = User.query.get(int(get_jwt_identity()))
+    div = user.division if user else None
+    is_provider = bool(div.is_service_provider) if div else False
+
+    pages = allowed_pages(role, is_provider)
+    return jsonify({'role': role, 'pages': pages, 'home': _home_path(pages)})
+
+
+def _home_path(pages):
+    """Rolning bosh sahifasi — PAGES tartibidagi birinchi ruxsat etilgani"""
+    for p in PAGES:
+        if p['key'] in pages:
+            return p['path']
+    return '/'
+
+
+@permissions_bp.route('/page-access', methods=['GET'])
+@jwt_required()
+def get_page_access():
+    """To'liq matritsa — faqat Bosh Administrator uchun"""
+    role, _, _ = get_scope(get_jwt())
+    if not can_manage_page_access(role):
+        return jsonify({'error': "Ruxsat yo'q"}), 403
+
+    matrix = role_page_matrix()
+    return jsonify({
+        'roles': [
+            {
+                'value': r,
+                'label': ROLE_LABELS.get(r, r),
+                'locked': r in LOCKED_ROLES,
+                'user_count': User.query.filter_by(role=r, is_active=True).count(),
+            }
+            for r in VALID_ROLES
+        ],
+        'pages': PAGES,
+        'matrix': matrix,
+        'defaults': DEFAULT_ROLE_PAGES,
+        'service_provider_pages': list(SERVICE_PROVIDER_PAGES),
+    })
+
+
+@permissions_bp.route('/page-access', methods=['PUT'])
+@jwt_required()
+def set_page_access():
+    """Matritsani saqlash. Body: {"matrix": {"agent": ["interactive_requests"], ...}}
+
+    Faqat kelgan rollar yangilanadi — qolganlari tegilmaydi.
+    """
+    role, _, _ = get_scope(get_jwt())
+    if not can_manage_page_access(role):
+        return jsonify({'error': "Ruxsat yo'q"}), 403
+
+    data = request.get_json() or {}
+    matrix = data.get('matrix')
+    if not isinstance(matrix, dict) or not matrix:
+        return jsonify({'error': 'matrix majburiy'}), 400
+
+    changed = []
+    for target_role, page_list in matrix.items():
+        if target_role not in VALID_ROLES:
+            return jsonify({'error': f"Noma'lum rol: {target_role}"}), 400
+        if target_role in LOCKED_ROLES:
+            # Bosh Administrator o'zini qulflab qo'ymasligi uchun — jim o'tkazamiz
+            continue
+        if not isinstance(page_list, list):
+            return jsonify({'error': f"{target_role} uchun ro'yxat kutilgan"}), 400
+
+        wanted = {p for p in page_list if p in PAGE_KEYS}
+        unknown = set(page_list) - wanted
+        if unknown:
+            return jsonify({'error': f"Noma'lum sahifa: {', '.join(sorted(unknown))}"}), 400
+
+        existing = {rp.page: rp for rp in RolePage.query.filter_by(role=target_role).all()}
+        for page in PAGE_KEYS:
+            allow = page in wanted
+            row = existing.get(page)
+            if row is None:
+                db.session.add(RolePage(role=target_role, page=page, allowed=allow))
+            elif bool(row.allowed) != allow:
+                row.allowed = allow
+        changed.append(f"{target_role}=[{','.join(sorted(wanted))}]")
+
+    if changed:
+        log_audit('update', 'role_pages', entity_label='Rol ↔ sahifa matritsasi',
+                  details='; '.join(changed))
+    db.session.commit()
+
+    return jsonify({'message': 'Saqlandi', 'matrix': role_page_matrix()})
+
+
+@permissions_bp.route('/page-access/reset', methods=['POST'])
+@jwt_required()
+def reset_page_access():
+    """Matritsani standart (kodda yozilgan) holatga qaytarish.
+
+    Body: {"role": "agent"} — faqat bitta rol, yoki bo'sh bo'lsa hammasi.
+    """
+    role, _, _ = get_scope(get_jwt())
+    if not can_manage_page_access(role):
+        return jsonify({'error': "Ruxsat yo'q"}), 403
+
+    data = request.get_json() or {}
+    target = data.get('role')
+
+    q = RolePage.query
+    if target:
+        if target not in VALID_ROLES:
+            return jsonify({'error': f"Noma'lum rol: {target}"}), 400
+        q = q.filter_by(role=target)
+
+    q.delete(synchronize_session=False)
+    log_audit('reset', 'role_pages',
+              entity_label=target or 'barcha rollar',
+              details='standart qiymatlarga qaytarildi')
+    db.session.commit()
+
+    return jsonify({'message': 'Standart holatga qaytarildi', 'matrix': role_page_matrix()})
 
 
 def _user_dict(u):

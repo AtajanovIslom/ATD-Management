@@ -137,4 +137,25 @@ export default {
   'roles.desc.admin': "O'z boshqarmasini boshqaradi",
   'roles.desc.department_admin': "O'z bo'limini boshqaradi",
   'roles.desc.user': "Faqat o'z vazifalarini ko'radi",
+  'roles.desc.agent': "Faqat interaktiv arizalar oynasini ko'radi",
+
+  'roles.tab.users': 'Foydalanuvchilarga rol berish',
+  'roles.tab.pages': 'Rol va sahifalar',
+
+  // ── Rol ↔ sahifa matritsasi ──
+  'pages.title': "Rol bo'yicha sahifa ko'rinishi",
+  'pages.subtitle': "Har bir rol qaysi menyu bandlarini ko'rishini belgilang. Standart qiymatlar hozirgi holat bilan bir xil.",
+  'pages.col.role': 'Rol',
+  'pages.userCount': '{n} ta foydalanuvchi',
+  'pages.all': 'Hammasi',
+  'pages.none': "Hech biri",
+  'pages.reset': 'Standart holatga qaytarish',
+  'pages.resetAll': 'Hammasini standart holatga qaytarish',
+  'pages.resetConfirm': "Barcha rollar uchun sahifa ko'rinishi kodda yozilgan standart holatga qaytariladi. Davom etasizmi?",
+  'pages.unsaved': "{n} ta rolda saqlanmagan o'zgarish bor",
+  'pages.saved': "Saqlandi — o'zgarish xodimlar sahifani yangilaganda kuchga kiradi",
+  'pages.hint': "Belgini olib tashlasangiz, o'sha rol menyuda bu bandni ko'rmaydi",
+  'pages.locked': "Bosh Administrator qatorini o'zgartirib bo'lmaydi",
+  'pages.serviceNote': "Bo'linmasi «Interaktiv xizmat ko'rsatadi» deb belgilangan xodimlarga bu sahifa matritsadan qat'i nazar ochiq bo'ladi.",
+  'pages.noAccess': "Sizning rolingizga hech qanday sahifa ochilmagan. Iltimos, Bosh Administratorga murojaat qiling.",
 }

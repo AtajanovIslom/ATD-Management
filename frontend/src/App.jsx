@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
+import { useI18n } from './i18n'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import SignUp from './pages/SignUp'
@@ -25,7 +26,8 @@ import TaskNotifier from './components/TaskNotifier'
 import Navbar from './components/Navbar'
 
 export default function App() {
-  const { user, isAdmin, isDeptAdmin, isSuperAdmin, canManageRoles, can } = useAuth()
+  const { user, isDeptAdmin, canView, pages, pagesLoaded, home } = useAuth()
+  const { t } = useI18n()
 
   if (!user) {
     return (
@@ -38,6 +40,29 @@ export default function App() {
     )
   }
 
+  // Ruxsatlar hali kelmagan bo'lsa kutamiz — aks holda "/" ga noto'g'ri
+  // yo'naltirish bo'lib, bosh sahifasi "/" bo'lmagan rol (agent) sakrab ketardi
+  if (!pagesLoaded) {
+    return <div className="loading">...</div>
+  }
+
+  // Rolga birorta sahifa qoldirilmagan bo'lsa — ochiq marshrut yo'q, ya'ni
+  // "*" qoidasi o'zini o'ziga yo'naltirib sikl hosil qilardi. Shuning uchun
+  // marshrutlarni umuman chizmay, tushunarli xabar ko'rsatamiz.
+  if (pages.length === 0) {
+    return (
+      <div className="app-layout">
+        <Navbar />
+        <main className="main-content">
+          <div className="card" style={{ textAlign: 'center', padding: 40 }}>
+            <h2 style={{ marginBottom: 8 }}>🔒</h2>
+            <p style={{ color: 'var(--text-muted)' }}>{t('pages.noAccess')}</p>
+          </div>
+        </main>
+      </div>
+    )
+  }
+
   return (
     <div className="app-layout">
       <Navbar />
@@ -47,87 +72,40 @@ export default function App() {
         <Routes>
           <Route path="/register/:token" element={<Register />} />
 
-          {/* Interaktiv xizmatlar Admin — faqat admin darajasidagilar uchun */}
-          {isAdmin && (
-            <Route path="/interactive-services" element={<InteractiveServicesAdmin />} />
+          {/* Qaysi rol qaysi sahifani ko'rishi — rol ↔ sahifa matritsasidan
+              (backend: utils.DEFAULT_ROLE_PAGES + role_pages jadvali).
+              Bosh Administrator uni /roles sahifasidan o'zgartiradi. */}
+
+          {canView('dashboard') && (
+            <Route path="/" element={isDeptAdmin ? <AdminDashboard /> : <UserDashboard />} />
           )}
-
-          {/* Interaktiv arizalar — faqat admin+ (barcha boshqarma boshliqlari) yoki
-              interaktiv xizmat ko'rsatadigan bo'lim a'zolari (bo'lim rahbari + xodim) */}
-          {(isAdmin || user.division_is_service_provider) && (
-            <Route path="/interactive-requests" element={<InteractiveRequests />} />
-          )}
-
-          {/* Eslatmalarim — barcha foydalanuvchilar uchun */}
-          <Route path="/reminders" element={<Reminders />} />
-
-          {/* Kunlik hisobot — faqat oddiy xodimlar (rahbarlar hisobot topshirmaydi) */}
-          {!isDeptAdmin && <Route path="/work-logs" element={<WorkLogs />} />}
-
-          {/* Xodimlar hisobotlari — boshqarma/bo'lim rahbari uchun */}
-          {isDeptAdmin && (
+          {canView('reminders') && <Route path="/reminders" element={<Reminders />} />}
+          {canView('work_logs') && <Route path="/work-logs" element={<WorkLogs />} />}
+          {canView('department_work_logs') && (
             <Route path="/department-work-logs" element={<DepartmentWorkLogs />} />
           )}
-
-          {/* Audit jurnali — faqat superadmin/director/deputy_director */}
-          {isSuperAdmin && (
-            <Route path="/audit-logs" element={<AuditLogs />} />
+          {canView('statistics') && <Route path="/statistics" element={<Statistics />} />}
+          {canView('create_project') && <Route path="/create-project" element={<CreateProject />} />}
+          {canView('create_task') && <Route path="/create-task" element={<CreateTask />} />}
+          {canView('teams') && <Route path="/teams" element={<ManageTeams />} />}
+          {canView('departments') && <Route path="/departments" element={<ManageDepartments />} />}
+          {canView('users') && <Route path="/users" element={<ManageUsers />} />}
+          {canView('interactive_services') && (
+            <Route path="/interactive-services" element={<InteractiveServicesAdmin />} />
           )}
-
-          {/* Super Admin — hamma sahifalar */}
-          {isSuperAdmin && (
-            <>
-              <Route path="/" element={<AdminDashboard />} />
-              <Route path="/create-project" element={<CreateProject />} />
-              <Route path="/create-task" element={<CreateTask />} />
-              <Route path="/users" element={<ManageUsers />} />
-              <Route path="/teams" element={<ManageTeams />} />
-              <Route path="/departments" element={<ManageDepartments />} />
-              {canManageRoles && <Route path="/roles" element={<ManageRoles />} />}
-              <Route path="/statistics" element={<Statistics />} />
-              <Route path="/projects/:id" element={<ProjectDetail />} />
-              <Route path="/tasks/:id" element={<TaskDetail />} />
-            </>
+          {canView('interactive_requests') && (
+            <Route path="/interactive-requests" element={<InteractiveRequests />} />
           )}
+          {canView('roles') && <Route path="/roles" element={<ManageRoles />} />}
+          {canView('audit_logs') && <Route path="/audit-logs" element={<AuditLogs />} />}
 
-          {/* Admin (Boshqarma rahbari) */}
-          {!isSuperAdmin && isAdmin && (
-            <>
-              <Route path="/" element={<AdminDashboard />} />
-              <Route path="/create-project" element={<CreateProject />} />
-              <Route path="/create-task" element={<CreateTask />} />
-              <Route path="/users" element={<ManageUsers />} />
-              <Route path="/teams" element={<ManageTeams />} />
-              <Route path="/departments" element={<ManageDepartments />} />
-              <Route path="/statistics" element={<Statistics />} />
-              <Route path="/projects/:id" element={<ProjectDetail />} />
-              <Route path="/tasks/:id" element={<TaskDetail />} />
-            </>
-          )}
+          {/* Loyiha/vazifa tafsilotlari — havola orqali ochiladi, alohida
+              menyu bandi emas, shuning uchun barcha rollarda mavjud */}
+          <Route path="/projects/:id" element={<ProjectDetail />} />
+          <Route path="/tasks/:id" element={<TaskDetail />} />
 
-          {/* Department Admin (Bo'lim rahbari) */}
-          {!isAdmin && isDeptAdmin && (
-            <>
-              <Route path="/" element={<AdminDashboard />} />
-              <Route path="/create-project" element={<CreateProject />} />
-              <Route path="/create-task" element={<CreateTask />} />
-              <Route path="/users" element={<ManageUsers />} />
-              <Route path="/statistics" element={<Statistics />} />
-              <Route path="/projects/:id" element={<ProjectDetail />} />
-              <Route path="/tasks/:id" element={<TaskDetail />} />
-            </>
-          )}
-
-          {/* User (Xodim) */}
-          {!isDeptAdmin && (
-            <>
-              <Route path="/" element={<UserDashboard />} />
-              <Route path="/projects/:id" element={<ProjectDetail />} />
-              <Route path="/tasks/:id" element={<TaskDetail />} />
-            </>
-          )}
-
-          <Route path="*" element={<Navigate to="/" />} />
+          {/* Noma'lum manzil — rolning bosh sahifasiga (agent uchun bu "/" emas) */}
+          <Route path="*" element={<Navigate to={home} replace />} />
         </Routes>
       </main>
     </div>

@@ -4,6 +4,7 @@ RBAC Roles:
   admin          - Boshqarma rahbari (department_id ko'rsatilgan)
   department_admin - Bo'lim rahbari (division_id ko'rsatilgan)
   user           - Xodim (oddiy foydalanuvchi)
+  agent          - Interaktiv xizmat agenti (faqat interaktiv arizalar oynasi)
 """
 
 ROLES = {
@@ -13,6 +14,7 @@ ROLES = {
     'admin': 'Boshqarma Rahbari',
     'department_admin': 'Bo\'lim Rahbari',
     'user': 'Xodim',
+    'agent': 'Interaktiv xizmat agenti',
 }
 
 # To'liq ma'lumot ko'ra oladigan rollar (superadmin, direktor, direktor o'rinbosari)
@@ -20,6 +22,153 @@ FULL_ACCESS_ROLES = ('superadmin', 'director', 'deputy_director')
 
 # Rol berish huquqiga ega rollar (faqat superadmin va direktor)
 ROLE_MANAGER_ROLES = ('superadmin', 'director')
+
+# Rol ↔ sahifa matritsasini tahrirlash huquqi — faqat Bosh Administrator
+PAGE_ACCESS_MANAGER_ROLES = ('superadmin',)
+
+# Interaktiv arizalarni bajaruvchi ijrochi rollar (rahbar biriktira oladi)
+WORKER_ROLES = ('user', 'agent')
+
+
+# =========================================================================
+# ROL ↔ SAHIFA MATRITSASI
+#
+# Ilgari qaysi rol qaysi sahifani ko'rishi App.jsx/Navbar.jsx ichida qattiq
+# yozilgan edi. Endi u shu yerdagi standart qiymatlardan boshlanadi va Bosh
+# Administrator `/roles` sahifasidan o'zgartira oladi (role_pages jadvali).
+#
+# `PAGES` tartibi muhim: rolning birinchi ruxsat etilgan sahifasi uning
+# "bosh sahifasi" bo'ladi (masalan agent uchun — interaktiv arizalar).
+# =========================================================================
+
+PAGES = [
+    {'key': 'dashboard',            'path': '/',                     'icon': '📊',   'label': 'Boshqaruv paneli'},
+    {'key': 'reminders',            'path': '/reminders',            'icon': '🗓️',  'label': 'Eslatmalarim'},
+    {'key': 'work_logs',            'path': '/work-logs',            'icon': '📓',   'label': 'Kunlik hisobotim'},
+    {'key': 'department_work_logs', 'path': '/department-work-logs', 'icon': '👥',   'label': 'Xodimlar hisobotlari'},
+    {'key': 'statistics',           'path': '/statistics',           'icon': '📈',   'label': 'Statistika'},
+    {'key': 'create_project',       'path': '/create-project',       'icon': '🚀',   'label': 'Loyiha yaratish'},
+    {'key': 'create_task',          'path': '/create-task',          'icon': '📝',   'label': 'Vazifa yaratish'},
+    {'key': 'teams',                'path': '/teams',                'icon': '👥',   'label': 'Guruhlar'},
+    {'key': 'departments',          'path': '/departments',          'icon': '🏢',   'label': 'Boshqarmalar'},
+    {'key': 'users',                'path': '/users',                'icon': '🧑‍💻', 'label': 'Xodimlar'},
+    {'key': 'interactive_services', 'path': '/interactive-services', 'icon': '🧩',   'label': 'Interaktiv xizmatlar Admin'},
+    {'key': 'interactive_requests', 'path': '/interactive-requests', 'icon': '📥',   'label': 'Interaktiv arizalar'},
+    {'key': 'roles',                'path': '/roles',                'icon': '🔑',   'label': 'Rol va huquqlar'},
+    {'key': 'audit_logs',           'path': '/audit-logs',           'icon': '📋',   'label': 'Audit jurnali'},
+]
+
+PAGE_KEYS = tuple(p['key'] for p in PAGES)
+
+# Standart matritsa — avvalgi qattiq yozilgan holatning aynan o'zi.
+# Bularni o'zgartirmang: bu "hech kimning ko'rinishi o'zgarmasin" kafolati.
+DEFAULT_ROLE_PAGES = {
+    'superadmin': [
+        'dashboard', 'reminders', 'department_work_logs', 'statistics',
+        'create_project', 'create_task', 'teams', 'departments', 'users',
+        'interactive_services', 'interactive_requests', 'roles', 'audit_logs',
+    ],
+    'director': [
+        'dashboard', 'reminders', 'department_work_logs', 'statistics',
+        'create_project', 'create_task', 'teams', 'departments', 'users',
+        'interactive_services', 'interactive_requests', 'roles', 'audit_logs',
+    ],
+    # Direktor o'rinbosari barchasini ko'radi, lekin rol bera olmaydi
+    'deputy_director': [
+        'dashboard', 'reminders', 'department_work_logs', 'statistics',
+        'create_project', 'create_task', 'teams', 'departments', 'users',
+        'interactive_services', 'interactive_requests', 'audit_logs',
+    ],
+    'admin': [
+        'dashboard', 'reminders', 'department_work_logs', 'statistics',
+        'create_project', 'create_task', 'teams', 'departments', 'users',
+        'interactive_services', 'interactive_requests',
+    ],
+    'department_admin': [
+        'dashboard', 'reminders', 'department_work_logs', 'statistics',
+        'create_project', 'create_task', 'users',
+    ],
+    'user': [
+        'dashboard', 'reminders', 'work_logs',
+    ],
+    # Agent — faqat interaktiv arizalar oynasi
+    'agent': [
+        'interactive_requests',
+    ],
+}
+
+# Bosh Administrator hech qachon o'zini tizimdan qulflab qo'ymasligi kerak —
+# uning qatori har doim to'liq va tahrirlanmaydi.
+LOCKED_ROLES = ('superadmin',)
+
+# Bo'linmasi "interaktiv xizmat ko'rsatadi" deb belgilangan xodimlarga
+# matritsadan qat'i nazar ochiladigan sahifa (avvalgi xatti-harakat saqlanadi).
+SERVICE_PROVIDER_PAGES = ('interactive_requests',)
+
+
+def can_manage_page_access(role):
+    """Rol ↔ sahifa matritsasini tahrirlash huquqi (faqat Bosh Administrator)"""
+    return role in PAGE_ACCESS_MANAGER_ROLES
+
+
+def default_pages_for(role):
+    return list(DEFAULT_ROLE_PAGES.get(role, DEFAULT_ROLE_PAGES['user']))
+
+
+def role_page_matrix():
+    """Barcha rollar uchun amaldagi matritsa: {role: [page_key, ...]}.
+
+    Bazadagi role_pages yozuvlari standart qiymatlar ustiga qo'yiladi. Jadval
+    hali yaratilmagan yoki bo'sh bo'lsa — sof standart qiymatlar qaytadi.
+    """
+    matrix = {role: default_pages_for(role) for role in ROLES}
+
+    try:
+        from app.models import RolePage
+        rows = RolePage.query.all()
+    except Exception:
+        # Jadval hali yaratilmagan bo'lsa — standart qiymatlar bilan davom
+        # etamiz. rollback() shart: PostgreSQL'da xato bergan tranzaksiya
+        # ochiq qolsa, shu so'rovdagi keyingi barcha SQL rad etilardi.
+        try:
+            from app import db as _db
+            _db.session.rollback()
+        except Exception:
+            pass
+        rows = []
+
+    # Baza yozuvi bo'lgan rol uchun standart qiymat butunlay almashtiriladi
+    overridden = {r.role for r in rows}
+    for role in overridden:
+        matrix[role] = []
+    for r in rows:
+        if r.allowed and r.page in PAGE_KEYS:
+            matrix.setdefault(r.role, []).append(r.page)
+
+    # PAGES tartibida saqlaymiz — bosh sahifa aniqlanishi shunga bog'liq
+    order = {k: i for i, k in enumerate(PAGE_KEYS)}
+    for role in matrix:
+        matrix[role] = sorted(set(matrix[role]), key=lambda k: order.get(k, 999))
+
+    for role in LOCKED_ROLES:
+        matrix[role] = list(PAGE_KEYS)
+
+    return matrix
+
+
+def allowed_pages(role, is_service_provider=False):
+    """Foydalanuvchi ko'ra oladigan sahifalar ro'yxati"""
+    pages = role_page_matrix().get(role, default_pages_for(role))
+    if is_service_provider:
+        extra = [p for p in SERVICE_PROVIDER_PAGES if p not in pages]
+        if extra:
+            order = {k: i for i, k in enumerate(PAGE_KEYS)}
+            pages = sorted(pages + extra, key=lambda k: order.get(k, 999))
+    return pages
+
+
+def can_view_page(role, page_key, is_service_provider=False):
+    return page_key in allowed_pages(role, is_service_provider)
 
 
 def validate_password(password):
