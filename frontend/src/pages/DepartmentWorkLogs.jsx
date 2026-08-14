@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import api from '../api/axios'
+import { useI18n } from '../i18n'
 
 /**
  * Boshqarma/bo'lim rahbari uchun: o'z xodimlarining kunlik hisobotlari.
@@ -10,10 +11,13 @@ import api from '../api/axios'
 const today = () => new Date().toISOString().slice(0, 10)
 
 export default function DepartmentWorkLogs() {
+  const { t, formatDate: fmtDate } = useI18n()
   const [logs, setLogs] = useState([])
   const [loading, setLoading] = useState(true)
   const [range, setRange] = useState({ from: '', to: '' })
   const [userFilter, setUserFilter] = useState('')
+
+  const formatDate = (iso) => fmtDate(iso, { day: '2-digit', month: '2-digit', year: 'numeric' })
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -58,53 +62,53 @@ export default function DepartmentWorkLogs() {
         a.click()
         URL.revokeObjectURL(url)
       })
-      .catch(() => alert('Yuklab olishda xatolik'))
+      .catch(() => alert(t('dwl.downloadError')))
   }
 
   return (
     <div>
       <div className="page-header">
         <div>
-          <h1 style={{ margin: 0 }}>👥 Xodimlar kunlik hisobotlari</h1>
+          <h1 style={{ margin: 0 }}>👥 {t('dwl.title')}</h1>
           <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>
-            Xodimlaringizning kunlik hisobot matnlari
+            {t('dwl.subtitle')}
           </p>
         </div>
       </div>
 
       <div className="card" style={{ padding: 12, marginBottom: 12, display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
         <div>
-          <label style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Dan</label>
+          <label style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>{t('wl.from')}</label>
           <input type="date" className="form-input" value={range.from}
             onChange={e => setRange({ ...range, from: e.target.value })} />
         </div>
         <div>
-          <label style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Gacha</label>
+          <label style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>{t('wl.to')}</label>
           <input type="date" className="form-input" value={range.to}
             onChange={e => setRange({ ...range, to: e.target.value })} />
         </div>
         <div>
-          <label style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Xodim</label>
+          <label style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>{t('dwl.employee')}</label>
           <select className="form-input" value={userFilter} onChange={e => setUserFilter(e.target.value)}>
-            <option value="">— Barchasi —</option>
+            <option value="">{t('dwl.allEmployees')}</option>
             {employees.map(e => (
               <option key={e.id} value={e.id}>{e.name}</option>
             ))}
           </select>
         </div>
         {(range.from || range.to || userFilter) && (
-          <button className="btn btn-outline btn-sm" onClick={() => { setRange({ from: '', to: '' }); setUserFilter('') }}>Tozalash</button>
+          <button className="btn btn-outline btn-sm" onClick={() => { setRange({ from: '', to: '' }); setUserFilter('') }}>{t('btn.reset')}</button>
         )}
         <button className="btn btn-outline" style={{ marginLeft: 'auto' }} onClick={downloadWord}>
-          📄 Word yuklab olish
+          {t('dwl.downloadWord')}
         </button>
       </div>
 
       {loading ? (
-        <div className="card" style={{ padding: 30, textAlign: 'center', color: 'var(--text-muted)' }}>Yuklanmoqda...</div>
+        <div className="card" style={{ padding: 30, textAlign: 'center', color: 'var(--text-muted)' }}>{t('state.loading')}</div>
       ) : logs.length === 0 ? (
         <div className="card" style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
-          Hisobot topilmadi.
+          {t('dwl.empty')}
         </div>
       ) : (
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
@@ -112,9 +116,9 @@ export default function DepartmentWorkLogs() {
             <table>
               <thead>
                 <tr>
-                  <th style={{ width: 110 }}>Sana</th>
-                  <th style={{ width: 200 }}>Xodim</th>
-                  <th>Hisobot matni</th>
+                  <th style={{ width: 110 }}>{t('dwl.th.date')}</th>
+                  <th style={{ width: 200 }}>{t('dwl.th.employee')}</th>
+                  <th>{t('dwl.th.content')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -139,8 +143,3 @@ export default function DepartmentWorkLogs() {
   )
 }
 
-
-function formatDate(iso) {
-  if (!iso) return ''
-  return new Date(iso).toLocaleDateString('uz-UZ', { day: '2-digit', month: '2-digit', year: 'numeric' })
-}

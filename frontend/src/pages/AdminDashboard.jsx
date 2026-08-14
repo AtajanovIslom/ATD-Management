@@ -2,9 +2,12 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../api/axios'
 import { useAuth } from '../context/AuthContext'
+import { useI18n } from '../i18n'
+import { statusLabel } from '../i18n/labels'
 
 export default function AdminDashboard() {
   const { isDeptAdmin, isAdmin } = useAuth()
+  const { t, formatDate: fmtDate } = useI18n()
   const [stats, setStats] = useState(null)
   const [taskStats, setTaskStats] = useState(null)
   const [projects, setProjects] = useState([])
@@ -44,7 +47,7 @@ export default function AdminDashboard() {
 
   const handleDeleteTask = async (e, task) => {
     e.stopPropagation()  // kartochka klik'ini to'sish
-    if (!window.confirm(`"${task.name}" vazifasini o'chirmoqchimisiz?`)) return
+    if (!window.confirm(t('dash.deleteTask.confirm', { name: task.name }))) return
     try {
       await api.delete(`/tasks/${task.id}`)
       loadData()
@@ -57,7 +60,7 @@ export default function AdminDashboard() {
         loadBrowse()
         return
       }
-      alert(err.response?.data?.error || 'Xatolik')
+      alert(err.response?.data?.error || t('state.error'))
     }
   }
 
@@ -85,22 +88,10 @@ export default function AdminDashboard() {
     }
   }
 
-  const formatDate = (iso) => {
-    if (!iso) return '—'
-    return new Date(iso).toLocaleDateString('uz-UZ', {
-      year: 'numeric', month: '2-digit', day: '2-digit',
-    })
-  }
+  const formatDate = (iso) =>
+    fmtDate(iso, { year: 'numeric', month: '2-digit', day: '2-digit' }) || '—'
 
-  const statusLabel = (s) => {
-    if (s === 'active') return 'Faol'
-    if (s === 'in_progress') return 'Jarayonda'
-    if (s === 'review') return 'Tekshiruvda'
-    if (s === 'returned') return 'Qayta ko\'rib chiqilsin'
-    if (s === 'completed') return 'Tugallangan'
-    if (s === 'on_hold') return 'To\'xtatilgan'
-    return s
-  }
+  const statusText = (s) => statusLabel(t, s)
 
   const statusClass = (s) => {
     if (s === 'active') return 'badge-active'
@@ -111,41 +102,41 @@ export default function AdminDashboard() {
     return 'badge-on_hold'
   }
 
-  if (loading) return <div className="empty-state"><p>Yuklanmoqda...</p></div>
+  if (loading) return <div className="empty-state"><p>{t('state.loading')}</p></div>
 
   return (
     <div>
       <div className="page-header">
-        <h1>Boshqaruv paneli</h1>
+        <h1>{t('dash.title')}</h1>
       </div>
 
       {stats && (
         <div className="stats-grid">
           <div className="stat-card stat-primary">
             <div className="stat-value">{stats.total}</div>
-            <div className="stat-label">Jami loyihalar</div>
+            <div className="stat-label">{t('dash.stat.totalProjects')}</div>
           </div>
           <div className="stat-card stat-warning">
             <div className="stat-value">{stats.active}</div>
-            <div className="stat-label">Faol</div>
+            <div className="stat-label">{t('dash.stat.active')}</div>
           </div>
           <div className="stat-card stat-success">
             <div className="stat-value">{stats.completed}</div>
-            <div className="stat-label">Tugallangan</div>
+            <div className="stat-label">{t('dash.stat.completed')}</div>
           </div>
           <div className="stat-card stat-info">
             <div className="stat-value">{stats.on_hold}</div>
-            <div className="stat-label">To'xtatilgan</div>
+            <div className="stat-label">{t('dash.stat.onHold')}</div>
           </div>
         </div>
       )}
 
       <div className="card">
-        <h2 style={{ marginBottom: 16, fontSize: 16 }}>Barcha loyihalar</h2>
+        <h2 style={{ marginBottom: 16, fontSize: 16 }}>{t('dash.allProjects')}</h2>
 
         {projects.length === 0 ? (
           <div className="empty-state">
-            <p>Hali loyiha yaratilmagan</p>
+            <p>{t('dash.noProjects')}</p>
           </div>
         ) : (
           <div className="project-grid">
@@ -153,11 +144,11 @@ export default function AdminDashboard() {
               <div key={p.id} className="project-card" onClick={() => navigate(`/projects/${p.id}`)}>
                 <div className="project-card-header">
                   <span className="project-number">#{i + 1}</span>
-                  <span className={`badge ${statusClass(p.status)}`}>{statusLabel(p.status)}</span>
+                  <span className={`badge ${statusClass(p.status)}`}>{statusText(p.status)}</span>
                 </div>
                 <h3 className="project-card-title">{p.name}</h3>
                 <div className="project-card-meta">
-                  <span>Muddat: {formatDate(p.deadline)}</span>
+                  <span>{t('dash.deadlineLabel')}: {formatDate(p.deadline)}</span>
                 </div>
                 <div className="progress-bar-wrap">
                   <div className="progress-bar">
@@ -166,12 +157,12 @@ export default function AdminDashboard() {
                   <span className="progress-text">{p.progress}%</span>
                 </div>
                 <div className="project-card-info">
-                  <span>📦 {p.stage_count} bosqich</span>
+                  <span>📦 {t('dash.stageCount', { n: p.stage_count })}</span>
                   {p.current_stage_name && <span>📍 {p.current_stage_name}</span>}
                 </div>
                 <div className="project-card-teams">
-                  {p.teams?.map(t => (
-                    <span key={t.id} className="team-chip">{t.name} ({t.member_count})</span>
+                  {p.teams?.map(team => (
+                    <span key={team.id} className="team-chip">{team.name} ({team.member_count})</span>
                   ))}
                 </div>
               </div>
@@ -183,14 +174,14 @@ export default function AdminDashboard() {
       <div className="card" style={{ marginTop: 16 }}>
         {/* Yuqori qator: sarlavha | Faol/Tugallangan tugmalari | search | sonlar */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
-          <h2 style={{ fontSize: 16, margin: 0 }}>Barcha vazifalar</h2>
+          <h2 style={{ fontSize: 16, margin: 0 }}>{t('dash.allTasks')}</h2>
 
           {/* Status tugmalari: Faol / Tugallangan (+ Barchasi kompakt) */}
           <div style={{ display: 'flex', gap: 4 }}>
             {[
-              { v: 'active',    label: 'Faol' },
-              { v: 'completed', label: 'Tugallangan' },
-              { v: 'all',       label: 'Barchasi' },
+              { v: 'active',    label: t('status.active') },
+              { v: 'completed', label: t('status.completed') },
+              { v: 'all',       label: t('btn.all') },
             ].map(s => (
               <button key={s.v} onClick={() => setF({ status: s.v })}
                 style={{
@@ -204,19 +195,19 @@ export default function AdminDashboard() {
           </div>
 
           {/* Search input */}
-          <input type="text" placeholder="🔍 Xodim FIO yoki tabel..."
+          <input type="text" placeholder={t('dash.searchPlaceholder')}
             value={taskFilter.q} onChange={e => setF({ q: e.target.value })}
             className="form-input" style={{ maxWidth: 240, padding: '5px 10px', fontSize: 12, flex: '0 1 240px' }} />
 
           {/* Sonlar o'ng chekkada */}
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 10, fontSize: 12, flexWrap: 'wrap' }}>
-            <span style={{ color: 'var(--text-muted)' }}>Jami: <strong>{browseData.total}</strong></span>
+            <span style={{ color: 'var(--text-muted)' }}>{t('stats.th.total')}: <strong>{browseData.total}</strong></span>
             {taskStats && (
               <>
-                <span style={{ color: 'var(--warning)' }}>Tekshiruvda: <strong>{taskStats.review}</strong></span>
-                <span style={{ color: 'var(--text-muted)' }}>Qaytarilgan: <strong>{taskStats.returned}</strong></span>
-                <span style={{ color: 'var(--success)' }}>Tugallangan: <strong>{taskStats.completed}</strong></span>
-                {taskStats.overdue > 0 && <span style={{ color: '#ef4444' }}>Kechikkan: <strong>{taskStats.overdue}</strong></span>}
+                <span style={{ color: 'var(--warning)' }}>{t('dash.count.review')}: <strong>{taskStats.review}</strong></span>
+                <span style={{ color: 'var(--text-muted)' }}>{t('dash.count.returned')}: <strong>{taskStats.returned}</strong></span>
+                <span style={{ color: 'var(--success)' }}>{t('dash.count.completed')}: <strong>{taskStats.completed}</strong></span>
+                {taskStats.overdue > 0 && <span style={{ color: '#ef4444' }}>{t('dash.count.overdue')}: <strong>{taskStats.overdue}</strong></span>}
               </>
             )}
           </div>
@@ -224,28 +215,28 @@ export default function AdminDashboard() {
 
         {/* Ikkinchi qator: sana oralig'i + guruhlash + tozalash (kompakt) */}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
-          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Sana:</span>
+          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{t('dash.dateLabel')}</span>
           <input type="date" value={taskFilter.from} onChange={e => setF({ from: e.target.value })}
-            className="form-input" style={{ maxWidth: 140, padding: '4px 8px', fontSize: 12 }} title="Dan" />
+            className="form-input" style={{ maxWidth: 140, padding: '4px 8px', fontSize: 12 }} title={t('dash.dateFrom')} />
           <input type="date" value={taskFilter.to} onChange={e => setF({ to: e.target.value })}
-            className="form-input" style={{ maxWidth: 140, padding: '4px 8px', fontSize: 12 }} title="Gacha" />
+            className="form-input" style={{ maxWidth: 140, padding: '4px 8px', fontSize: 12 }} title={t('dash.dateTo')} />
           <select value={taskFilter.group} onChange={e => setF({ group: e.target.value })}
             className="form-input" style={{ maxWidth: 190, padding: '4px 8px', fontSize: 12 }}>
-            <option value="none">Guruhlashsiz</option>
-            <option value="department">Boshqarmalar kesimida</option>
-            <option value="team">Guruhlar kesimida</option>
+            <option value="none">{t('dash.group.none')}</option>
+            <option value="department">{t('dash.group.department')}</option>
+            <option value="team">{t('dash.group.team')}</option>
           </select>
           {(taskFilter.q || taskFilter.from || taskFilter.to || taskFilter.status !== 'active' || taskFilter.group !== 'none') && (
             <button className="btn btn-outline btn-sm" style={{ padding: '3px 10px', fontSize: 11 }} onClick={() =>
               setTaskFilter({ status: 'active', group: 'none', q: '', from: '', to: '', page: 1, per_page: 12 })}>
-              Tozalash
+              {t('btn.reset')}
             </button>
           )}
         </div>
 
         {/* Kontent: guruhlangan yoki paginatsiya bilan */}
         {browseData.total === 0 ? (
-          <div className="empty-state"><p>Vazifa topilmadi</p></div>
+          <div className="empty-state"><p>{t('dash.noTasksFound')}</p></div>
         ) : browseData.groups ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {browseData.groups.map(g => {
@@ -260,14 +251,14 @@ export default function AdminDashboard() {
                       cursor: 'pointer', color: 'var(--text)', fontSize: 14, fontWeight: 600,
                     }}>
                     <span>{taskFilter.group === 'team' ? '👥' : '🏢'} {g.label}</span>
-                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{g.count} ta {open ? '▲' : '▼'}</span>
+                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{t('dash.groupCount', { n: g.count })} {open ? '▲' : '▼'}</span>
                   </button>
                   {open && (
                     <div className="project-grid" style={{ padding: 10, borderTop: '1px solid var(--border)' }}>
-                      {g.tasks.map((t, i) => (
-                        <TaskCard key={t.id} t={t} i={i} navigate={navigate}
+                      {g.tasks.map((task, i) => (
+                        <TaskCard key={task.id} task={task} i={i} navigate={navigate}
                           isDeptAdmin={isDeptAdmin} handleDeleteTask={handleDeleteTask}
-                          statusClass={statusClass} statusLabel={statusLabel} formatDate={formatDate} />
+                          statusClass={statusClass} statusLabel={statusText} formatDate={formatDate} />
                       ))}
                     </div>
                   )}
@@ -278,10 +269,10 @@ export default function AdminDashboard() {
         ) : (
           <>
             <div className="project-grid">
-              {browseData.tasks.map((t, i) => (
-                <TaskCard key={t.id} t={t} i={i + (browseData.page - 1) * browseData.per_page}
+              {browseData.tasks.map((task, i) => (
+                <TaskCard key={task.id} task={task} i={i + (browseData.page - 1) * browseData.per_page}
                   navigate={navigate} isDeptAdmin={isDeptAdmin} handleDeleteTask={handleDeleteTask}
-                  statusClass={statusClass} statusLabel={statusLabel} formatDate={formatDate} />
+                  statusClass={statusClass} statusLabel={statusText} formatDate={formatDate} />
               ))}
             </div>
             {browseData.pages > 1 && (
@@ -310,9 +301,9 @@ export default function AdminDashboard() {
       {byDeptGroups.filter(g => !g.is_own).length > 0 && (
         <div className="card" style={{ marginTop: 16 }}>
           <div style={{ marginBottom: 12 }}>
-            <h2 style={{ fontSize: 16, marginBottom: 4 }}>Boshqa boshqarmalar vazifalari</h2>
+            <h2 style={{ fontSize: 16, marginBottom: 4 }}>{t('dash.otherDepartments')}</h2>
             <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-              Faqat ko'rish uchun — boshqarmalar kesimida
+              {t('dash.otherDepartments.hint')}
             </p>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -329,39 +320,39 @@ export default function AdminDashboard() {
                     }}>
                     <span>🏢 {g.department_name}</span>
                     <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                      {g.task_count} ta {open ? '▲' : '▼'}
+                      {t('dash.groupCount', { n: g.task_count })} {open ? '▲' : '▼'}
                     </span>
                   </button>
                   {open && (
                     g.tasks.length === 0 ? (
                       <div style={{ padding: '10px 14px', fontSize: 12, color: 'var(--text-muted)' }}>
-                        Vazifa yo'q
+                        {t('dash.noTasks')}
                       </div>
                     ) : (
                       <div className="table-wrap" style={{ borderTop: '1px solid var(--border)' }}>
                         <table>
                           <thead>
                             <tr>
-                              <th>Nomi</th>
-                              <th style={{ width: 130 }}>Holat</th>
-                              <th style={{ width: 180 }}>Ijrochi</th>
-                              <th style={{ width: 130 }}>Muddat</th>
+                              <th>{t('field.name')}</th>
+                              <th style={{ width: 130 }}>{t('field.status')}</th>
+                              <th style={{ width: 180 }}>{t('dash.th.executor')}</th>
+                              <th style={{ width: 130 }}>{t('field.deadline')}</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {g.tasks.map(t => (
-                              <tr key={t.id}>
-                                <td style={{ fontSize: 13 }}>{t.name}</td>
+                            {g.tasks.map(task => (
+                              <tr key={task.id}>
+                                <td style={{ fontSize: 13 }}>{task.name}</td>
                                 <td>
-                                  <span className={`badge ${statusClass(t.status)}`} style={{ fontSize: 11 }}>
-                                    {statusLabel(t.status)}
+                                  <span className={`badge ${statusClass(task.status)}`} style={{ fontSize: 11 }}>
+                                    {statusText(task.status)}
                                   </span>
                                 </td>
                                 <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                                  {t.assignee_name || (t.assignee_names?.join(', ')) || t.team_name || '—'}
+                                  {task.assignee_name || (task.assignee_names?.join(', ')) || task.team_name || '—'}
                                 </td>
                                 <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                                  {formatDate(t.deadline)}
+                                  {formatDate(task.deadline)}
                                 </td>
                               </tr>
                             ))}
@@ -381,26 +372,27 @@ export default function AdminDashboard() {
 }
 
 
-function TaskCard({ t, i, navigate, isDeptAdmin, handleDeleteTask, statusClass, statusLabel, formatDate }) {
+function TaskCard({ task, i, navigate, isDeptAdmin, handleDeleteTask, statusClass, statusLabel, formatDate }) {
+  const { t } = useI18n()
   return (
-    <div className="project-card" onClick={() => navigate(`/tasks/${t.id}`)}
+    <div className="project-card" onClick={() => navigate(`/tasks/${task.id}`)}
       style={{ position: 'relative' }}>
       <div className="project-card-header">
         <span className="project-number">#{i + 1}</span>
-        <span className={`badge ${statusClass(t.status)}`}>{statusLabel(t.status)}</span>
+        <span className={`badge ${statusClass(task.status)}`}>{statusLabel(task.status)}</span>
       </div>
-      <h3 className="project-card-title">{t.name}</h3>
+      <h3 className="project-card-title">{task.name}</h3>
       <div className="project-card-meta">
-        <span>Muddat: {formatDate(t.deadline)}</span>
+        <span>{t('dash.deadlineLabel')}: {formatDate(task.deadline)}</span>
       </div>
       <div className="project-card-info">
-        {t.team_name && <span>👥 {t.team_name}</span>}
-        {t.assignee_name && <span>👤 {t.assignee_name}</span>}
-        {t.assignee_names?.length > 0 && <span>👤 {t.assignee_names.join(', ')}</span>}
-        <span>📋 {t.report_count} hisobot</span>
+        {task.team_name && <span>👥 {task.team_name}</span>}
+        {task.assignee_name && <span>👤 {task.assignee_name}</span>}
+        {task.assignee_names?.length > 0 && <span>👤 {task.assignee_names.join(', ')}</span>}
+        <span>📋 {t('dash.reportCount', { n: task.report_count })}</span>
       </div>
       {isDeptAdmin && (
-        <button onClick={(e) => handleDeleteTask(e, t)} title="Vazifani o'chirish"
+        <button onClick={(e) => handleDeleteTask(e, task)} title={t('dash.deleteTask')}
           style={{
             position: 'absolute', top: 8, right: 8,
             background: 'transparent', border: '1px solid var(--border)',

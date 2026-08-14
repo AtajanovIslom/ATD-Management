@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react'
 import api from '../api/axios'
+import { useI18n } from '../i18n'
+import { statusLabel } from '../i18n/labels'
 
 export default function Statistics() {
+  const { t, formatDate: fmtDate } = useI18n()
   const [data, setData] = useState(null)
   const [taskData, setTaskData] = useState(null)
   const [empData, setEmpData] = useState([])
@@ -20,26 +23,11 @@ export default function Statistics() {
     }).catch(console.error).finally(() => setLoading(false))
   }, [])
 
-  const formatDate = (iso) => {
-    if (!iso) return '—'
-    return new Date(iso).toLocaleDateString('uz-UZ', { day: '2-digit', month: '2-digit', year: 'numeric' })
-  }
+  const formatDate = (iso) =>
+    fmtDate(iso, { day: '2-digit', month: '2-digit', year: 'numeric' }) || '—'
 
-  const statusLabel = (s) => {
-    if (s === 'active') return 'Faol'
-    if (s === 'completed') return 'Tugallangan'
-    if (s === 'on_hold') return 'To\'xtatilgan'
-    return s
-  }
-
-  const taskStatusLabel = (s) => {
-    if (s === 'active') return 'Faol'
-    if (s === 'in_progress') return 'Jarayonda'
-    if (s === 'review') return 'Tekshiruvda'
-    if (s === 'returned') return 'Qayta ko\'rib chiqilsin'
-    if (s === 'completed') return 'Tugallangan'
-    return s
-  }
+  // Loyiha, vazifa va bosqichlar bir xil status kodlaridan foydalanadi
+  const statusText = (s) => statusLabel(t, s)
 
   const taskStatusClass = (s) => {
     if (s === 'active' || s === 'in_progress') return 'badge-active'
@@ -48,27 +36,23 @@ export default function Statistics() {
     return 'badge-on_hold'
   }
 
-  if (loading) return <div className="empty-state"><p>Yuklanmoqda...</p></div>
-  if (!data) return <div className="empty-state"><p>Ma'lumot topilmadi</p></div>
+  if (loading) return <div className="empty-state"><p>{t('state.loading')}</p></div>
+  if (!data) return <div className="empty-state"><p>{t('state.empty')}</p></div>
 
   const emp = empData.find(e => String(e.user_id) === String(selectedEmp))
-  const workStatusLabel = (s) => {
-    if (s === 'pending') return 'Kutilmoqda'
-    return taskStatusLabel(s)
-  }
 
   return (
     <div>
       <div className="page-header">
-        <h1>Xodimlar KPI</h1>
+        <h1>{t('stats.kpiTitle')}</h1>
       </div>
 
       <div className="card" style={{ marginBottom: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <h2 style={{ fontSize: 16, color: 'var(--text-white)' }}>Xodim bo'yicha filtr</h2>
+          <h2 style={{ fontSize: 16, color: 'var(--text-white)' }}>{t('stats.filterByEmployee')}</h2>
           <select className="form-input" style={{ maxWidth: 320 }} value={selectedEmp}
             onChange={e => setSelectedEmp(e.target.value)}>
-            <option value="">Barcha xodimlar</option>
+            <option value="">{t('stats.allEmployees')}</option>
             {empData.map(e => (
               <option key={e.user_id} value={e.user_id}>{e.full_name} — {e.department}</option>
             ))}
@@ -78,24 +62,24 @@ export default function Statistics() {
 
       {!selectedEmp && (
         <div className="card" style={{ marginBottom: 16 }}>
-          <h2 style={{ fontSize: 16, marginBottom: 16, color: 'var(--text-white)' }}>Barcha xodimlar samaradorligi (KPI)</h2>
+          <h2 style={{ fontSize: 16, marginBottom: 16, color: 'var(--text-white)' }}>{t('stats.allKpiTitle')}</h2>
           {empData.length === 0 ? (
-            <p style={{ color: 'var(--text-muted)' }}>Xodimlar topilmadi</p>
+            <p style={{ color: 'var(--text-muted)' }}>{t('stats.noEmployees')}</p>
           ) : (
             <div className="table-wrap">
               <table>
                 <thead>
                   <tr>
                     <th>#</th>
-                    <th>Xodim</th>
-                    <th>Bo'linma</th>
-                    <th>Jami ish</th>
-                    <th>Bajarilgan</th>
-                    <th>Vaqtida</th>
-                    <th>Kechikkan</th>
-                    <th>Jarayonda</th>
-                    <th>Hisobotlar</th>
-                    <th>Samaradorlik</th>
+                    <th>{t('stats.th.employee')}</th>
+                    <th>{t('stats.th.unit')}</th>
+                    <th>{t('stats.th.totalWork')}</th>
+                    <th>{t('stats.th.completed')}</th>
+                    <th>{t('stats.th.onTime')}</th>
+                    <th>{t('stats.th.late')}</th>
+                    <th>{t('stats.th.inProgress')}</th>
+                    <th>{t('stats.th.reports')}</th>
+                    <th>{t('stats.th.efficiency')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -136,40 +120,40 @@ export default function Statistics() {
           <div className="stats-grid" style={{ marginBottom: 16 }}>
             <div className="stat-card stat-primary">
               <div className="stat-value">{emp.total_items}</div>
-              <div className="stat-label">Jami ish ({emp.task_count} vazifa, {emp.stage_count} bosqich)</div>
+              <div className="stat-label">{t('stats.totalWorkDetail', { tasks: emp.task_count, stages: emp.stage_count })}</div>
             </div>
             <div className="stat-card stat-success">
               <div className="stat-value">{emp.completed}</div>
-              <div className="stat-label">Bajarilgan</div>
+              <div className="stat-label">{t('stats.th.completed')}</div>
             </div>
             <div className="stat-card stat-warning">
               <div className="stat-value">{emp.late}</div>
-              <div className="stat-label">Kechikkan</div>
+              <div className="stat-label">{t('stats.th.late')}</div>
             </div>
             <div className="stat-card stat-info">
               <div className="stat-value">{emp.kpi}%</div>
-              <div className="stat-label">Samaradorlik</div>
+              <div className="stat-label">{t('stats.th.efficiency')}</div>
             </div>
           </div>
 
           <div className="card">
             <h2 style={{ fontSize: 16, marginBottom: 16, color: 'var(--text-white)' }}>
-              {emp.full_name} — bajargan ishlari ({emp.work_items.length})
+              {t('stats.empWorkItems', { name: emp.full_name, n: emp.work_items.length })}
             </h2>
             {emp.work_items.length === 0 ? (
-              <p style={{ color: 'var(--text-muted)' }}>Bu xodimga hali ish biriktirilmagan</p>
+              <p style={{ color: 'var(--text-muted)' }}>{t('stats.noWorkAssigned')}</p>
             ) : (
               <div className="table-wrap">
                 <table>
                   <thead>
                     <tr>
                       <th>#</th>
-                      <th>Turi</th>
-                      <th>Nomi</th>
-                      <th>Loyiha</th>
-                      <th>Holat</th>
-                      <th>Muddat</th>
-                      <th>Bajarilgan sana</th>
+                      <th>{t('stats.th.type')}</th>
+                      <th>{t('field.name')}</th>
+                      <th>{t('stats.th.project')}</th>
+                      <th>{t('field.status')}</th>
+                      <th>{t('field.deadline')}</th>
+                      <th>{t('stats.th.completedDate')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -179,7 +163,7 @@ export default function Statistics() {
                         <td><span className="team-chip" style={{ fontSize: 10 }}>{w.type_label}</span></td>
                         <td><strong>{w.name}</strong></td>
                         <td>{w.parent || '—'}</td>
-                        <td><span className={`badge ${taskStatusClass(w.status)}`}>{workStatusLabel(w.status)}</span></td>
+                        <td><span className={`badge ${taskStatusClass(w.status)}`}>{statusText(w.status)}</span></td>
                         <td style={{ color: w.is_overdue ? '#ef4444' : 'inherit' }}>
                           {formatDate(w.deadline)}{w.is_overdue && ' ⚠️'}
                         </td>
@@ -195,47 +179,47 @@ export default function Statistics() {
       )}
 
       <div className="page-header">
-        <h1>Loyihalar statistikasi</h1>
+        <h1>{t('stats.projectsTitle')}</h1>
       </div>
 
       <div className="stats-grid" style={{ marginBottom: 20 }}>
         <div className="stat-card stat-primary">
           <div className="stat-value">{data.total_projects}</div>
-          <div className="stat-label">Jami loyihalar</div>
+          <div className="stat-label">{t('dash.stat.totalProjects')}</div>
         </div>
         <div className="stat-card stat-warning">
           <div className="stat-value">{data.active_projects}</div>
-          <div className="stat-label">Faol</div>
+          <div className="stat-label">{t('dash.stat.active')}</div>
         </div>
         <div className="stat-card stat-success">
           <div className="stat-value">{data.completed_projects}</div>
-          <div className="stat-label">Tugallangan</div>
+          <div className="stat-label">{t('dash.stat.completed')}</div>
         </div>
         <div className="stat-card stat-info">
           <div className="stat-value">{data.team_performance?.length || 0}</div>
-          <div className="stat-label">Guruhlar</div>
+          <div className="stat-label">{t('stats.stat.teams')}</div>
         </div>
       </div>
 
       <div className="card" style={{ marginBottom: 16 }}>
-        <h2 style={{ fontSize: 16, marginBottom: 16, color: 'var(--text-white)' }}>Guruhlar samaradorligi</h2>
+        <h2 style={{ fontSize: 16, marginBottom: 16, color: 'var(--text-white)' }}>{t('stats.teamPerformance')}</h2>
         {data.team_performance?.length === 0 ? (
-          <p style={{ color: 'var(--text-muted)' }}>Hali ma'lumot yo'q</p>
+          <p style={{ color: 'var(--text-muted)' }}>{t('stats.noData')}</p>
         ) : (
           <div className="table-wrap">
             <table>
               <thead>
                 <tr>
                   <th>#</th>
-                  <th>Guruh nomi</th>
-                  <th>A'zolar</th>
-                  <th>Jami bosqichlar</th>
-                  <th>Bajarilgan</th>
-                  <th>Vaqtida</th>
-                  <th>Kechikkan</th>
-                  <th>Jarayonda</th>
-                  <th>O'rtacha kun</th>
-                  <th>Samaradorlik</th>
+                  <th>{t('stats.th.teamName')}</th>
+                  <th>{t('stats.th.members')}</th>
+                  <th>{t('stats.th.totalStages')}</th>
+                  <th>{t('stats.th.completed')}</th>
+                  <th>{t('stats.th.onTime')}</th>
+                  <th>{t('stats.th.late')}</th>
+                  <th>{t('stats.th.inProgress')}</th>
+                  <th>{t('stats.th.avgDays')}</th>
+                  <th>{t('stats.th.efficiency')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -252,7 +236,7 @@ export default function Statistics() {
                       <td style={{ color: 'var(--accent)' }}>{tp.on_time}</td>
                       <td style={{ color: tp.late > 0 ? '#ef4444' : 'var(--text-muted)' }}>{tp.late}</td>
                       <td style={{ color: 'var(--primary)' }}>{tp.in_progress}</td>
-                      <td>{tp.avg_completion_days} kun</td>
+                      <td>{t('stats.days', { n: tp.avg_completion_days })}</td>
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <div className="progress-bar" style={{ width: 60, height: 6, borderRadius: 3 }}>
@@ -275,20 +259,20 @@ export default function Statistics() {
       </div>
 
       <div className="card">
-        <h2 style={{ fontSize: 16, marginBottom: 16, color: 'var(--text-white)' }}>Loyihalar holati</h2>
+        <h2 style={{ fontSize: 16, marginBottom: 16, color: 'var(--text-white)' }}>{t('stats.projectStatuses')}</h2>
         <div className="table-wrap">
           <table>
             <thead>
               <tr>
                 <th>#</th>
-                <th>Loyiha nomi</th>
-                <th>Holat</th>
-                <th>Boshlangan</th>
-                <th>Muddat</th>
-                <th>Bosqichlar</th>
-                <th>Bajarilish</th>
-                <th>Guruhlar</th>
-                <th>Hisobotlar</th>
+                <th>{t('stats.th.projectName')}</th>
+                <th>{t('field.status')}</th>
+                <th>{t('stats.th.started')}</th>
+                <th>{t('field.deadline')}</th>
+                <th>{t('stats.th.stages')}</th>
+                <th>{t('stats.th.progress')}</th>
+                <th>{t('stats.stat.teams')}</th>
+                <th>{t('stats.th.reports')}</th>
               </tr>
             </thead>
             <tbody>
@@ -298,7 +282,7 @@ export default function Statistics() {
                   <td><strong>{p.name}</strong></td>
                   <td>
                     <span className={`badge badge-${p.status === 'active' ? 'active' : p.status === 'completed' ? 'completed' : 'on_hold'}`}>
-                      {statusLabel(p.status)}
+                      {statusText(p.status)}
                     </span>
                   </td>
                   <td>{formatDate(p.start_date)}</td>
@@ -314,8 +298,8 @@ export default function Statistics() {
                   </td>
                   <td>
                     <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                      {p.teams?.map(t => (
-                        <span key={t.id} className="team-chip" style={{ fontSize: 10 }}>{t.name}</span>
+                      {p.teams?.map(team => (
+                        <span key={team.id} className="team-chip" style={{ fontSize: 10 }}>{team.name}</span>
                       ))}
                     </div>
                   </td>
@@ -330,45 +314,45 @@ export default function Statistics() {
       {taskData && (
         <>
           <div className="page-header" style={{ marginTop: 28 }}>
-            <h1>Vazifalar statistikasi</h1>
+            <h1>{t('stats.tasksTitle')}</h1>
           </div>
 
           <div className="stats-grid" style={{ marginBottom: 20 }}>
             <div className="stat-card stat-primary">
               <div className="stat-value">{taskData.total}</div>
-              <div className="stat-label">Jami vazifalar</div>
+              <div className="stat-label">{t('stats.stat.totalTasks')}</div>
             </div>
             <div className="stat-card stat-warning">
               <div className="stat-value">{taskData.review}</div>
-              <div className="stat-label">Tekshiruvda</div>
+              <div className="stat-label">{t('stats.stat.review')}</div>
             </div>
             <div className="stat-card stat-info">
               <div className="stat-value">{taskData.returned}</div>
-              <div className="stat-label">Qaytarilgan</div>
+              <div className="stat-label">{t('stats.stat.returned')}</div>
             </div>
             <div className="stat-card stat-success">
               <div className="stat-value">{taskData.completed}</div>
-              <div className="stat-label">Tugallangan</div>
+              <div className="stat-label">{t('dash.stat.completed')}</div>
             </div>
           </div>
 
           <div className="card" style={{ marginBottom: 16 }}>
-            <h2 style={{ fontSize: 16, marginBottom: 16, color: 'var(--text-white)' }}>Bajaruvchilar samaradorligi</h2>
+            <h2 style={{ fontSize: 16, marginBottom: 16, color: 'var(--text-white)' }}>{t('stats.executorPerformance')}</h2>
             {taskData.performance?.length === 0 ? (
-              <p style={{ color: 'var(--text-muted)' }}>Hali ma'lumot yo'q</p>
+              <p style={{ color: 'var(--text-muted)' }}>{t('stats.noData')}</p>
             ) : (
               <div className="table-wrap">
                 <table>
                   <thead>
                     <tr>
                       <th>#</th>
-                      <th>Bajaruvchi</th>
-                      <th>Jami</th>
-                      <th>Bajarilgan</th>
-                      <th>Vaqtida</th>
-                      <th>Kechikkan</th>
-                      <th>Jarayonda</th>
-                      <th>Samaradorlik</th>
+                      <th>{t('stats.th.executor')}</th>
+                      <th>{t('stats.th.total')}</th>
+                      <th>{t('stats.th.completed')}</th>
+                      <th>{t('stats.th.onTime')}</th>
+                      <th>{t('stats.th.late')}</th>
+                      <th>{t('stats.th.inProgress')}</th>
+                      <th>{t('stats.th.efficiency')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -378,7 +362,7 @@ export default function Statistics() {
                       return (
                         <tr key={i}>
                           <td>{i + 1}</td>
-                          <td><strong>{p.name}</strong>{p.is_team && <span className="team-chip" style={{ marginLeft: 6, fontSize: 10 }}>guruh</span>}</td>
+                          <td><strong>{p.name}</strong>{p.is_team && <span className="team-chip" style={{ marginLeft: 6, fontSize: 10 }}>{t('stats.teamChip')}</span>}</td>
                           <td>{p.total}</td>
                           <td style={{ color: 'var(--success)' }}>{p.completed}</td>
                           <td style={{ color: 'var(--accent)' }}>{p.on_time}</td>
@@ -406,21 +390,21 @@ export default function Statistics() {
           </div>
 
           <div className="card">
-            <h2 style={{ fontSize: 16, marginBottom: 16, color: 'var(--text-white)' }}>Vazifalar holati</h2>
+            <h2 style={{ fontSize: 16, marginBottom: 16, color: 'var(--text-white)' }}>{t('stats.taskStatuses')}</h2>
             {taskData.tasks?.length === 0 ? (
-              <p style={{ color: 'var(--text-muted)' }}>Hali vazifa yo'q</p>
+              <p style={{ color: 'var(--text-muted)' }}>{t('stats.noTasksYet')}</p>
             ) : (
               <div className="table-wrap">
                 <table>
                   <thead>
                     <tr>
                       <th>#</th>
-                      <th>Vazifa nomi</th>
-                      <th>Holat</th>
-                      <th>Bajaruvchi</th>
-                      <th>Boshlangan</th>
-                      <th>Muddat</th>
-                      <th>Hisobotlar</th>
+                      <th>{t('stats.th.taskName')}</th>
+                      <th>{t('field.status')}</th>
+                      <th>{t('stats.th.executor')}</th>
+                      <th>{t('stats.th.started')}</th>
+                      <th>{t('field.deadline')}</th>
+                      <th>{t('stats.th.reports')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -428,7 +412,7 @@ export default function Statistics() {
                       <tr key={t.id}>
                         <td>{i + 1}</td>
                         <td><strong>{t.name}</strong></td>
-                        <td><span className={`badge ${taskStatusClass(t.status)}`}>{taskStatusLabel(t.status)}</span></td>
+                        <td><span className={`badge ${taskStatusClass(t.status)}`}>{statusText(t.status)}</span></td>
                         <td>{t.assignee_name || t.team_name || '—'}</td>
                         <td>{formatDate(t.start_date)}</td>
                         <td style={{ color: t.is_overdue ? '#ef4444' : 'inherit' }}>

@@ -1,0 +1,40 @@
+// Kirish, ro'yxatdan o'tish, taklif havolasi bo'yicha ro'yxatdan o'tish
+export default {
+  'auth.login.subtitle': 'Loyiha boshqaruv tizimiga kirish',
+  'auth.login.label': 'Login',
+  'auth.login.placeholder': 'Loginni kiriting',
+  'auth.password.label': 'Parol',
+  'auth.password.placeholder': 'Parolni kiriting',
+  'auth.login.submit': 'Kirish',
+  'auth.login.submitting': 'Kirish...',
+  'auth.noAccount': "Akkauntingiz yo'qmi?",
+  'auth.haveAccount': 'Akkauntingiz bormi?',
+  'auth.signup.link': "Ro'yxatdan o'tish",
+  'auth.login.link': 'Kirish',
+
+  'auth.signup.subtitle': "Yangi xodim ro'yxatdan o'tishi",
+  'auth.signup.submit': "Ro'yxatdan o'tish",
+  'auth.field.fullName': 'Ism sharifi *',
+  'auth.field.fullName.placeholder': 'F.I.Sh.',
+  'auth.field.position': 'Lavozim',
+  'auth.field.position.placeholder': 'Lavozimingiz',
+  'auth.field.tabNumber': 'Tabel raqami *',
+  'auth.field.tabNumber.placeholder': 'Tabel raqamingiz',
+  'auth.field.loginRequired': 'Login *',
+  'auth.field.login.placeholder': 'Loginingizni tanlang',
+  'auth.field.passwordRequired': 'Parol * (kamida 4 belgi, probelsiz)',
+  'auth.field.password.placeholder': 'Parolingizni tanlang',
+  'auth.field.confirmPassword': 'Parolni tasdiqlang *',
+  'auth.field.confirmPassword.placeholder': 'Parolni qayta kiriting',
+
+  'auth.register.welcome': 'Xush kelibsiz, {name}! Tizimga kirish uchun login va parol o‘rnating.',
+  'auth.register.invalidLink': 'Havola yaroqsiz',
+  'auth.register.backToLogin': 'Kirish sahifasiga qaytish',
+
+  // Tekshiruv xabarlari
+  'auth.err.loginSpace': "Loginda probel bo'lmasligi kerak",
+  'auth.err.loginRequired': "Login kiritilishi va probelsiz bo'lishi shart",
+  'auth.err.passwordShort': "Parol kamida 4 ta belgidan iborat bo'lishi kerak",
+  'auth.err.passwordSpace': "Parolda probel bo'lmasligi kerak",
+  'auth.err.passwordMismatch': 'Parollar mos kelmadi',
+}

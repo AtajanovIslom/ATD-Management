@@ -1,0 +1,19 @@
+// Левое меню
+export default {
+  'nav.dashboard': 'Панель управления',
+  'nav.reminders': 'Мои напоминания',
+  'nav.workLogs': 'Мой ежедневный отчёт',
+  'nav.departmentWorkLogs': 'Отчёты сотрудников',
+  'nav.statistics': 'Статистика',
+  'nav.createProject': 'Создать проект',
+  'nav.createTask': 'Создать задачу',
+  'nav.teams': 'Группы',
+  'nav.departments': 'Управления',
+  'nav.users': 'Сотрудники',
+  'nav.deptUsers': 'Сотрудники отдела',
+  'nav.interactiveServices': 'Интерактивные услуги (админ)',
+  'nav.interactiveRequests': 'Интерактивные заявки',
+  'nav.roles': 'Роли и права',
+  'nav.auditLogs': 'Журнал аудита',
+  'nav.logout': 'Выход',
+}

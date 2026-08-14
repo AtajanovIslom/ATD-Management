@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from './Toast'
+import { useI18n } from '../i18n'
 import api from '../api/axios'
 
 const POLL_INTERVAL_MS = 20000
@@ -26,6 +27,7 @@ const ORIG_TITLE = 'HISOBOT'
 export default function TaskNotifier() {
   const { user } = useAuth()
   const { addToast } = useToast()
+  const { t } = useI18n()
   const navigate = useNavigate()
   const snapshotRef = useRef(null)
   const permissionAsked = useRef(false)
@@ -72,9 +74,9 @@ export default function TaskNotifier() {
     const storageKey = STORAGE_KEY_PREFIX + user.id
     const myId = user.id
 
-    const isMyAssignment = (t) => {
-      if (t.assignee_id === myId) return true
-      if (Array.isArray(t.assignee_ids) && t.assignee_ids.includes(myId)) return true
+    const isMyAssignment = (task) => {
+      if (task.assignee_id === myId) return true
+      if (Array.isArray(task.assignee_ids) && task.assignee_ids.includes(myId)) return true
       return false
     }
 
@@ -140,12 +142,12 @@ export default function TaskNotifier() {
 
         const prev = snapshotRef.current || loadSnapshot()
         const nextMap = {}
-        for (const t of tasks) {
-          nextMap[t.id] = {
-            status: t.status,
-            assignee_id: t.assignee_id,
-            assignee_ids: t.assignee_ids || [],
-            created_by: t.created_by,
+        for (const task of tasks) {
+          nextMap[task.id] = {
+            status: task.status,
+            assignee_id: task.assignee_id,
+            assignee_ids: task.assignee_ids || [],
+            created_by: task.created_by,
           }
         }
 
@@ -156,42 +158,42 @@ export default function TaskNotifier() {
           return
         }
 
-        for (const t of tasks) {
-          const before = prev[t.id]
-          const iAmAssignee = isMyAssignment(t)
-          const iAmCreator = t.created_by === myId
+        for (const task of tasks) {
+          const before = prev[task.id]
+          const iAmAssignee = isMyAssignment(task)
+          const iAmCreator = task.created_by === myId
 
           if (!before) {
             // Yangi vazifa (mening ro‘yxatimda ilgari yo‘q edi)
-            if (iAmAssignee && (t.status === 'active' || t.status === 'in_progress')) {
+            if (iAmAssignee && (task.status === 'active' || task.status === 'in_progress')) {
               notify({
-                title: '📌 Yangi vazifa',
-                body: t.name,
-                taskId: t.id,
+                title: `📌 ${t('notify.newTask')}`,
+                body: task.name,
+                taskId: task.id,
                 type: 'info',
               })
             }
-          } else if (before.status !== t.status) {
+          } else if (before.status !== task.status) {
             // Status o‘zgardi
-            if (t.status === 'review' && iAmCreator && !iAmAssignee) {
+            if (task.status === 'review' && iAmCreator && !iAmAssignee) {
               notify({
-                title: '📥 Tasdiqlashga yuborildi',
-                body: `Xodim vazifani bajardi: ${t.name}`,
-                taskId: t.id,
+                title: `📥 ${t('notify.sentForReview')}`,
+                body: t('notify.sentForReview.body', { name: task.name }),
+                taskId: task.id,
                 type: 'warning',
               })
-            } else if (t.status === 'completed' && iAmAssignee) {
+            } else if (task.status === 'completed' && iAmAssignee) {
               notify({
-                title: '✅ Vazifa tasdiqlandi',
-                body: t.name,
-                taskId: t.id,
+                title: `✅ ${t('notify.taskApproved')}`,
+                body: task.name,
+                taskId: task.id,
                 type: 'success',
               })
-            } else if (t.status === 'returned' && iAmAssignee) {
+            } else if (task.status === 'returned' && iAmAssignee) {
               notify({
-                title: '↩️ Vazifa qaytarildi',
-                body: t.name,
-                taskId: t.id,
+                title: `↩️ ${t('notify.taskReturned')}`,
+                body: task.name,
+                taskId: task.id,
                 type: 'danger',
               })
             }
@@ -206,7 +208,7 @@ export default function TaskNotifier() {
     check()
     const timer = setInterval(check, POLL_INTERVAL_MS)
     return () => { cancelled = true; clearInterval(timer) }
-  }, [user, addToast, navigate])
+  }, [user, addToast, navigate, t])
 
   return null
 }

@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { useI18n } from '../i18n'
+import { statusLabel } from '../i18n/labels'
 import api from '../api/axios'
 
 export default function UserDashboard() {
@@ -8,6 +10,7 @@ export default function UserDashboard() {
   const [tasks, setTasks] = useState([])
   const [loading, setLoading] = useState(true)
   const { user } = useAuth()
+  const { t, formatDate } = useI18n()
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -20,22 +23,7 @@ export default function UserDashboard() {
     }).catch(console.error).finally(() => setLoading(false))
   }, [])
 
-  const formatDate = (iso) => {
-    if (!iso) return '—'
-    return new Date(iso).toLocaleDateString('uz-UZ', {
-      year: 'numeric', month: '2-digit', day: '2-digit',
-    })
-  }
-
-  const statusLabel = (s) => {
-    if (s === 'active') return 'Faol'
-    if (s === 'in_progress') return 'Jarayonda'
-    if (s === 'review') return 'Tekshiruvda'
-    if (s === 'returned') return 'Qayta ko\'rib chiqilsin'
-    if (s === 'completed') return 'Tugallangan'
-    if (s === 'on_hold') return 'To\'xtatilgan'
-    return s
-  }
+  const fmt = (iso) => formatDate(iso, { year: 'numeric', month: '2-digit', day: '2-digit' }) || '—'
 
   const statusClass = (s) => {
     if (s === 'active') return 'badge-active'
@@ -46,20 +34,20 @@ export default function UserDashboard() {
     return 'badge-on_hold'
   }
 
-  if (loading) return <div className="empty-state"><p>Yuklanmoqda...</p></div>
+  if (loading) return <div className="empty-state"><p>{t('state.loading')}</p></div>
 
   return (
     <div>
       <div className="page-header">
-        <h1>Mening loyihalarim</h1>
+        <h1>{t('dash.myProjects')}</h1>
         <span style={{ fontSize: 14, color: 'var(--text-muted)' }}>
-          Jami: {projects.length}
+          {t('dash.total', { n: projects.length })}
         </span>
       </div>
 
       {projects.length === 0 ? (
         <div className="card">
-          <div className="empty-state"><p>Sizga hali loyiha yuklanmagan</p></div>
+          <div className="empty-state"><p>{t('dash.noProjectsForYou')}</p></div>
         </div>
       ) : (
         <div className="project-grid">
@@ -67,12 +55,12 @@ export default function UserDashboard() {
             <div key={p.id} className="project-card" onClick={() => navigate(`/projects/${p.id}`)}>
               <div className="project-card-header">
                 <span className="project-number">#{i + 1}</span>
-                <span className={`badge ${statusClass(p.status)}`}>{statusLabel(p.status)}</span>
+                <span className={`badge ${statusClass(p.status)}`}>{statusLabel(t, p.status)}</span>
               </div>
               <h3 className="project-card-title">{p.name}</h3>
               <div className="project-card-meta">
-                {p.start_date && <span>Boshlanish: {formatDate(p.start_date)}</span>}
-                <span>Muddat: {formatDate(p.deadline)}</span>
+                {p.start_date && <span>{t('dash.startLabel')}: {fmt(p.start_date)}</span>}
+                <span>{t('dash.deadlineLabel')}: {fmt(p.deadline)}</span>
               </div>
               <div className="progress-bar-wrap">
                 <div className="progress-bar">
@@ -81,12 +69,12 @@ export default function UserDashboard() {
                 <span className="progress-text">{p.progress}%</span>
               </div>
               <div className="project-card-info">
-                <span>📦 {p.stage_count} bosqich</span>
+                <span>📦 {t('dash.stageCount', { n: p.stage_count })}</span>
                 {p.current_stage_name && <span>📍 {p.current_stage_name}</span>}
               </div>
               <div className="project-card-teams">
-                {p.teams?.map(t => (
-                  <span key={t.id} className="team-chip">{t.name} ({t.member_count})</span>
+                {p.teams?.map(team => (
+                  <span key={team.id} className="team-chip">{team.name} ({team.member_count})</span>
                 ))}
               </div>
             </div>
@@ -96,34 +84,34 @@ export default function UserDashboard() {
       {/* Tasks section */}
       <div style={{ marginTop: 24 }}>
         <div className="page-header">
-          <h1>Mening vazifalarim</h1>
+          <h1>{t('dash.myTasks')}</h1>
           <span style={{ fontSize: 14, color: 'var(--text-muted)' }}>
-            Jami: {tasks.length}
+            {t('dash.total', { n: tasks.length })}
           </span>
         </div>
 
         {tasks.length === 0 ? (
           <div className="card">
-            <div className="empty-state"><p>Sizga hali vazifa yuklanmagan</p></div>
+            <div className="empty-state"><p>{t('dash.noTasksForYou')}</p></div>
           </div>
         ) : (
           <div className="project-grid">
-            {tasks.map((t, i) => (
-              <div key={t.id} className="project-card" onClick={() => navigate(`/tasks/${t.id}`)}>
+            {tasks.map((task, i) => (
+              <div key={task.id} className="project-card" onClick={() => navigate(`/tasks/${task.id}`)}>
                 <div className="project-card-header">
                   <span className="project-number">#{i + 1}</span>
-                  <span className={`badge ${statusClass(t.status)}`}>{statusLabel(t.status)}</span>
+                  <span className={`badge ${statusClass(task.status)}`}>{statusLabel(t, task.status)}</span>
                 </div>
-                <h3 className="project-card-title">{t.name}</h3>
+                <h3 className="project-card-title">{task.name}</h3>
                 <div className="project-card-meta">
-                  {t.start_date && <span>Boshlanish: {formatDate(t.start_date)}</span>}
-                  <span>Muddat: {formatDate(t.deadline)}</span>
+                  {task.start_date && <span>{t('dash.startLabel')}: {fmt(task.start_date)}</span>}
+                  <span>{t('dash.deadlineLabel')}: {fmt(task.deadline)}</span>
                 </div>
                 <div className="project-card-info">
-                  {t.team_name && <span>👥 {t.team_name}</span>}
-                  {t.assignee_name && <span>👤 {t.assignee_name}</span>}
-                  {t.assignee_names?.length > 0 && <span>👤 {t.assignee_names.join(', ')}</span>}
-                  <span>📋 {t.report_count} hisobot</span>
+                  {task.team_name && <span>👥 {task.team_name}</span>}
+                  {task.assignee_name && <span>👤 {task.assignee_name}</span>}
+                  {task.assignee_names?.length > 0 && <span>👤 {task.assignee_names.join(', ')}</span>}
+                  <span>📋 {t('dash.reportCount', { n: task.report_count })}</span>
                 </div>
               </div>
             ))}

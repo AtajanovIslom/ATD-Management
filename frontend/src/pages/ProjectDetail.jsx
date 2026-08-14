@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { useI18n } from '../i18n'
+import { statusLabel } from '../i18n/labels'
 import api from '../api/axios'
 
 const downloadFile = async (url, originalName) => {
@@ -17,7 +19,7 @@ const downloadFile = async (url, originalName) => {
   }
 }
 
-function DonutChart({ percent }) {
+function DonutChart({ percent, label }) {
   const r = 54
   const circ = 2 * Math.PI * r
   const offset = circ - (percent / 100) * circ
@@ -36,7 +38,7 @@ function DonutChart({ percent }) {
       </svg>
       <div style={{ position: 'absolute', textAlign: 'center' }}>
         <div style={{ fontSize: 28, fontWeight: 800, color: '#fff' }}>{percent}%</div>
-        <div style={{ fontSize: 11, color: '#94a3b8' }}>Bajarilgan</div>
+        <div style={{ fontSize: 11, color: '#94a3b8' }}>{label}</div>
       </div>
     </div>
   )
@@ -45,6 +47,7 @@ function DonutChart({ percent }) {
 export default function ProjectDetail() {
   const { id } = useParams()
   const { user, isAdmin, isDeptAdmin } = useAuth()
+  const { t, formatDate: fmtDate } = useI18n()
   const navigate = useNavigate()
   const [project, setProject] = useState(null)
   const [reports, setReports] = useState([])
@@ -67,8 +70,8 @@ export default function ProjectDetail() {
     Promise.all([api.get('/teams'), api.get('/users')]).then(([tr, ur]) => {
       // Bo'lim rahbariga faqat butunlay o'z bo'limidan iborat guruhlar —
       // u boshqa bo'lim xodimlariga bosqich yuklay olmaydi
-      setTeams(isAdmin ? tr.data : tr.data.filter(t => (t.members || []).length > 0
-        && t.members.every(m => m.division_id === user.division_id)))
+      setTeams(isAdmin ? tr.data : tr.data.filter(team => (team.members || []).length > 0
+        && team.members.every(m => m.division_id === user.division_id)))
       // Bosqich individual ijrochilarida xodim + bo'lim rahbari. Tatildagilar chiqarilsin.
       setUsers(ur.data.filter(u =>
         (u.role === 'user' || u.role === 'department_admin') && u.is_active && !u.active_vacation
@@ -98,32 +101,25 @@ export default function ProjectDetail() {
     }
   }
 
-  const formatDate = (iso) => {
-    if (!iso) return '—'
-    return new Date(iso).toLocaleDateString('uz-UZ', {
-      year: 'numeric', month: '2-digit', day: '2-digit',
-      hour: '2-digit', minute: '2-digit',
-    })
-  }
+  const formatDate = (iso) => fmtDate(iso, {
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit',
+  }) || '—'
 
-  const formatShortDate = (iso) => {
-    if (!iso) return '—'
-    return new Date(iso).toLocaleDateString('uz-UZ', { day: '2-digit', month: '2-digit', year: 'numeric' })
-  }
+  const formatShortDate = (iso) =>
+    fmtDate(iso, { day: '2-digit', month: '2-digit', year: 'numeric' }) || '—'
 
-  const statusLabel = (s) => {
-    if (s === 'active') return 'Faol'
-    if (s === 'completed') return 'Tugallangan'
-    if (s === 'on_hold') return 'To\'xtatilgan'
-    return s
-  }
+  const statusText = (s) => statusLabel(t, s)
+
+  // Bosqichda 'completed' — "Bajarilgan", loyihada esa "Tugallangan"
+  const stageStatusText = (s) => s === 'completed' ? t('status.done') : statusLabel(t, s)
 
   const handleStageUpdate = async (stageId, status) => {
     try {
       const res = await api.put(`/projects/${id}/stages/${stageId}`, { status })
       setProject(res.data)
     } catch (err) {
-      const msg = err.response?.data?.error || 'Xatolik yuz berdi'
+      const msg = err.response?.data?.error || t('state.error')
       alert(msg)
     }
   }
@@ -145,7 +141,7 @@ export default function ProjectDetail() {
       const res = await api.get(`/projects/${id}/reports`)
       setReports(res.data)
     } catch (err) {
-      const msg = err.response?.data?.error || 'Xatolik yuz berdi'
+      const msg = err.response?.data?.error || t('state.error')
       alert(msg)
     }
   }
@@ -172,7 +168,7 @@ export default function ProjectDetail() {
       setNewSubName(prev => ({ ...prev, [stageId]: '' }))
       setExpandedStages(prev => ({ ...prev, [stageId]: true }))
     } catch (err) {
-      alert(err.response?.data?.error || 'Xatolik')
+      alert(err.response?.data?.error || t('state.error'))
     }
   }
 
@@ -181,17 +177,17 @@ export default function ProjectDetail() {
       const res = await api.put(`/projects/${id}/stages/${stageId}/substages/${subId}`, { status })
       setProject(res.data)
     } catch (err) {
-      alert(err.response?.data?.error || 'Xatolik')
+      alert(err.response?.data?.error || t('state.error'))
     }
   }
 
   const handleDeleteSubStage = async (stageId, subId) => {
-    if (!window.confirm('Ichki bosqichni o\'chirmoqchimisiz?')) return
+    if (!window.confirm(t('project.substage.delete.confirm'))) return
     try {
       const res = await api.delete(`/projects/${id}/stages/${stageId}/substages/${subId}`)
       setProject(res.data)
     } catch (err) {
-      alert(err.response?.data?.error || 'Xatolik')
+      alert(err.response?.data?.error || t('state.error'))
     }
   }
 
@@ -248,7 +244,7 @@ export default function ProjectDetail() {
       setDeletedStageIds(new Set())
       loadProject()
     } catch (err) {
-      alert(err.response?.data?.error || 'Xatolik yuz berdi')
+      alert(err.response?.data?.error || t('state.error'))
     }
   }
 
@@ -281,12 +277,12 @@ export default function ProjectDetail() {
 
   const getTeamMembersEdit = (teamId) => {
     if (!teamId) return []
-    const team = teams.find(t => t.id === parseInt(teamId))
+    const team = teams.find(x => x.id === parseInt(teamId))
     return team?.members || []
   }
 
   const handleDelete = async () => {
-    if (!window.confirm('Bu loyihani o\'chirmoqchimisiz?')) return
+    if (!window.confirm(t('project.delete.confirm'))) return
     try {
       await api.delete(`/projects/${id}`)
       navigate('/')
@@ -295,8 +291,8 @@ export default function ProjectDetail() {
     }
   }
 
-  if (loading) return <div className="empty-state"><p>Yuklanmoqda...</p></div>
-  if (!project) return <div className="empty-state"><p>Loyiha topilmadi</p></div>
+  if (loading) return <div className="empty-state"><p>{t('state.loading')}</p></div>
+  if (!project) return <div className="empty-state"><p>{t('project.notFound')}</p></div>
 
   // isAdmin useAuth'dan olinadi (superadmin ham kiradi) — ilgari bu yerda
   // `user.role === 'admin'` deb qayta belgilangan edi, superadmin chiqib qolardi
@@ -322,10 +318,10 @@ export default function ProjectDetail() {
     <div>
       <div className="page-header">
         <div>
-          <h1 style={{ marginBottom: 4 }}>Loyiha Ish Jarayoni</h1>
+          <h1 style={{ marginBottom: 4 }}>{t('project.workflow.title')}</h1>
           <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-            Loyiha {project.stages.length} ta bosqichga bo'lingan.
-            {currentStage && ` Hozirgi bosqich: ${currentIdx + 1}-bosqich`}
+            {t('project.workflow.subtitle', { n: project.stages.length })}
+            {currentStage && t('project.workflow.currentStage', { n: currentIdx + 1 })}
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -334,52 +330,52 @@ export default function ProjectDetail() {
               yuqori rollarga qoladi. */}
           {canManage && (
             <button className="btn btn-outline btn-sm" onClick={() => editMode ? (setEditMode(false), setDeletedStageIds(new Set())) : openEditMode()}>
-              {editMode ? 'Bekor qilish' : 'Tahrirlash'}
+              {editMode ? t('btn.cancel') : t('btn.edit')}
             </button>
           )}
           {isAdmin && (
-            <button className="btn btn-danger btn-sm" onClick={handleDelete}>O'chirish</button>
+            <button className="btn btn-danger btn-sm" onClick={handleDelete}>{t('btn.delete')}</button>
           )}
-          <button className="btn btn-outline" onClick={() => navigate('/')}>← Orqaga</button>
+          <button className="btn btn-outline" onClick={() => navigate('/')}>← {t('btn.back')}</button>
         </div>
       </div>
 
       {editMode && (
         <div className="card" style={{ marginBottom: 16 }}>
-          <h2 style={{ fontSize: 16, marginBottom: 12, color: 'var(--text-white)' }}>Loyihani tahrirlash</h2>
+          <h2 style={{ fontSize: 16, marginBottom: 12, color: 'var(--text-white)' }}>{t('project.edit.title')}</h2>
           <div className="form-group">
-            <label>Nomi</label>
+            <label>{t('project.edit.name')}</label>
             <input className="form-input" value={editForm.name}
               onChange={e => setEditForm({ ...editForm, name: e.target.value })} />
           </div>
           <div className="form-group">
-            <label>Tavsifi</label>
+            <label>{t('project.edit.description')}</label>
             <textarea className="form-input" value={editForm.description}
               onChange={e => setEditForm({ ...editForm, description: e.target.value })} />
           </div>
           <div className="form-group">
-            <label>Holat</label>
+            <label>{t('field.status')}</label>
             <select className="form-input" value={editForm.status}
               onChange={e => setEditForm({ ...editForm, status: e.target.value })}>
-              <option value="active">Faol</option>
-              <option value="on_hold">To'xtatilgan</option>
-              <option value="completed">Tugallangan</option>
+              <option value="active">{t('status.active')}</option>
+              <option value="on_hold">{t('status.on_hold')}</option>
+              <option value="completed">{t('status.completed')}</option>
             </select>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
             <div className="form-group">
-              <label>Boshlash sanasi</label>
+              <label>{t('project.field.startDate')}</label>
               <input type="date" className="form-input" value={editForm.start_date || ''}
                 onChange={e => setEditForm({ ...editForm, start_date: e.target.value })} />
             </div>
             <div className="form-group">
-              <label>Topshirish muddati</label>
+              <label>{t('project.field.deadline')}</label>
               <input type="date" className="form-input" value={editForm.deadline || ''}
                 onChange={e => setEditForm({ ...editForm, deadline: e.target.value })} />
             </div>
           </div>
           <div className="form-group">
-            <label>Bosqichlar</label>
+            <label>{t('project.edit.stages')}</label>
             <div className="stages-editor">
               {editStages.map((stage, idx) => {
                 const members = getTeamMembersEdit(stage.team_id)
@@ -396,32 +392,32 @@ export default function ProjectDetail() {
                     <div className="stage-edit-fields">
                       <input className="form-input" value={stage.name}
                         onChange={e => updateEditStage(idx, 'name', e.target.value)}
-                        placeholder="Bosqich nomi" />
+                        placeholder={t('project.stage.namePlaceholder')} />
                       <div className="stage-edit-row">
                         <div style={{ flex: 1 }}>
-                          <label style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, display: 'block' }}>Boshlash sanasi</label>
+                          <label style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, display: 'block' }}>{t('project.field.startDate')}</label>
                           <input type="date" className="form-input" value={stage.start_date || ''}
                             onChange={e => updateEditStage(idx, 'start_date', e.target.value)} />
                         </div>
                         <div style={{ flex: 1 }}>
-                          <label style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, display: 'block' }}>Tugatish muddati</label>
+                          <label style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, display: 'block' }}>{t('project.stage.endDate')}</label>
                           <input type="date" className="form-input" value={stage.deadline}
                             onChange={e => updateEditStage(idx, 'deadline', e.target.value)} />
                         </div>
                         <div style={{ flex: 1 }}>
-                          <label style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, display: 'block' }}>Bajaruvchi turi</label>
+                          <label style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, display: 'block' }}>{t('project.stage.assignType')}</label>
                           <div style={{ display: 'flex', gap: 12, alignItems: 'center', height: 38 }}>
                             <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, cursor: 'pointer', color: 'var(--text-secondary)' }}>
                               <input type="radio" name={`edit_assign_${idx}`} value="team"
                                 checked={stage.assign_type === 'team'}
                                 onChange={() => updateEditStage(idx, 'assign_type', 'team')} />
-                              Guruh
+                              {t('project.stage.team')}
                             </label>
                             <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, cursor: 'pointer', color: 'var(--text-secondary)' }}>
                               <input type="radio" name={`edit_assign_${idx}`} value="individual"
                                 checked={stage.assign_type === 'individual'}
                                 onChange={() => updateEditStage(idx, 'assign_type', 'individual')} />
-                              Individual ishchi
+                              {t('project.stage.individual')}
                             </label>
                           </div>
                         </div>
@@ -429,20 +425,20 @@ export default function ProjectDetail() {
 
                       {stage.assign_type === 'team' && (
                         <div style={{ marginTop: 8 }}>
-                          <label style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, display: 'block' }}>Bajaruvchi guruh</label>
+                          <label style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, display: 'block' }}>{t('project.stage.assignedTeam')}</label>
                           <select className="form-input" value={stage.team_id}
                             onChange={e => updateEditStage(idx, 'team_id', e.target.value)}>
-                            <option value="">Guruhni tanlang...</option>
-                            {teams.map(t => (
-                              <option key={t.id} value={t.id}>{t.name} ({t.members?.length || 0})</option>
+                            <option value="">{t('project.stage.selectTeam')}</option>
+                            {teams.map(team => (
+                              <option key={team.id} value={team.id}>{team.name} ({team.members?.length || 0})</option>
                             ))}
                           </select>
                           {stage.team_id && members.length > 0 && (
                             <div style={{ marginTop: 8 }}>
-                              <label style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, display: 'block' }}>Mas'ul shaxs</label>
+                              <label style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, display: 'block' }}>{t('project.stage.reporterShort')}</label>
                               <select className="form-input" value={stage.assignee_id}
                                 onChange={e => updateEditStage(idx, 'assignee_id', e.target.value)}>
-                                <option value="">Hammasi hisobot topshiradi</option>
+                                <option value="">{t('project.stage.everyoneReports')}</option>
                                 {members.map(m => (
                                   <option key={m.id} value={m.id}>{m.full_name} {m.position ? `(${m.position})` : ''}</option>
                                 ))}
@@ -455,7 +451,7 @@ export default function ProjectDetail() {
                       {stage.assign_type === 'individual' && (
                         <div style={{ marginTop: 8 }}>
                           <label style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, display: 'block' }}>
-                            Individual ishchilar (tanlangan: {stage.assignee_ids?.length || 0})
+                            {t('project.stage.individualWorkers', { n: stage.assignee_ids?.length || 0 })}
                           </label>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 180, overflowY: 'auto',
                             border: '1px solid var(--border)', borderRadius: 8, padding: 8 }}>
@@ -479,12 +475,12 @@ export default function ProjectDetail() {
               })}
               <button type="button" className="btn btn-outline" onClick={addEditStage}
                 style={{ width: '100%', marginTop: 4 }}>
-                + Bosqich qo'shish
+                {t('project.addStage')}
               </button>
             </div>
           </div>
 
-          <button className="btn btn-primary" onClick={handleEditSave}>Saqlash</button>
+          <button className="btn btn-primary" onClick={handleEditSave}>{t('btn.save')}</button>
         </div>
       )}
 
@@ -545,7 +541,7 @@ export default function ProjectDetail() {
                   {project.description}
                 </p>
               )}
-              <h4 style={{ fontSize: 13, color: 'var(--text-white)', marginBottom: 10 }}>Bosqichlar holati</h4>
+              <h4 style={{ fontSize: 13, color: 'var(--text-white)', marginBottom: 10 }}>{t('project.stagesStatus')}</h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {project.stages.map(s => (
                   <div key={s.id} className={`stage-list-item ${s.is_overdue ? 'stage-overdue' : ''}`}>
@@ -560,7 +556,7 @@ export default function ProjectDetail() {
                           {s.assignee_name && <span>👤 {s.assignee_name}</span>}
                           {s.assignees?.length > 0 && <span>👤 {s.assignees.map(a => a.full_name).join(', ')}</span>}
                           {s.deadline && <span>📅 {formatShortDate(s.deadline)}</span>}
-                          {s.is_overdue && <span style={{ color: '#ef4444', fontWeight: 600 }}>Kechikkan!</span>}
+                          {s.is_overdue && <span style={{ color: '#ef4444', fontWeight: 600 }}>{t('project.stage.late')}</span>}
                         </div>
                         {s.assignees?.length > 0 && (
                           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
@@ -582,21 +578,21 @@ export default function ProjectDetail() {
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       <span className={`badge badge-${s.status === 'completed' ? 'completed' : s.status === 'review' ? 'review' : s.status === 'in_progress' ? 'active' : 'pending'}`}>
-                        {s.status === 'completed' ? 'Bajarilgan' : s.status === 'review' ? 'Tekshiruvda' : s.status === 'in_progress' ? 'Jarayonda' : 'Kutilmoqda'}
+                        {stageStatusText(s.status)}
                       </span>
                       {canUserSubmitStage(s) && (
                         <button className="btn btn-warning btn-sm" onClick={() => handleStageUpdate(s.id, 'review')}>
-                          Bajarildi
+                          {t('project.stage.submit')}
                         </button>
                       )}
                       {canManage && s.status === 'review' && (
                         <button className="btn btn-success btn-sm" onClick={() => handleStageUpdate(s.id, 'completed')}>
-                          ✓ Tasdiqlash
+                          ✓ {t('project.stage.approve')}
                         </button>
                       )}
                       {canManage && s.status === 'review' && (
                         <button className="btn btn-outline btn-sm" onClick={() => handleStageUpdate(s.id, 'in_progress')}>
-                          ↩ Qaytarish
+                          ↩ {t('project.stage.return')}
                         </button>
                       )}
                       {canManage && s.status === 'pending' && (
@@ -610,7 +606,7 @@ export default function ProjectDetail() {
                     {(s.sub_stages?.length > 0 || canManageSubStages(s)) && (
                       <div className="substages-section">
                         <button className="substage-toggle" onClick={() => toggleStageExpand(s.id)}>
-                          {expandedStages[s.id] ? '▾' : '▸'} Ichki bosqichlar ({s.sub_stages?.length || 0})
+                          {expandedStages[s.id] ? '▾' : '▸'} {t('project.substages', { n: s.sub_stages?.length || 0 })}
                           {s.sub_stages?.length > 0 && (
                             <span style={{ marginLeft: 6, fontSize: 10, color: 'var(--text-muted)' }}>
                               {s.sub_stages.filter(ss => ss.status === 'completed').length}/{s.sub_stages.length}
@@ -625,7 +621,7 @@ export default function ProjectDetail() {
                                   <span className="substage-order">{ssIdx + 1}</span>
                                   <span className={`badge badge-${ss.status === 'completed' ? 'completed' : ss.status === 'in_progress' ? 'active' : 'pending'}`}
                                     style={{ fontSize: 9, padding: '2px 6px' }}>
-                                    {ss.status === 'completed' ? 'Bajarilgan' : ss.status === 'in_progress' ? 'Jarayonda' : 'Kutilmoqda'}
+                                    {stageStatusText(ss.status)}
                                   </span>
                                 </div>
                                 <div className="substage-card-name">{ss.name}</div>
@@ -635,11 +631,11 @@ export default function ProjectDetail() {
                                 <div className="substage-card-actions">
                                   {canManageSubStages(s) && ss.status === 'in_progress' && (
                                     <button className="btn btn-success btn-sm" style={{ padding: '3px 10px', fontSize: 10 }}
-                                      onClick={() => handleSubStageUpdate(s.id, ss.id, 'completed')}>✓ Tayyor</button>
+                                      onClick={() => handleSubStageUpdate(s.id, ss.id, 'completed')}>✓ {t('project.substage.ready')}</button>
                                   )}
                                   {canManageSubStages(s) && ss.status === 'pending' && (
                                     <button className="btn btn-outline btn-sm" style={{ padding: '3px 10px', fontSize: 10 }}
-                                      onClick={() => handleSubStageUpdate(s.id, ss.id, 'in_progress')}>▶ Boshlash</button>
+                                      onClick={() => handleSubStageUpdate(s.id, ss.id, 'in_progress')}>▶ {t('project.substage.start')}</button>
                                   )}
                                   {canManageSubStages(s) && (
                                     <button className="btn btn-danger btn-sm" style={{ padding: '3px 6px', fontSize: 10 }}
@@ -651,12 +647,12 @@ export default function ProjectDetail() {
                             {canManageSubStages(s) && (s.status === 'in_progress' || s.status === 'review') && (
                               <div className="substage-card substage-card-add">
                                 <input className="form-input" style={{ fontSize: 12, padding: '6px 10px' }}
-                                  placeholder="Ichki bosqich nomi..."
+                                  placeholder={t('project.substage.namePlaceholder')}
                                   value={newSubName[s.id] || ''}
                                   onChange={e => setNewSubName(prev => ({ ...prev, [s.id]: e.target.value }))}
                                   onKeyDown={e => e.key === 'Enter' && handleAddSubStage(s.id)} />
                                 <button className="btn btn-primary btn-sm" style={{ width: '100%', marginTop: 6, fontSize: 11 }}
-                                  onClick={() => handleAddSubStage(s.id)}>+ Qo'shish</button>
+                                  onClick={() => handleAddSubStage(s.id)}>{t('project.substage.add')}</button>
                               </div>
                             )}
                           </div>
@@ -669,31 +665,31 @@ export default function ProjectDetail() {
             </>
           ) : (
             <div style={{ textAlign: 'center', padding: 20, color: 'var(--success)' }}>
-              <p style={{ fontSize: 18, fontWeight: 700 }}>Barcha bosqichlar tugallangan!</p>
+              <p style={{ fontSize: 18, fontWeight: 700 }}>{t('project.allStagesDone')}</p>
             </div>
           )}
         </div>
 
         <div className="card" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 20, position: 'relative' }}>
-          <h3 style={{ fontSize: 14, color: 'var(--text-white)', alignSelf: 'flex-start' }}>Joriy bosqich holati</h3>
-          <DonutChart percent={project.progress} />
+          <h3 style={{ fontSize: 14, color: 'var(--text-white)', alignSelf: 'flex-start' }}>{t('project.currentStageStatus')}</h3>
+          <DonutChart percent={project.progress} label={t('project.donut.done')} />
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%', fontSize: 12 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)' }}>
-              <span>Boshlangan sana</span>
+              <span>{t('project.startedDate')}</span>
               <strong style={{ color: 'var(--text-primary)' }}>{formatShortDate(project.start_date || project.created_at)}</strong>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)' }}>
-              <span>Topshirish muddati</span>
+              <span>{t('project.deadlineDate')}</span>
               <strong style={{ color: 'var(--text-primary)' }}>{formatShortDate(project.deadline)}</strong>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)' }}>
-              <span>Qatnashchilar</span>
-              <strong style={{ color: 'var(--text-primary)' }}>{project.total_participants || 0} kishi</strong>
+              <span>{t('project.participants')}</span>
+              <strong style={{ color: 'var(--text-primary)' }}>{t('project.peopleCount', { n: project.total_participants || 0 })}</strong>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)' }}>
-              <span>Holat</span>
+              <span>{t('field.status')}</span>
               <span className={`badge badge-${project.status === 'active' ? 'active' : project.status === 'completed' ? 'completed' : 'on_hold'}`}>
-                {statusLabel(project.status)}
+                {statusText(project.status)}
               </span>
             </div>
           </div>
@@ -703,7 +699,7 @@ export default function ProjectDetail() {
       {/* Summary bar */}
       <div className="summary-bar" style={{ marginBottom: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <h3 style={{ fontSize: 15, color: 'var(--text-white)' }}>Loyiha umumiy holati</h3>
+          <h3 style={{ fontSize: 15, color: 'var(--text-white)' }}>{t('project.overallStatus')}</h3>
           <span className="progress-text" style={{ fontSize: 18 }}>{project.progress}%</span>
         </div>
         <div className="summary-progress">
@@ -713,23 +709,23 @@ export default function ProjectDetail() {
         </div>
         <div className="summary-stats">
           <div className="summary-stat">
-            <span className="summary-stat-label">Boshlangan sana</span>
+            <span className="summary-stat-label">{t('project.startedDate')}</span>
             <span className="summary-stat-value">{formatShortDate(project.start_date || project.created_at)}</span>
           </div>
           <div className="summary-stat">
-            <span className="summary-stat-label">Topshirish muddati</span>
+            <span className="summary-stat-label">{t('project.deadlineDate')}</span>
             <span className="summary-stat-value">{formatShortDate(project.deadline)}</span>
           </div>
           <div className="summary-stat">
-            <span className="summary-stat-label">Jami bosqichlar</span>
+            <span className="summary-stat-label">{t('project.totalStages')}</span>
             <span className="summary-stat-value">{project.stages.length}</span>
           </div>
           <div className="summary-stat">
-            <span className="summary-stat-label">Bajarilgan</span>
+            <span className="summary-stat-label">{t('project.completedCount')}</span>
             <span className="summary-stat-value">{completedStages}</span>
           </div>
           <div className="summary-stat">
-            <span className="summary-stat-label">Qatnashchilar</span>
+            <span className="summary-stat-label">{t('project.participants')}</span>
             <span className="summary-stat-value">{project.total_participants || 0}</span>
           </div>
         </div>
@@ -738,7 +734,7 @@ export default function ProjectDetail() {
       {/* Team Performance Stats */}
       {project.team_stats?.length > 0 && (
         <div className="card" style={{ marginBottom: 16 }}>
-          <h3 style={{ fontSize: 14, color: 'var(--text-white)', marginBottom: 12 }}>Guruhlar samaradorligi</h3>
+          <h3 style={{ fontSize: 14, color: 'var(--text-white)', marginBottom: 12 }}>{t('project.teamPerformance')}</h3>
           <div className="team-stats-grid">
             {project.team_stats.map(ts => {
               const pct = ts.total_stages > 0 ? Math.round(ts.completed / ts.total_stages * 100) : 0
@@ -753,23 +749,23 @@ export default function ProjectDetail() {
                   </div>
                   <div className="team-stat-details">
                     <div className="team-stat-item">
-                      <span>Jami bosqichlar</span>
+                      <span>{t('project.totalStages')}</span>
                       <strong>{ts.total_stages}</strong>
                     </div>
                     <div className="team-stat-item">
-                      <span>Bajarilgan</span>
+                      <span>{t('project.completedCount')}</span>
                       <strong style={{ color: 'var(--success)' }}>{ts.completed}</strong>
                     </div>
                     <div className="team-stat-item">
-                      <span>Vaqtida</span>
+                      <span>{t('project.stat.onTime')}</span>
                       <strong style={{ color: 'var(--accent)' }}>{ts.on_time}</strong>
                     </div>
                     <div className="team-stat-item">
-                      <span>Kechikkan</span>
+                      <span>{t('project.stat.late')}</span>
                       <strong style={{ color: ts.late > 0 ? '#ef4444' : 'var(--text-muted)' }}>{ts.late}</strong>
                     </div>
                     <div className="team-stat-item">
-                      <span>Jarayonda</span>
+                      <span>{t('project.stat.inProgress')}</span>
                       <strong style={{ color: 'var(--primary)' }}>{ts.in_progress}</strong>
                     </div>
                   </div>
@@ -783,7 +779,7 @@ export default function ProjectDetail() {
       {/* Attachments */}
       {project.attachments?.length > 0 && (
         <div className="card" style={{ marginBottom: 16 }}>
-          <h3 style={{ fontSize: 14, color: 'var(--text-white)', marginBottom: 10 }}>Fayllar</h3>
+          <h3 style={{ fontSize: 14, color: 'var(--text-white)', marginBottom: 10 }}>{t('project.files')}</h3>
           <div className="task-files">
             {project.attachments.map(f => (
               <button key={f.id} className="file-link" onClick={() => downloadFile(f.download_url, f.original_name)}>
@@ -796,13 +792,13 @@ export default function ProjectDetail() {
 
       {/* Teams */}
       <div className="card" style={{ marginBottom: 16 }}>
-        <h3 style={{ fontSize: 14, color: 'var(--text-white)', marginBottom: 12 }}>Ishtirokchi guruhlar</h3>
+        <h3 style={{ fontSize: 14, color: 'var(--text-white)', marginBottom: 12 }}>{t('project.participantTeams')}</h3>
         <div className="teams-grid" style={{ gap: 12 }}>
-          {project.teams.map(t => (
-            <div key={t.id} className="team-mini-card">
-              <h4>{t.name}</h4>
+          {project.teams.map(team => (
+            <div key={team.id} className="team-mini-card">
+              <h4>{team.name}</h4>
               <div className="team-mini-members">
-                {t.members.map(m => (
+                {team.members.map(m => (
                   <span key={m.id} className="member-chip">
                     {m.full_name} <small>{m.position || ''}</small>
                   </span>
@@ -816,11 +812,11 @@ export default function ProjectDetail() {
       {/* Write report */}
       {canUserReport && (
         <div className="card" style={{ marginBottom: 16 }}>
-          <h3 style={{ fontSize: 14, color: 'var(--text-white)', marginBottom: 12 }}>Kunlik hisobot yozish</h3>
+          <h3 style={{ fontSize: 14, color: 'var(--text-white)', marginBottom: 12 }}>{t('project.report.title')}</h3>
           <div className="form-group" style={{ marginBottom: 8 }}>
             <select className="form-input" value={reportStage}
               onChange={e => setReportStage(e.target.value)}>
-              <option value="">Bosqichni tanlang</option>
+              <option value="">{t('project.report.selectStage')}</option>
               {userStages.map(s => (
                 <option key={s.id} value={s.id}>{s.order}. {s.name}</option>
               ))}
@@ -829,12 +825,12 @@ export default function ProjectDetail() {
           <div className="form-group">
             <textarea className="form-input" value={reportText}
               onChange={e => setReportText(e.target.value)}
-              placeholder="Bugun nima qilindi, qanday natijalar erishildi..."
+              placeholder={t('task.report.placeholder')}
               rows={3} />
           </div>
           <div className="form-group" style={{ marginBottom: 8 }}>
             <label style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, display: 'block' }}>
-              📎 Fayl biriktirish (ixtiyoriy)
+              📎 {t('task.report.attachFile')}
             </label>
             <input type="file" multiple className="form-input" style={{ fontSize: 12, padding: 6 }}
               onChange={e => setReportFiles(Array.from(e.target.files))} />
@@ -849,7 +845,7 @@ export default function ProjectDetail() {
             )}
           </div>
           <button className="btn btn-primary" onClick={handleReport} disabled={!reportText.trim()}>
-            Hisobotni yuborish
+            {t('task.report.submit')}
           </button>
         </div>
       )}
@@ -857,9 +853,9 @@ export default function ProjectDetail() {
 
       {/* Reports history */}
       <div className="card">
-        <h3 style={{ fontSize: 14, color: 'var(--text-white)', marginBottom: 12 }}>Hisobotlar tarixi ({reports.length})</h3>
+        <h3 style={{ fontSize: 14, color: 'var(--text-white)', marginBottom: 12 }}>{t('task.report.history', { n: reports.length })}</h3>
         {reports.length === 0 ? (
-          <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>Hali hisobot yozilmagan</p>
+          <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>{t('task.report.empty')}</p>
         ) : (
           <div className="reports-list">
             {reports.map(r => (

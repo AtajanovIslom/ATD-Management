@@ -2,20 +2,21 @@ import { useEffect, useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
+import { useI18n } from '../i18n'
+import LanguageSwitcher from './LanguageSwitcher'
 import api from '../api/axios'
 
-const ROLE_LABELS = {
-  superadmin: '👑 Bosh Administrator',
-  director: '🎖️ Direksiya Direktori',
-  deputy_director: "🥈 Direktor O'rinbosari",
-  admin: "Boshqarma Rahbari",
-  department_admin: "Bo'lim Rahbari",
-  user: 'Xodim',
+// Rol yonidagi belgilar — matn tarjimasi `role.*` kalitlaridan olinadi
+const ROLE_ICONS = {
+  superadmin: '👑 ',
+  director: '🎖️ ',
+  deputy_director: '🥈 ',
 }
 
 export default function Navbar() {
   const { user, logout, isAdmin, isSuperAdmin, isDeptAdmin, canManageRoles } = useAuth()
   const { theme, toggleTheme } = useTheme()
+  const { t } = useI18n()
   const [interactiveCount, setInteractiveCount] = useState(0)
 
   useEffect(() => {
@@ -38,47 +39,52 @@ export default function Navbar() {
     </NavLink>
   )
 
+  // Noma'lum rol kelsa kalit o'rniga rol kodining o'zi ko'rsatiladi
+  const roleKey = `role.${user.role}`
+  const roleName = t(roleKey) === roleKey ? user.role : t(roleKey)
+  const roleLabel = (ROLE_ICONS[user.role] || '') + roleName
+
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
         <div className="brand">
           <img src="/logo.png" alt="ATD" className="brand-logo-img" />
           <div className="brand-text">
-            <h2>ATD Management</h2>
-            <span>Loyiha boshqaruv tizimi</span>
+            <h2>{t('app.name')}</h2>
+            <span>{t('app.tagline')}</span>
           </div>
         </div>
       </div>
       <nav className="sidebar-nav">
-        {link('/', '📊', 'Boshqaruv paneli', true)}
-        {link('/reminders', '🗓️', 'Eslatmalarim')}
+        {link('/', '📊', t('nav.dashboard'), true)}
+        {link('/reminders', '🗓️', t('nav.reminders'))}
         {/* Kunlik hisobotim — faqat oddiy xodimlarda (rahbarlar hisobot topshirmaydi) */}
-        {!isDeptAdmin && link('/work-logs', '📓', 'Kunlik hisobotim')}
-        {isDeptAdmin && link('/department-work-logs', '👥', 'Xodimlar hisobotlari')}
+        {!isDeptAdmin && link('/work-logs', '📓', t('nav.workLogs'))}
+        {isDeptAdmin && link('/department-work-logs', '👥', t('nav.departmentWorkLogs'))}
 
-        {isDeptAdmin && link('/statistics', '📈', 'Statistika')}
+        {isDeptAdmin && link('/statistics', '📈', t('nav.statistics'))}
 
         {isAdmin && (
           <>
-            {link('/create-project', '🚀', 'Loyiha yaratish')}
-            {link('/create-task', '📝', 'Vazifa yaratish')}
-            {link('/teams', '👥', 'Guruhlar')}
-            {link('/departments', '🏢', 'Boshqarmalar')}
-            {link('/users', '🧑‍💻', 'Xodimlar')}
-            {link('/interactive-services', '🧩', 'Interaktiv xizmatlar Admin')}
+            {link('/create-project', '🚀', t('nav.createProject'))}
+            {link('/create-task', '📝', t('nav.createTask'))}
+            {link('/teams', '👥', t('nav.teams'))}
+            {link('/departments', '🏢', t('nav.departments'))}
+            {link('/users', '🧑‍💻', t('nav.users'))}
+            {link('/interactive-services', '🧩', t('nav.interactiveServices'))}
           </>
         )}
 
         {!isAdmin && isDeptAdmin && (
           <>
-            {link('/create-project', '🚀', 'Loyiha yaratish')}
-            {link('/create-task', '📝', 'Vazifa yaratish')}
-            {link('/users', '🧑‍💻', "Bo'lim xodimlari")}
+            {link('/create-project', '🚀', t('nav.createProject'))}
+            {link('/create-task', '📝', t('nav.createTask'))}
+            {link('/users', '🧑‍💻', t('nav.deptUsers'))}
           </>
         )}
 
-        {canManageRoles && link('/roles', '🔑', 'Rol va huquqlar')}
-        {isSuperAdmin && link('/audit-logs', '📋', 'Audit jurnali')}
+        {canManageRoles && link('/roles', '🔑', t('nav.roles'))}
+        {isSuperAdmin && link('/audit-logs', '📋', t('nav.auditLogs'))}
 
         {/* Interaktiv arizalar — faqat barcha boshqarma boshliqlari (admin+) va
             "Interaktiv xizmat ko'rsatadi" deb belgilangan bo'lim a'zolariga
@@ -86,7 +92,7 @@ export default function Navbar() {
             ko'rinmaydi. */}
         {(isAdmin || user.division_is_service_provider) && (
           <NavLink to="/interactive-requests" className={({ isActive }) => isActive ? 'active' : ''}>
-            📥 Interaktiv arizalar
+            📥 {t('nav.interactiveRequests')}
             {interactiveCount > 0 && (
               <span style={{
                 marginLeft: 8, background: '#3b82f6', color: '#fff',
@@ -101,13 +107,14 @@ export default function Navbar() {
 
       </nav>
       <div className="sidebar-footer">
-        <button className="theme-toggle-btn" onClick={toggleTheme} title={theme === 'dark' ? "Yorug' rejim" : "Qorong'i rejim"}>
-          {theme === 'dark' ? "☀️ Yorug' rejim" : "🌙 Qorong'i rejim"}
+        <LanguageSwitcher variant="compact" />
+        <button className="theme-toggle-btn" onClick={toggleTheme} title={theme === 'dark' ? t('theme.light') : t('theme.dark')}>
+          {theme === 'dark' ? `☀️ ${t('theme.light')}` : `🌙 ${t('theme.dark')}`}
         </button>
         <div className="user-info">
           <strong>{user.full_name}</strong>
           <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-            {ROLE_LABELS[user.role] || user.role}
+            {roleLabel}
           </span>
           {user.department_name && (
             <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
@@ -116,7 +123,7 @@ export default function Navbar() {
           )}
         </div>
         <button className="btn btn-outline btn-full logout-btn" onClick={logout}>
-          Chiqish
+          {t('nav.logout')}
         </button>
       </div>
     </aside>

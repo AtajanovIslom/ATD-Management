@@ -2,10 +2,12 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../api/axios'
 import { useAuth } from '../context/AuthContext'
+import { useI18n } from '../i18n'
 
 export default function CreateProject() {
   const navigate = useNavigate()
   const { user, isAdmin } = useAuth()
+  const { t } = useI18n()
   // Bo'lim rahbari — faqat o'z bo'limi doirasida loyiha yaratadi
   const onlyOwnDivision = !isAdmin
   const [teams, setTeams] = useState([])
@@ -26,8 +28,8 @@ export default function CreateProject() {
       // Bo'lim rahbariga faqat butunlay o'z bo'limidan iborat guruhlar
       // ko'rinadi — chunki u boshqa bo'lim xodimlarini yuklay olmaydi
       setTeams(onlyOwnDivision
-        ? teamsRes.data.filter(t => (t.members || []).length > 0
-            && t.members.every(m => m.division_id === user.division_id))
+        ? teamsRes.data.filter(team => (team.members || []).length > 0
+            && team.members.every(m => m.division_id === user.division_id))
         : teamsRes.data)
       // Bosqichga individual xodim tanlashda: xodim + bo'lim rahbari
       // (bo'lim rahbari o'zini ham biriktira oladi).
@@ -78,7 +80,7 @@ export default function CreateProject() {
 
   const getTeamMembers = (teamId) => {
     if (!teamId) return []
-    const team = teams.find(t => t.id === parseInt(teamId))
+    const team = teams.find(x => x.id === parseInt(teamId))
     return team?.members || []
   }
 
@@ -88,7 +90,7 @@ export default function CreateProject() {
 
     const validStages = form.stages.filter(s => s.name.trim())
     if (!validStages.length) {
-      setError('Kamida bitta bosqich kiritilishi shart')
+      setError(t('project.err.needStage'))
       return
     }
 
@@ -116,7 +118,7 @@ export default function CreateProject() {
       })
       navigate(`/projects/${res.data.id}`)
     } catch (err) {
-      setError(err.response?.data?.error || 'Xatolik yuz berdi')
+      setError(err.response?.data?.error || t('state.error'))
     } finally {
       setLoading(false)
     }
@@ -125,41 +127,41 @@ export default function CreateProject() {
   return (
     <div>
       <div className="page-header">
-        <h1>Yangi loyiha yaratish</h1>
+        <h1>{t('project.create.title')}</h1>
       </div>
 
       <div className="card">
         {error && <div className="alert alert-error">{error}</div>}
         <form onSubmit={handleSubmit}>
           <div className="form-group">
-            <label>Loyiha nomi *</label>
+            <label>{t('project.field.name')}</label>
             <input className="form-input" value={form.name}
               onChange={e => setForm({ ...form, name: e.target.value })}
-              placeholder="Loyiha nomini kiriting" required />
+              placeholder={t('project.field.name.placeholder')} required />
           </div>
 
           <div className="form-group">
-            <label>Loyiha tavsifi</label>
+            <label>{t('project.field.description')}</label>
             <textarea className="form-input" value={form.description}
               onChange={e => setForm({ ...form, description: e.target.value })}
-              placeholder="Loyiha haqida batafsil yozing..." rows={3} />
+              placeholder={t('project.field.description.placeholder')} rows={3} />
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
             <div className="form-group">
-              <label>Boshlash sanasi</label>
+              <label>{t('project.field.startDate')}</label>
               <input type="date" className="form-input" value={form.start_date}
                 onChange={e => setForm({ ...form, start_date: e.target.value })} />
             </div>
             <div className="form-group">
-              <label>Topshirish muddati</label>
+              <label>{t('project.field.deadline')}</label>
               <input type="date" className="form-input" value={form.deadline}
                 onChange={e => setForm({ ...form, deadline: e.target.value })} />
             </div>
           </div>
 
           <div className="form-group">
-            <label>Bosqichlar *</label>
+            <label>{t('project.field.stages')}</label>
             <div className="stages-editor">
               {form.stages.map((stage, idx) => {
                 const members = getTeamMembers(stage.team_id)
@@ -167,7 +169,7 @@ export default function CreateProject() {
                   <div key={idx} className="stage-edit-block">
                     <div className="stage-edit-header">
                       <span className="stage-number">{idx + 1}</span>
-                      <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{idx + 1}-bosqich</span>
+                      <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{t('project.stageNumber', { n: idx + 1 })}</span>
                       {form.stages.length > 1 && (
                         <button type="button" className="btn btn-danger btn-sm" onClick={() => removeStage(idx)}
                           style={{ marginLeft: 'auto' }}>✕</button>
@@ -176,38 +178,38 @@ export default function CreateProject() {
                     <div className="stage-edit-fields">
                       <input className="form-input" value={stage.name}
                         onChange={e => updateStage(idx, 'name', e.target.value)}
-                        placeholder="Bosqich nomi" />
+                        placeholder={t('project.stage.namePlaceholder')} />
                       <div className="stage-edit-row">
                         <div style={{ flex: 1 }}>
                           <label style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, display: 'block' }}>
-                            Boshlash sanasi
+                            {t('project.field.startDate')}
                           </label>
                           <input type="date" className="form-input" value={stage.start_date || ''}
                             onChange={e => updateStage(idx, 'start_date', e.target.value)} />
                         </div>
                         <div style={{ flex: 1 }}>
                           <label style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, display: 'block' }}>
-                            Tugatish muddati
+                            {t('project.stage.endDate')}
                           </label>
                           <input type="date" className="form-input" value={stage.deadline}
                             onChange={e => updateStage(idx, 'deadline', e.target.value)} />
                         </div>
                         <div style={{ flex: 1 }}>
                           <label style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, display: 'block' }}>
-                            Bajaruvchi turi
+                            {t('project.stage.assignType')}
                           </label>
                           <div style={{ display: 'flex', gap: 12, alignItems: 'center', height: 38 }}>
                             <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, cursor: 'pointer', color: 'var(--text-secondary)' }}>
                               <input type="radio" name={`assign_type_${idx}`} value="team"
                                 checked={stage.assign_type === 'team'}
                                 onChange={() => updateStage(idx, 'assign_type', 'team')} />
-                              Guruh
+                              {t('project.stage.team')}
                             </label>
                             <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, cursor: 'pointer', color: 'var(--text-secondary)' }}>
                               <input type="radio" name={`assign_type_${idx}`} value="individual"
                                 checked={stage.assign_type === 'individual'}
                                 onChange={() => updateStage(idx, 'assign_type', 'individual')} />
-                              Individual ishchi
+                              {t('project.stage.individual')}
                             </label>
                           </div>
                         </div>
@@ -216,23 +218,23 @@ export default function CreateProject() {
                       {stage.assign_type === 'team' && (
                         <div style={{ marginTop: 8 }}>
                           <label style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, display: 'block' }}>
-                            Bajaruvchi guruh
+                            {t('project.stage.assignedTeam')}
                           </label>
                           <select className="form-input" value={stage.team_id}
                             onChange={e => updateStage(idx, 'team_id', e.target.value)}>
-                            <option value="">Guruhni tanlang...</option>
-                            {teams.map(t => (
-                              <option key={t.id} value={t.id}>{t.name} ({t.members?.length || 0})</option>
+                            <option value="">{t('project.stage.selectTeam')}</option>
+                            {teams.map(team => (
+                              <option key={team.id} value={team.id}>{team.name} ({team.members?.length || 0})</option>
                             ))}
                           </select>
                           {stage.team_id && members.length > 0 && (
                             <div style={{ marginTop: 8 }}>
                               <label style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, display: 'block' }}>
-                                Hisobot topshiruvchi (mas'ul shaxs)
+                                {t('project.stage.reporter')}
                               </label>
                               <select className="form-input" value={stage.assignee_id}
                                 onChange={e => updateStage(idx, 'assignee_id', e.target.value)}>
-                                <option value="">Hammasi hisobot topshiradi</option>
+                                <option value="">{t('project.stage.everyoneReports')}</option>
                                 {members.map(m => (
                                   <option key={m.id} value={m.id}>{m.full_name} {m.position ? `(${m.position})` : ''}</option>
                                 ))}
@@ -253,15 +255,15 @@ export default function CreateProject() {
                         <div style={{ marginTop: 8 }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                             <label style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                              Individual ishchilar (tanlangan: {stage.assignee_ids?.length || 0})
+                              {t('project.stage.individualWorkers', { n: stage.assignee_ids?.length || 0 })}
                             </label>
                             <button type="button" className="btn btn-outline btn-sm" onClick={() => toggleStageAll(idx)}>
-                              {stage.assignee_ids?.length === users.length && users.length > 0 ? 'Bekor qilish' : 'Barchasini tanlash'}
+                              {stage.assignee_ids?.length === users.length && users.length > 0 ? t('task.deselectAll') : t('task.selectAll')}
                             </button>
                           </div>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 200, overflowY: 'auto',
                             border: '1px solid var(--border)', borderRadius: 8, padding: 8 }}>
-                            {users.length === 0 && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Ishchilar topilmadi</span>}
+                            {users.length === 0 && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{t('task.noWorkers')}</span>}
                             {users.map(u => (
                               <label key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13,
                                 cursor: 'pointer', padding: '5px 8px', borderRadius: 6,
@@ -270,7 +272,7 @@ export default function CreateProject() {
                                   onChange={() => toggleStageAssignee(idx, u.id)} />
                                 <span style={{ color: 'var(--text-secondary)' }}>
                                   {u.full_name} {u.position ? `(${u.position})` : ''} — {u.department}
-                                  {u.id === user.id ? ' (o\'zingiz)' : ''}
+                                  {u.id === user.id ? ` ${t('project.stage.you')}` : ''}
                                 </span>
                               </label>
                             ))}
@@ -283,18 +285,18 @@ export default function CreateProject() {
               })}
               <button type="button" className="btn btn-outline" onClick={addStage}
                 style={{ width: '100%', marginTop: 4 }}>
-                + Bosqich qo'shish
+                {t('project.addStage')}
               </button>
             </div>
           </div>
 
           <div className="form-group">
-            <label>Fayl biriktirish (ixtiyoriy)</label>
+            <label>{t('project.attachFile')}</label>
             <input type="file" className="form-input" multiple onChange={e => setFiles(e.target.files)} />
           </div>
 
           <button type="submit" className="btn btn-primary btn-full" disabled={loading}>
-            {loading ? 'Yaratilmoqda...' : 'Loyihani yaratish'}
+            {loading ? t('btn.creating') : t('project.create.submit')}
           </button>
         </form>
       </div>

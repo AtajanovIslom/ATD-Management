@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import api from '../api/axios'
+import { useI18n } from '../i18n'
 
 /**
  * Eslatmalar sahifasi:
@@ -8,23 +9,10 @@ import api from '../api/axios'
  *   - Kunga bosilganda dialog ochiladi
  */
 
-const UZ_MONTHS = ['Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun',
-                   'Iyul', 'Avgust', 'Sentyabr', 'Oktyabr', 'Noyabr', 'Dekabr']
-const UZ_WEEK = ['Du', 'Se', 'Cho', 'Pa', 'Ju', 'Sha', 'Ya']  // Mon-Sun
-
 // Ogohlantirish takrorlanish oraliqlari (daqiqada) — backend'dagi ALLOWED_INTERVALS bilan mos.
 // -1 = maxsus rejim: muddatga 7 kun qolganda kunlik ogohlantirish (Reminder.LAST_WEEK_MODE)
-const NOTIFY_INTERVALS = [
-  { value: 0, label: 'Takrorlanmasin (faqat bir marta)' },
-  { value: -1, label: 'Oxirgi haftadan boshlab har kuni' },
-  { value: 60, label: 'Har soatda' },
-  { value: 120, label: 'Har 2 soatda' },
-  { value: 360, label: 'Har 6 soatda' },
-  { value: 720, label: 'Har 12 soatda' },
-  { value: 1440, label: 'Har kuni' },
-  { value: 10080, label: 'Har haftada' },
-  { value: 43200, label: 'Har oyda' },
-]
+// Matnlari `rem.interval.*` kalitlaridan olinadi.
+const NOTIFY_INTERVALS = [0, -1, 60, 120, 360, 720, 1440, 10080, 43200]
 
 // Lokal timezone bo'yicha YYYY-MM-DD (UTC ga o'girmasdan — kun surilib ketmasin)
 const isoDate = (d) => {
@@ -36,6 +24,7 @@ const isoDate = (d) => {
 
 
 export default function Reminders() {
+  const { t, formatDate } = useI18n()
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')  // all | active | completed
@@ -101,7 +90,7 @@ export default function Reminders() {
   }
 
   const onDelete = async (item) => {
-    if (!window.confirm("Ushbu eslatmani o'chirmoqchimisiz?")) return
+    if (!window.confirm(t('rem.delete.confirm'))) return
     await api.delete(`/reminders/${item.id}`)
     await load()
   }
@@ -120,13 +109,13 @@ export default function Reminders() {
     <div>
       <div className="page-header">
         <div>
-          <h1 style={{ margin: 0 }}>🗓️ Eslatmalarim</h1>
+          <h1 style={{ margin: 0 }}>🗓️ {t('rem.title')}</h1>
           <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>
-            Kalendar bo'yicha muhim ishlarni belgilash
+            {t('rem.subtitle')}
           </p>
         </div>
         <button className="btn btn-primary" onClick={openAddToday}>
-          + Yangi eslatma
+          {t('rem.add')}
         </button>
       </div>
 
@@ -139,33 +128,34 @@ export default function Reminders() {
             today={today}
             remindersByDate={remindersByDate}
             onDayClick={openForDate}
+            t={t}
           />
-          <Legend />
+          <Legend t={t} />
         </div>
 
         {/* O'NG: ro'yxat */}
         <div>
           <div className="card" style={{ padding: 8, marginBottom: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            <FilterBtn active={filter === 'all'} onClick={() => setFilter('all')}>Barchasi</FilterBtn>
-            <FilterBtn active={filter === 'active'} onClick={() => setFilter('active')}>Faol</FilterBtn>
-            <FilterBtn active={filter === 'completed'} onClick={() => setFilter('completed')}>Bajarilgan</FilterBtn>
+            <FilterBtn active={filter === 'all'} onClick={() => setFilter('all')}>{t('rem.filter.all')}</FilterBtn>
+            <FilterBtn active={filter === 'active'} onClick={() => setFilter('active')}>{t('rem.filter.active')}</FilterBtn>
+            <FilterBtn active={filter === 'completed'} onClick={() => setFilter('completed')}>{t('rem.filter.completed')}</FilterBtn>
             <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--text-muted)', alignSelf: 'center' }}>
-              {items.length} ta
+              {t('rem.count', { n: items.length })}
             </span>
           </div>
 
           {loading ? (
             <div className="card" style={{ padding: 30, textAlign: 'center', color: 'var(--text-muted)' }}>
-              Yuklanmoqda...
+              {t('state.loading')}
             </div>
           ) : items.length === 0 ? (
             <div className="card" style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
-              Eslatmalar yo'q. Kalendarda kunni bosib qo'shing.
+              {t('rem.empty')}
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {items.map(item => (
-                <ReminderItem key={item.id} item={item}
+                <ReminderItem key={item.id} item={item} t={t} formatDate={formatDate}
                   onEdit={openEdit} onToggle={onToggle} onDelete={onDelete} />
               ))}
             </div>
@@ -175,6 +165,7 @@ export default function Reminders() {
 
       {dialog && (
         <ReminderDialog
+          t={t}
           dialog={dialog}
           onClose={closeDialog}
           onSave={onSave}
@@ -188,7 +179,9 @@ export default function Reminders() {
 
 /* -------------------------- Kalendar ---------------------------------- */
 
-function Calendar({ monthStart, setMonthStart, today, remindersByDate, onDayClick }) {
+function Calendar({ monthStart, setMonthStart, today, remindersByDate, onDayClick, t }) {
+  const months = t('cal.months').split(',')
+  const weekdays = t('cal.weekdays').split(',')
   const y = monthStart.getFullYear()
   const m = monthStart.getMonth()
 
@@ -215,8 +208,8 @@ function Calendar({ monthStart, setMonthStart, today, remindersByDate, onDayClic
     setMonthStart(new Date(y, m + delta, 1))
   }
   const goToday = () => {
-    const t = new Date(); t.setDate(1); t.setHours(0,0,0,0)
-    setMonthStart(t)
+    const d = new Date(); d.setDate(1); d.setHours(0,0,0,0)
+    setMonthStart(d)
   }
 
   return (
@@ -224,16 +217,16 @@ function Calendar({ monthStart, setMonthStart, today, remindersByDate, onDayClic
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
         <button className="btn btn-outline btn-sm" onClick={() => changeMonth(-1)}>‹</button>
         <div style={{ fontSize: 15, fontWeight: 700 }}>
-          {UZ_MONTHS[m]} {y}
+          {months[m]} {y}
         </div>
         <div style={{ display: 'flex', gap: 4 }}>
-          <button className="btn btn-outline btn-sm" onClick={goToday}>Bugun</button>
+          <button className="btn btn-outline btn-sm" onClick={goToday}>{t('cal.today')}</button>
           <button className="btn btn-outline btn-sm" onClick={() => changeMonth(1)}>›</button>
         </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 3 }}>
-        {UZ_WEEK.map((w, i) => (
+        {weekdays.map((w, i) => (
           <div key={w} style={{
             fontSize: 11, textAlign: 'center', fontWeight: 600,
             color: i >= 5 ? '#ef4444' : 'var(--text-muted)',
@@ -302,9 +295,9 @@ function Calendar({ monthStart, setMonthStart, today, remindersByDate, onDayClic
 
 /* -------------------------- Reminder item ----------------------------- */
 
-function ReminderItem({ item, onEdit, onToggle, onDelete }) {
+function ReminderItem({ item, onEdit, onToggle, onDelete, t, formatDate }) {
   const color = item.is_completed ? '#64748b' : colorForDays(item.days_left)
-  const daysText = daysText_(item.days_left, item.is_completed)
+  const daysText = daysText_(t, item.days_left, item.is_completed)
 
   return (
     <div className="card" style={{
@@ -319,7 +312,7 @@ function ReminderItem({ item, onEdit, onToggle, onDelete }) {
       {/* Checkbox */}
       <button
         onClick={() => onToggle(item)}
-        title={item.is_completed ? "Bekor qilish" : "Bajarildi"}
+        title={item.is_completed ? t('rem.undo') : t('rem.markDone')}
         style={{
           background: item.is_completed ? '#10b981' : 'transparent',
           color: item.is_completed ? '#fff' : color,
@@ -346,7 +339,7 @@ function ReminderItem({ item, onEdit, onToggle, onDelete }) {
         <div style={{
           fontSize: 11, marginTop: 4, display: 'flex', gap: 8, flexWrap: 'wrap',
         }}>
-          <span style={{ color: 'var(--text-muted)' }}>📅 {formatDate(item.remind_date)}</span>
+          <span style={{ color: 'var(--text-muted)' }}>📅 {formatDate(item.remind_date, { day: '2-digit', month: 'long', year: 'numeric', weekday: 'short' })}</span>
           <span style={{ color, fontWeight: 600 }}>{daysText}</span>
           {!item.is_completed && item.notify_interval_label && (
             <span style={{ color: 'var(--text-muted)' }}>🔔 {item.notify_interval_label}</span>
@@ -364,7 +357,7 @@ function ReminderItem({ item, onEdit, onToggle, onDelete }) {
                   color: 'var(--accent, #6366f1)', textDecoration: 'none',
                   cursor: 'pointer',
                 }}
-                title={`Yuklab olish: ${f.original_name}`}
+                title={t('rem.downloadFile', { name: f.original_name })}
               >
                 📎 {f.original_name}
               </a>
@@ -375,8 +368,8 @@ function ReminderItem({ item, onEdit, onToggle, onDelete }) {
 
       {/* Amallar */}
       <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-        <IconBtn title="Tahrirlash" onClick={() => onEdit(item)}>✏️</IconBtn>
-        <IconBtn title="O'chirish" tone="danger" onClick={() => onDelete(item)}>🗑️</IconBtn>
+        <IconBtn title={t('btn.edit')} onClick={() => onEdit(item)}>✏️</IconBtn>
+        <IconBtn title={t('btn.delete')} tone="danger" onClick={() => onDelete(item)}>🗑️</IconBtn>
       </div>
     </div>
   )
@@ -385,7 +378,7 @@ function ReminderItem({ item, onEdit, onToggle, onDelete }) {
 
 /* -------------------------- Dialog ------------------------------------ */
 
-function ReminderDialog({ dialog, onClose, onSave, onDelete }) {
+function ReminderDialog({ dialog, onClose, onSave, onDelete, t }) {
   const initial = dialog.mode === 'edit' ? dialog.item : null
   const [message, setMessage] = useState(initial?.message || '')
   const [date, setDate] = useState(initial?.remind_date || dialog.date)
@@ -429,9 +422,11 @@ function ReminderDialog({ dialog, onClose, onSave, onDelete }) {
       })
     } catch (err) {
       const d = err.response?.data
-      const msg = d?.error || d?.msg || err.message || 'Noma\'lum xato'
-      const status = err.response?.status ? ` (kod: ${err.response.status})` : ' (tarmoq xatosi — token muddati tugagan bo\'lishi mumkin)'
-      alert('Xatolik: ' + msg + status)
+      const msg = d?.error || d?.msg || err.message || t('rem.err.unknown')
+      const status = err.response?.status
+        ? t('rem.err.code', { code: err.response.status })
+        : t('rem.err.network')
+      alert(t('rem.err.prefix') + msg + status)
     } finally {
       setBusy(false)
     }
@@ -447,44 +442,44 @@ function ReminderDialog({ dialog, onClose, onSave, onDelete }) {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" style={{ maxWidth: 500 }} onClick={e => e.stopPropagation()}>
-        <h2>{initial ? '✏️ Eslatmani tahrirlash' : '📝 Yangi eslatma'}</h2>
+        <h2>{initial ? `✏️ ${t('rem.dialog.edit')}` : `📝 ${t('rem.dialog.add')}`}</h2>
 
         <form onSubmit={submit}>
           <div className="form-group">
-            <label>Sana *</label>
+            <label>{t('rem.field.date')}</label>
             <input type="date" className="form-input" value={date}
               onChange={e => setDate(e.target.value)} required />
           </div>
           <div className="form-group">
-            <label>Xabar *</label>
+            <label>{t('rem.field.message')}</label>
             <textarea className="form-input" rows={4} value={message}
               onChange={e => setMessage(e.target.value)}
-              placeholder="Nima haqida eslatish kerak..."
+              placeholder={t('rem.field.message.placeholder')}
               autoFocus
               onKeyDown={e => {
                 if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit(e)
               }}
             />
             <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>
-              Ctrl+Enter — tez saqlash
+              {t('rem.quickSave')}
             </div>
           </div>
 
           <div className="form-group">
-            <label>🔔 Ogohlantirish takrorlanishi</label>
+            <label>{t('rem.field.notify')}</label>
             <select className="form-input" value={notifyInterval}
               onChange={e => setNotifyInterval(Number(e.target.value))}>
-              {NOTIFY_INTERVALS.map(o => (
-                <option key={o.value} value={o.value}>{o.label}</option>
+              {NOTIFY_INTERVALS.map(v => (
+                <option key={v} value={v}>{t(`rem.interval.${v}`)}</option>
               ))}
             </select>
             <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>
-              Muddat yaqinlashganda shu oraliqda ogohlantirish beriladi
+              {t('rem.notify.hint')}
             </div>
           </div>
 
           <div className="form-group">
-            <label>Fayllar biriktirish</label>
+            <label>{t('rem.field.files')}</label>
             <input type="file" multiple onChange={addFiles}
               style={{ fontSize: 12, color: 'var(--text-muted)' }} />
 
@@ -529,13 +524,13 @@ function ReminderDialog({ dialog, onClose, onSave, onDelete }) {
           <div className="modal-actions" style={{ justifyContent: 'space-between' }}>
             {onDelete ? (
               <button type="button" className="btn btn-danger" onClick={onDelete}>
-                O'chirish
+                {t('btn.delete')}
               </button>
             ) : <span />}
             <div style={{ display: 'flex', gap: 8 }}>
-              <button type="button" className="btn btn-outline" onClick={onClose}>Bekor</button>
+              <button type="button" className="btn btn-outline" onClick={onClose}>{t('btn.cancel')}</button>
               <button type="submit" className="btn btn-primary" disabled={!canSave || busy}>
-                {busy ? 'Saqlanmoqda...' : 'Saqlash'}
+                {busy ? t('btn.saving') : t('btn.save')}
               </button>
             </div>
           </div>
@@ -581,7 +576,7 @@ function IconBtn({ children, onClick, title, tone }) {
   )
 }
 
-function Legend() {
+function Legend({ t }) {
   // Gradient yo'nalishi colorForDays bilan mos: chapda muddati o'tgan (qizil),
   // o'ngda uzoq muddat (yashil)
   const stops = [0, 25, 50, 75, 100]
@@ -591,7 +586,7 @@ function Legend() {
   return (
     <div className="card" style={{ marginTop: 10, padding: 10 }}>
       <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
-        Rang tavsifi
+        {t('rem.legend.title')}
       </div>
 
       <div style={{
@@ -599,18 +594,18 @@ function Legend() {
         background: `linear-gradient(to right, ${stops})`,
       }} />
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-muted)' }}>
-        <span>Muddat yaqin</span>
-        <span>{COLOR_MAX_DAYS}+ kun</span>
+        <span>{t('rem.legend.soon')}</span>
+        <span>{t('rem.legend.far', { n: COLOR_MAX_DAYS })}</span>
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
           <span style={{ width: 12, height: 12, borderRadius: 3, background: 'hsl(0, 85%, 38%)' }} />
-          <span>Muddati o‘tgan</span>
+          <span>{t('rem.legend.overdue')}</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
           <span style={{ width: 12, height: 12, borderRadius: 3, background: '#64748b' }} />
-          <span>Bajarilgan</span>
+          <span>{t('rem.legend.completed')}</span>
         </div>
       </div>
     </div>
@@ -627,23 +622,16 @@ const COLOR_MAX_DAYS = 30  // shundan uzoq muddat — to'liq yashil
 function colorForDays(days) {
   if (days === null || days === undefined) return '#64748b'
   if (days < 0) return 'hsl(0, 85%, 38%)'  // muddati o'tgan — to'q qizil
-  const t = Math.min(days, COLOR_MAX_DAYS) / COLOR_MAX_DAYS  // 0..1
-  const hue = t * 120  // 0 = qizil, 120 = yashil
+  const ratio = Math.min(days, COLOR_MAX_DAYS) / COLOR_MAX_DAYS  // 0..1
+  const hue = ratio * 120  // 0 = qizil, 120 = yashil
   return `hsl(${Math.round(hue)}, 85%, 45%)`
 }
 
-function daysText_(days, completed) {
-  if (completed) return '✓ Bajarilgan'
+function daysText_(t, days, completed) {
+  if (completed) return t('rem.done')
   if (days === null || days === undefined) return ''
-  if (days < 0) return `Muddati o‘tgan (${Math.abs(days)} kun)`
-  if (days === 0) return 'Bugun!'
-  if (days === 1) return 'Ertaga'
-  if (days <= 5) return `${days} kun qoldi`
-  return `${days} kun qoldi`
-}
-
-function formatDate(iso) {
-  if (!iso) return ''
-  const d = new Date(iso)
-  return d.toLocaleDateString('uz-UZ', { day: '2-digit', month: 'long', year: 'numeric', weekday: 'short' })
+  if (days < 0) return t('time.overdueDays', { n: Math.abs(days) })
+  if (days === 0) return t('time.todayExcl')
+  if (days === 1) return t('time.tomorrow')
+  return t('time.daysLeft', { n: days })
 }

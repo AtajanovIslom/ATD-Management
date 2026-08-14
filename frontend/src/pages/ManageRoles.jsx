@@ -1,20 +1,21 @@
 import { useState, useEffect } from 'react'
 import api from '../api/axios'
 import { useAuth } from '../context/AuthContext'
+import { useI18n } from '../i18n'
+import { roleLabel } from '../i18n/labels'
 
-const ROLE_LABELS = {
-  superadmin: '👑 Bosh Administrator',
-  director: '🎖️ Direksiya Direktori',
-  deputy_director: "🥈 Direktor O'rinbosari",
-  admin: "Boshqarma Rahbari",
-  department_admin: "Bo'lim Rahbari",
-  user: 'Xodim',
+// Rol yonidagi belgilar — matni `role.*` kalitlaridan olinadi
+const ROLE_ICONS = {
+  superadmin: '👑 ',
+  director: '🎖️ ',
+  deputy_director: '🥈 ',
 }
 
 const TOP_ROLES = ['superadmin', 'director', 'deputy_director', 'admin']
 
 export default function ManageRoles() {
   const { user: currentUser } = useAuth()
+  const { t } = useI18n()
   const [users, setUsers] = useState([])
   const [departments, setDepartments] = useState([])
   const [divisions, setDivisions] = useState([])
@@ -84,11 +85,11 @@ export default function ManageRoles() {
     setError('')
 
     if (newRole === 'admin' && !newDeptId) {
-      setError("Admin uchun boshqarmani tanlang")
+      setError(t('roles.err.needDept'))
       return
     }
     if (newRole === 'department_admin' && !newDivId) {
-      setError("Bo'lim rahbari uchun bo'limni tanlang")
+      setError(t('roles.err.needDiv'))
       return
     }
 
@@ -103,7 +104,7 @@ export default function ManageRoles() {
       setModal(null)
       await loadAll()
     } catch (err) {
-      setError(err.response?.data?.error || 'Xatolik yuz berdi')
+      setError(err.response?.data?.error || t('state.error'))
     } finally {
       setSaving(false)
     }
@@ -121,28 +122,28 @@ export default function ManageRoles() {
   // Qolganlarni Boshqarma → Bo'lim → Xodimlar tarzida guruhlaymiz
   const grouped = {}
   rest.forEach(u => {
-    const deptName = u.department_name || 'Belgilanmagan'
-    const divName = u.division_name || "Bo'lim belgilanmagan"
+    const deptName = u.department_name || t('users.unassignedDept')
+    const divName = u.division_name || t('users.unassignedDiv')
     if (!grouped[deptName]) grouped[deptName] = {}
     if (!grouped[deptName][divName]) grouped[deptName][divName] = []
     grouped[deptName][divName].push(u)
   })
 
-  if (loading) return <div className="loading">Yuklanmoqda...</div>
+  if (loading) return <div className="loading">{t('state.loading')}</div>
 
   return (
     <div>
       <div className="page-header">
-        <h1>Foydalanuvchi rollari</h1>
+        <h1>{t('roles.title')}</h1>
         <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>
-          Har bir foydalanuvchiga rol va boshqarma/bo'lim belgilang
+          {t('roles.subtitle')}
         </p>
       </div>
 
       <div className="card" style={{ marginBottom: 16 }}>
         <input
           className="form-input"
-          placeholder="Ism yoki lavozim bo'yicha qidiring..."
+          placeholder={t('roles.search')}
           value={search}
           onChange={e => setSearch(e.target.value)}
           style={{ maxWidth: 340 }}
@@ -156,9 +157,9 @@ export default function ManageRoles() {
           borderLeft: '3px solid #f59e0b',
         }}>
           <h2 style={{ fontSize: 15, margin: '0 0 12px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
-            ⭐ Yuqori bo'g'in rahbariyat
+            ⭐ {t('roles.topLeadership')}
             <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 400 }}>
-              ({topLeadership.length} kishi)
+              {t('users.peopleCount', { n: topLeadership.length })}
             </span>
           </h2>
           {topLeadership.map(u => (
@@ -170,7 +171,7 @@ export default function ManageRoles() {
 
       {topLeadership.length === 0 && Object.keys(grouped).length === 0 && (
         <div className="card" style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
-          Foydalanuvchi topilmadi
+          {t('roles.notFound')}
         </div>
       )}
 
@@ -181,7 +182,7 @@ export default function ManageRoles() {
             <h2 style={{ fontSize: 15, margin: '0 0 12px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
               🏢 {deptName}
               <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 400 }}>
-                ({deptCount} kishi)
+                {t('users.peopleCount', { n: deptCount })}
               </span>
             </h2>
             {Object.entries(divsMap).map(([divName, divUsers]) => (
@@ -218,16 +219,14 @@ export default function ManageRoles() {
 
             {/* Rol tanlash */}
             <div className="form-group">
-              <label>Rol</label>
+              <label>{t('roles.field.role')}</label>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
                 {/* 5 rol variantlari */}
-                {[
-                  { value: 'director', label: '🎖️ Direksiya Direktori', desc: "To'liq huquqli boshqaruvchi" },
-                  { value: 'deputy_director', label: "🥈 Direktor O'rinbosari", desc: "Barchasini ko'radi, rol berolmaydi" },
-                  { value: 'admin', label: "Boshqarma Rahbari", desc: "O'z boshqarmasini boshqaradi" },
-                  { value: 'department_admin', label: "Bo'lim Rahbari", desc: "O'z bo'limini boshqaradi" },
-                  { value: 'user', label: 'Xodim', desc: "Faqat o'z vazifalarini ko'radi" },
-                ].map(r => (
+                {['director', 'deputy_director', 'admin', 'department_admin', 'user'].map(value => ({
+                  value,
+                  label: (ROLE_ICONS[value] || '') + roleLabel(t, value),
+                  desc: t(`roles.desc.${value}`),
+                })).map(r => (
                   <label key={r.value} style={{
                     display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer',
                     padding: 12, borderRadius: 8,
@@ -252,10 +251,10 @@ export default function ManageRoles() {
             {/* Boshqarma tanlash — admin uchun */}
             {(newRole === 'admin' || newRole === 'department_admin') && (
               <div className="form-group">
-                <label>Boshqarma</label>
+                <label>{t('users.field.department')}</label>
                 <select className="form-input" value={newDeptId}
                   onChange={e => handleDeptChange(e.target.value)}>
-                  <option value="">— Tanlang —</option>
+                  <option value="">{t('users.select')}</option>
                   {departments.map(d => (
                     <option key={d.id} value={d.id}>{d.name}</option>
                   ))}
@@ -266,18 +265,18 @@ export default function ManageRoles() {
             {/* Bo'lim tanlash — department_admin uchun */}
             {newRole === 'department_admin' && (
               <div className="form-group">
-                <label>Bo'lim</label>
+                <label>{t('users.field.division')}</label>
                 <select className="form-input" value={newDivId}
                   onChange={e => setNewDivId(e.target.value)}
                   disabled={!newDeptId}>
-                  <option value="">— Tanlang —</option>
+                  <option value="">{t('users.select')}</option>
                   {filteredDivs.map(d => (
                     <option key={d.id} value={d.id}>{d.name}</option>
                   ))}
                 </select>
                 {!newDeptId && (
                   <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
-                    Avval boshqarmani tanlang
+                    {t('roles.pickDeptFirst')}
                   </p>
                 )}
               </div>
@@ -287,21 +286,21 @@ export default function ManageRoles() {
             {newRole === 'user' && (
               <>
                 <div className="form-group">
-                  <label>Boshqarma (ixtiyoriy)</label>
+                  <label>{t('roles.field.departmentOptional')}</label>
                   <select className="form-input" value={newDeptId}
                     onChange={e => handleDeptChange(e.target.value)}>
-                    <option value="">— Tanlang —</option>
+                    <option value="">{t('users.select')}</option>
                     {departments.map(d => (
                       <option key={d.id} value={d.id}>{d.name}</option>
                     ))}
                   </select>
                 </div>
                 <div className="form-group">
-                  <label>Bo'lim (ixtiyoriy)</label>
+                  <label>{t('roles.field.divisionOptional')}</label>
                   <select className="form-input" value={newDivId}
                     onChange={e => setNewDivId(e.target.value)}
                     disabled={!newDeptId}>
-                    <option value="">— Tanlang —</option>
+                    <option value="">{t('users.select')}</option>
                     {filteredDivs.map(d => (
                       <option key={d.id} value={d.id}>{d.name}</option>
                     ))}
@@ -311,9 +310,9 @@ export default function ManageRoles() {
             )}
 
             <div className="modal-actions">
-              <button className="btn btn-outline" onClick={() => setModal(null)}>Bekor qilish</button>
+              <button className="btn btn-outline" onClick={() => setModal(null)}>{t('btn.cancel')}</button>
               <button className="btn btn-primary" onClick={saveRole} disabled={saving}>
-                {saving ? 'Saqlanmoqda...' : 'Saqlash'}
+                {saving ? t('btn.saving') : t('btn.save')}
               </button>
             </div>
           </div>
@@ -324,6 +323,7 @@ export default function ManageRoles() {
 }
 
 function RoleGroupHeader({ role, count }) {
+  const { t } = useI18n()
   const COLORS = {
     superadmin: '#f59e0b',
     director: '#ef4444',
@@ -338,16 +338,17 @@ function RoleGroupHeader({ role, count }) {
         background: COLORS[role], flexShrink: 0,
       }} />
       <h3 style={{ fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, margin: 0 }}>
-        {ROLE_LABELS[role]}
+        {(ROLE_ICONS[role] || '') + roleLabel(t, role)}
       </h3>
       <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 'auto' }}>
-        {count} ta
+        {t('roles.count', { n: count })}
       </span>
     </div>
   )
 }
 
 function UserCard({ u, onEdit, readonly }) {
+  const { t } = useI18n()
   const roleColor = {
     superadmin: '#f59e0b', director: '#ef4444', deputy_director: '#f97316',
     admin: '#6366f1', department_admin: '#10b981', user: 'var(--text-muted)',
@@ -366,7 +367,7 @@ function UserCard({ u, onEdit, readonly }) {
             fontSize: 10, padding: '1px 6px', borderRadius: 3,
             background: roleColor + '20', color: roleColor, fontWeight: 600,
           }}>
-            {ROLE_LABELS[u.role] || u.role}
+            {(ROLE_ICONS[u.role] || '') + roleLabel(t, u.role)}
           </span>
         </div>
         <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
@@ -379,7 +380,7 @@ function UserCard({ u, onEdit, readonly }) {
           style={{ padding: '3px 10px', fontSize: 11, flexShrink: 0 }}
           onClick={() => onEdit(u)}
         >
-          Rol berish
+          {t('roles.assign')}
         </button>
       )}
       {readonly && (

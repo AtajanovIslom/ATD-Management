@@ -2,11 +2,14 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import api from '../api/axios'
 import { useAuth } from '../context/AuthContext'
+import { useI18n } from '../i18n'
+import LanguageSwitcher from '../components/LanguageSwitcher'
 
 export default function Register() {
   const { token } = useParams()
   const navigate = useNavigate()
   const { setSession } = useAuth()
+  const { t } = useI18n()
   const [info, setInfo] = useState(null)
   const [loadError, setLoadError] = useState('')
   const [login, setLogin] = useState('')
@@ -18,27 +21,27 @@ export default function Register() {
   useEffect(() => {
     api.get(`/auth/register/${token}`)
       .then(res => setInfo(res.data))
-      .catch(err => setLoadError(err.response?.data?.error || 'Havola yaroqsiz'))
-  }, [token])
+      .catch(err => setLoadError(err.response?.data?.error || t('auth.register.invalidLink')))
+  }, [token, t])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
 
     if (!login || login.includes(' ')) {
-      setError('Login kiritilishi va probelsiz bo\'lishi shart')
+      setError(t('auth.err.loginRequired'))
       return
     }
     if (password.length < 4) {
-      setError('Parol kamida 4 ta belgidan iborat bo\'lishi kerak')
+      setError(t('auth.err.passwordShort'))
       return
     }
     if (password.includes(' ')) {
-      setError('Parolda probel bo\'lmasligi kerak')
+      setError(t('auth.err.passwordSpace'))
       return
     }
     if (password !== confirmPassword) {
-      setError('Parollar mos kelmadi')
+      setError(t('auth.err.passwordMismatch'))
       return
     }
 
@@ -48,7 +51,7 @@ export default function Register() {
       setSession(res.data.token, res.data.user)
       navigate('/')
     } catch (err) {
-      setError(err.response?.data?.error || 'Xatolik yuz berdi')
+      setError(err.response?.data?.error || t('state.error'))
     } finally {
       setLoading(false)
     }
@@ -58,10 +61,11 @@ export default function Register() {
     return (
       <div className="login-container">
         <div className="login-box">
+          <LanguageSwitcher variant="plain" />
           <img src="/logo.png" alt="ATD" className="login-logo-img" />
-          <h1 className="brand-title">ATD Management</h1>
+          <h1 className="brand-title">{t('app.name')}</h1>
           <div className="alert alert-error">{loadError}</div>
-          <Link to="/login" className="btn btn-outline btn-full">Kirish sahifasiga qaytish</Link>
+          <Link to="/login" className="btn btn-outline btn-full">{t('auth.register.backToLogin')}</Link>
         </div>
       </div>
     )
@@ -71,9 +75,10 @@ export default function Register() {
     return (
       <div className="login-container">
         <div className="login-box">
+          <LanguageSwitcher variant="plain" />
           <img src="/logo.png" alt="ATD" className="login-logo-img" />
-          <h1 className="brand-title">ATD Management</h1>
-          <p>Yuklanmoqda...</p>
+          <h1 className="brand-title">{t('app.name')}</h1>
+          <p>{t('state.loading')}</p>
         </div>
       </div>
     )
@@ -82,45 +87,46 @@ export default function Register() {
   return (
     <div className="login-container">
       <div className="login-box">
+        <LanguageSwitcher variant="plain" />
         <img src="/logo.png" alt="ATD" className="login-logo-img" />
-          <h1 className="brand-title">ATD Management</h1>
-        <p>Xush kelibsiz, <strong>{info.full_name}</strong>! Tizimga kirish uchun login va parol o'rnating.</p>
+        <h1 className="brand-title">{t('app.name')}</h1>
+        <p>{t('auth.register.welcome', { name: info.full_name })}</p>
         {error && <div className="alert alert-error">{error}</div>}
         <form onSubmit={handleSubmit}>
           <div className="form-group">
-            <label>Login *</label>
+            <label>{t('auth.field.loginRequired')}</label>
             <input
               className="form-input"
               value={login}
               onChange={e => setLogin(e.target.value)}
-              placeholder="Loginingizni tanlang"
+              placeholder={t('auth.field.login.placeholder')}
               required
             />
           </div>
           <div className="form-group">
-            <label>Parol * (kamida 4 belgi, probelsiz)</label>
+            <label>{t('auth.field.passwordRequired')}</label>
             <input
               className="form-input"
               type="text"
               value={password}
               onChange={e => setPassword(e.target.value)}
-              placeholder="Parolingizni tanlang"
+              placeholder={t('auth.field.password.placeholder')}
               required
             />
           </div>
           <div className="form-group">
-            <label>Parolni tasdiqlang *</label>
+            <label>{t('auth.field.confirmPassword')}</label>
             <input
               className="form-input"
               type="text"
               value={confirmPassword}
               onChange={e => setConfirmPassword(e.target.value)}
-              placeholder="Parolni qayta kiriting"
+              placeholder={t('auth.field.confirmPassword.placeholder')}
               required
             />
           </div>
           <button className="btn btn-primary btn-full" type="submit" disabled={loading}>
-            {loading ? 'Saqlanmoqda...' : 'Ro\'yxatdan o\'tish'}
+            {loading ? t('btn.saving') : t('auth.signup.submit')}
           </button>
         </form>
       </div>

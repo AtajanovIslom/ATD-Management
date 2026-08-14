@@ -1,36 +1,40 @@
 import { useEffect, useState, useCallback } from 'react'
 import api from '../api/axios'
+import { useI18n } from '../i18n'
 
-const ACTION_LABELS = {
-  create: { label: 'Yaratish', color: '#10b981', icon: '➕' },
-  update: { label: 'Tahrirlash', color: '#3b82f6', icon: '✏️' },
-  delete: { label: "O'chirish", color: '#ef4444', icon: '🗑️' },
-  assign: { label: 'Biriktirish', color: '#8b5cf6', icon: '📌' },
-  approve: { label: 'Tasdiqlash', color: '#10b981', icon: '✔️' },
-  return: { label: 'Qaytarish', color: '#f59e0b', icon: '↩' },
-  reject: { label: 'Rad etish', color: '#ef4444', icon: '❌' },
-  set_role: { label: 'Rol berish', color: '#8b5cf6', icon: '🔑' },
-  login: { label: 'Kirish', color: '#64748b', icon: '🔓' },
-  submit_review: { label: 'Bajarildi', color: '#3b82f6', icon: '📤' },
+// Amal turlarining rangi va belgisi — matni `audit.action.*` kalitlaridan olinadi
+const ACTION_STYLES = {
+  create: { color: '#10b981', icon: '➕' },
+  update: { color: '#3b82f6', icon: '✏️' },
+  delete: { color: '#ef4444', icon: '🗑️' },
+  assign: { color: '#8b5cf6', icon: '📌' },
+  approve: { color: '#10b981', icon: '✔️' },
+  return: { color: '#f59e0b', icon: '↩' },
+  reject: { color: '#ef4444', icon: '❌' },
+  set_role: { color: '#8b5cf6', icon: '🔑' },
+  login: { color: '#64748b', icon: '🔓' },
+  submit_review: { color: '#3b82f6', icon: '📤' },
 }
 
-const ENTITY_LABELS = {
-  user: '👤 Foydalanuvchi',
-  department: '🏢 Boshqarma',
-  division: '📁 Bo\'lim',
-  team: '👥 Guruh',
-  project: '🚀 Loyiha',
-  project_stage: '📦 Loyiha bosqichi',
-  task: '📝 Vazifa',
-  work_log: '📓 Kunlik hisobot',
-  reminder: '🗓️ Eslatma',
-  service_department: '🧩 Xizmat bo\'limi',
-  service_type: '🧩 Xizmat turi',
-  interactive_request: '📥 Interaktiv ariza',
-  role: '🔑 Rol',
+// Obyekt turlarining belgisi — matni `audit.entity.*` kalitlaridan olinadi
+const ENTITY_ICONS = {
+  user: '👤',
+  department: '🏢',
+  division: '📁',
+  team: '👥',
+  project: '🚀',
+  project_stage: '📦',
+  task: '📝',
+  work_log: '📓',
+  reminder: '🗓️',
+  service_department: '🧩',
+  service_type: '🧩',
+  interactive_request: '📥',
+  role: '🔑',
 }
 
 export default function AuditLogs() {
+  const { t, formatDateTime } = useI18n()
   const [items, setItems] = useState([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -79,17 +83,33 @@ export default function AuditLogs() {
   const totalPages = Math.max(1, Math.ceil(total / limit))
   const currentPage = Math.floor(offset / limit) + 1
 
+  // Kod uchun tarjima topilmasa kodning o'zi ko'rsatiladi
+  const actionText = (code) => {
+    const key = `audit.action.${code}`
+    return t(key) === key ? code : t(key)
+  }
+  const entityText = (code) => {
+    const key = `audit.entity.${code}`
+    const label = t(key) === key ? code : t(key)
+    const icon = ENTITY_ICONS[code]
+    return icon ? `${icon} ${label}` : label
+  }
+  const fmt = (iso) => formatDateTime(iso, {
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  }) || '—'
+
   return (
     <div>
       <div className="page-header">
         <div>
-          <h1 style={{ margin: 0 }}>📋 Audit jurnali</h1>
+          <h1 style={{ margin: 0 }}>📋 {t('audit.title')}</h1>
           <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>
-            Loyihada bajarilgan barcha muhim amallar tarixi
+            {t('audit.subtitle')}
           </p>
         </div>
         <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-          Jami: <strong style={{ color: 'var(--text)' }}>{total}</strong> ta yozuv
+          {t('audit.totalRecords', { n: total })}
         </div>
       </div>
 
@@ -101,46 +121,46 @@ export default function AuditLogs() {
           gap: 10, alignItems: 'end',
         }}>
           <div>
-            <label style={{ fontSize: 11, color: 'var(--text-muted)' }}>Qidiruv</label>
-            <input className="form-input" placeholder="ism, obyekt yoki izoh"
+            <label style={{ fontSize: 11, color: 'var(--text-muted)' }}>{t('audit.search')}</label>
+            <input className="form-input" placeholder={t('audit.search.placeholder')}
               value={filters.q}
               onChange={e => changeFilter('q', e.target.value)} />
           </div>
           <div>
-            <label style={{ fontSize: 11, color: 'var(--text-muted)' }}>Obyekt turi</label>
+            <label style={{ fontSize: 11, color: 'var(--text-muted)' }}>{t('audit.entityType')}</label>
             <select className="form-input" value={filters.entity_type}
               onChange={e => changeFilter('entity_type', e.target.value)}>
-              <option value="">Barchasi</option>
+              <option value="">{t('btn.all')}</option>
               {facets.entity_types.map(et => (
-                <option key={et} value={et}>{ENTITY_LABELS[et] || et}</option>
+                <option key={et} value={et}>{entityText(et)}</option>
               ))}
             </select>
           </div>
           <div>
-            <label style={{ fontSize: 11, color: 'var(--text-muted)' }}>Amal</label>
+            <label style={{ fontSize: 11, color: 'var(--text-muted)' }}>{t('audit.action')}</label>
             <select className="form-input" value={filters.action}
               onChange={e => changeFilter('action', e.target.value)}>
-              <option value="">Barchasi</option>
+              <option value="">{t('btn.all')}</option>
               {facets.actions.map(a => (
-                <option key={a} value={a}>{ACTION_LABELS[a]?.label || a}</option>
+                <option key={a} value={a}>{actionText(a)}</option>
               ))}
             </select>
           </div>
           <div>
-            <label style={{ fontSize: 11, color: 'var(--text-muted)' }}>Sanadan</label>
+            <label style={{ fontSize: 11, color: 'var(--text-muted)' }}>{t('reports.dateFrom')}</label>
             <input type="datetime-local" className="form-input"
               value={filters.from}
               onChange={e => changeFilter('from', e.target.value)} />
           </div>
           <div>
-            <label style={{ fontSize: 11, color: 'var(--text-muted)' }}>Sanagacha</label>
+            <label style={{ fontSize: 11, color: 'var(--text-muted)' }}>{t('reports.dateTo')}</label>
             <input type="datetime-local" className="form-input"
               value={filters.to}
               onChange={e => changeFilter('to', e.target.value)} />
           </div>
           <button className="btn btn-outline btn-sm" onClick={clearFilters}
             style={{ height: 38 }}>
-            Tozalash
+            {t('btn.reset')}
           </button>
         </div>
       </div>
@@ -149,29 +169,29 @@ export default function AuditLogs() {
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
         {loading ? (
           <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
-            Yuklanmoqda...
+            {t('state.loading')}
           </div>
         ) : items.length === 0 ? (
           <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
-            Yozuvlar topilmadi
+            {t('audit.noRecords')}
           </div>
         ) : (
           <div className="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th style={{ width: 140 }}>Vaqt</th>
-                  <th>Kim</th>
-                  <th style={{ width: 140 }}>Amal</th>
-                  <th style={{ width: 160 }}>Obyekt turi</th>
-                  <th>Obyekt</th>
-                  <th>Izoh</th>
+                  <th style={{ width: 140 }}>{t('audit.th.time')}</th>
+                  <th>{t('audit.th.who')}</th>
+                  <th style={{ width: 140 }}>{t('audit.action')}</th>
+                  <th style={{ width: 160 }}>{t('audit.entityType')}</th>
+                  <th>{t('audit.th.entity')}</th>
+                  <th>{t('field.comment')}</th>
                   <th style={{ width: 100 }}>IP</th>
                 </tr>
               </thead>
               <tbody>
                 {items.map(it => {
-                  const a = ACTION_LABELS[it.action] || { label: it.action, color: 'var(--text-muted)', icon: '•' }
+                  const a = ACTION_STYLES[it.action] || { color: 'var(--text-muted)', icon: '•' }
                   return (
                     <tr key={it.id}>
                       <td style={{ fontSize: 11, whiteSpace: 'nowrap' }}>{fmt(it.created_at)}</td>
@@ -187,10 +207,10 @@ export default function AuditLogs() {
                           padding: '2px 8px', borderRadius: 4,
                           background: a.color + '20', color: a.color, whiteSpace: 'nowrap',
                         }}>
-                          {a.icon} {a.label}
+                          {a.icon} {actionText(it.action)}
                         </span>
                       </td>
-                      <td style={{ fontSize: 12 }}>{ENTITY_LABELS[it.entity_type] || it.entity_type}</td>
+                      <td style={{ fontSize: 12 }}>{entityText(it.entity_type)}</td>
                       <td style={{ fontSize: 12 }}>
                         {it.entity_label || (it.entity_id ? `#${it.entity_id}` : '—')}
                       </td>
@@ -213,7 +233,7 @@ export default function AuditLogs() {
           <button className="btn btn-outline btn-sm"
             disabled={offset === 0}
             onClick={() => setOffset(Math.max(0, offset - limit))}>
-            ← Oldingi
+            ← {t('audit.prev')}
           </button>
           <span style={{ padding: '6px 12px', fontSize: 13, color: 'var(--text-muted)' }}>
             {currentPage} / {totalPages}
@@ -221,7 +241,7 @@ export default function AuditLogs() {
           <button className="btn btn-outline btn-sm"
             disabled={offset + limit >= total}
             onClick={() => setOffset(offset + limit)}>
-            Keyingi →
+            {t('audit.next')} →
           </button>
         </div>
       )}
@@ -229,10 +249,3 @@ export default function AuditLogs() {
   )
 }
 
-function fmt(iso) {
-  if (!iso) return '—'
-  return new Date(iso).toLocaleString('uz-UZ', {
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', second: '2-digit',
-  })
-}

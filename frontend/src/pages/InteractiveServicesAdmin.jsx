@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import api from '../api/axios'
+import { useI18n } from '../i18n'
 
 /**
  * Interaktiv xizmatlar boshqaruvi
@@ -7,6 +8,7 @@ import api from '../api/axios'
  *  - Har bir bo'lim "Turlar" tugmasi orqali o'z xizmat turlari dialogini ochadi
  */
 export default function InteractiveServicesAdmin() {
+  const { t } = useI18n()
   const [departments, setDepartments] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -22,7 +24,7 @@ export default function InteractiveServicesAdmin() {
       const res = await api.get('/interactive/departments')
       setDepartments(res.data)
     } catch (err) {
-      setError(err.response?.data?.error || "Ma'lumotlarni yuklashda xatolik")
+      setError(err.response?.data?.error || t('isa.loadError'))
     } finally {
       setLoading(false)
     }
@@ -52,35 +54,35 @@ export default function InteractiveServicesAdmin() {
       closeDeptDialog()
       loadDepartments()
     } catch (err) {
-      alert(err.response?.data?.error || 'Xatolik')
+      alert(err.response?.data?.error || t('state.error'))
     } finally {
       setBusy(false)
     }
   }
 
   const deleteDept = async (d) => {
-    if (!window.confirm(`"${d.name}" bo'limini o'chirmoqchimisiz? Barcha xizmat turlari ham o'chadi.`)) return
+    if (!window.confirm(t('isa.dept.delete.confirm', { name: d.name }))) return
     try {
       await api.delete(`/interactive/departments/${d.id}`)
       loadDepartments()
     } catch (err) {
-      alert(err.response?.data?.error || 'Xatolik')
+      alert(err.response?.data?.error || t('state.error'))
     }
   }
 
-  if (loading) return <div className="loading">Yuklanmoqda...</div>
+  if (loading) return <div className="loading">{t('state.loading')}</div>
 
   return (
     <div>
       <div className="page-header">
         <div>
-          <h1 style={{ margin: 0 }}>🧩 Interaktiv xizmatlar</h1>
+          <h1 style={{ margin: 0 }}>🧩 {t('isa.title')}</h1>
           <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-muted)' }}>
-            Xizmat bo'limlari va ular ichidagi xizmat turlarini boshqarish
+            {t('isa.subtitle')}
           </p>
         </div>
         <button className="btn btn-primary" onClick={openAddDept}>
-          + Xizmat nomini qo'shish
+          {t('isa.add')}
         </button>
       </div>
 
@@ -92,16 +94,16 @@ export default function InteractiveServicesAdmin() {
             <thead>
               <tr>
                 <th style={{ width: 60 }}>№</th>
-                <th>Nomi</th>
-                <th style={{ width: 100, textAlign: 'center' }}>Turlar</th>
-                <th style={{ width: 260, textAlign: 'right' }}>Действия</th>
+                <th>{t('field.name')}</th>
+                <th style={{ width: 100, textAlign: 'center' }}>{t('isa.th.types')}</th>
+                <th style={{ width: 260, textAlign: 'right' }}>{t('field.actions')}</th>
               </tr>
             </thead>
             <tbody>
               {departments.length === 0 ? (
                 <tr>
                   <td colSpan={4} style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
-                    Hali xizmat bo'limi qo'shilmagan
+                    {t('isa.empty')}
                   </td>
                 </tr>
               ) : departments.map((d, i) => (
@@ -114,8 +116,8 @@ export default function InteractiveServicesAdmin() {
                         marginLeft: 8, fontSize: 11, fontWeight: 600,
                         padding: '2px 8px', borderRadius: 10, whiteSpace: 'nowrap',
                         background: 'rgba(34,197,94,0.12)', color: '#22c55e',
-                      }} title="Arizada bir nechta xizmat turini tanlash mumkin">
-                        ko'p tanlov
+                      }} title={t('isa.multiBadge.title')}>
+                        {t('isa.multiBadge')}
                       </span>
                     )}
                   </td>
@@ -129,11 +131,11 @@ export default function InteractiveServicesAdmin() {
                     </span>
                   </td>
                   <td style={{ textAlign: 'right' }}>
-                    <IconBtn icon="➕" title="Xizmat turlarini boshqarish" tone="primary"
+                    <IconBtn icon="➕" title={t('isa.manageTypes')} tone="primary"
                       onClick={() => setTypesDialog(d)} />
-                    <IconBtn icon="✏️" title="Tahrirlash"
+                    <IconBtn icon="✏️" title={t('btn.edit')}
                       onClick={() => openEditDept(d)} />
-                    <IconBtn icon="🗑️" title="O'chirish" tone="danger"
+                    <IconBtn icon="🗑️" title={t('btn.delete')} tone="danger"
                       onClick={() => deleteDept(d)} />
                   </td>
                 </tr>
@@ -146,17 +148,17 @@ export default function InteractiveServicesAdmin() {
       {/* Bo'lim (add/edit) dialogi */}
       {deptDialog && (
         <NameDialog
-          title={deptDialog.mode === 'add' ? "Xizmat nomini qo'shish" : "Xizmat nomini tahrirlash"}
+          title={deptDialog.mode === 'add' ? t('isa.dept.add') : t('isa.dept.edit')}
           value={deptDialog.name}
           onChange={(v) => setDeptDialog({ ...deptDialog, name: v })}
           onClose={closeDeptDialog}
           onSave={saveDept}
           busy={busy}
-          placeholder="Masalan: Elektr taminoti"
+          placeholder={t('isa.dept.placeholder')}
           switchValue={deptDialog.multiType}
           onSwitchChange={(v) => setDeptDialog({ ...deptDialog, multiType: v })}
-          switchLabel="Bir nechta xizmat turini tanlash"
-          switchHint="Yoqilsa, arizachi shu bo'limdan bir vaqtda bir nechta xizmat turini belgilay oladi"
+          switchLabel={t('isa.multi.label')}
+          switchHint={t('isa.multi.hint')}
         />
       )}
 
@@ -175,6 +177,7 @@ export default function InteractiveServicesAdmin() {
 /* -------------------------- Xizmat turlari dialogi ------------------------ */
 
 function TypesDialog({ department, onClose }) {
+  const { t } = useI18n()
   const [types, setTypes] = useState([])
   const [loading, setLoading] = useState(true)
   const [inner, setInner] = useState(null) // { mode: 'add'|'edit', item?, name }
@@ -193,7 +196,7 @@ function TypesDialog({ department, onClose }) {
   useEffect(() => { load() }, [load])
 
   const openAdd = () => setInner({ mode: 'add', name: '' })
-  const openEdit = (t) => setInner({ mode: 'edit', item: t, name: t.name })
+  const openEdit = (item) => setInner({ mode: 'edit', item, name: item.name })
   const closeInner = () => setInner(null)
 
   const save = async () => {
@@ -210,19 +213,19 @@ function TypesDialog({ department, onClose }) {
       closeInner()
       load()
     } catch (err) {
-      alert(err.response?.data?.error || 'Xatolik')
+      alert(err.response?.data?.error || t('state.error'))
     } finally {
       setBusy(false)
     }
   }
 
-  const del = async (t) => {
-    if (!window.confirm(`"${t.name}" xizmat turini o'chirmoqchimisiz?`)) return
+  const del = async (item) => {
+    if (!window.confirm(t('isa.type.delete.confirm', { name: item.name }))) return
     try {
-      await api.delete(`/interactive/types/${t.id}`)
+      await api.delete(`/interactive/types/${item.id}`)
       load()
     } catch (err) {
-      alert(err.response?.data?.error || 'Xatolik')
+      alert(err.response?.data?.error || t('state.error'))
     }
   }
 
@@ -231,18 +234,18 @@ function TypesDialog({ department, onClose }) {
       <div className="modal" style={{ maxWidth: 720 }} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
           <div>
-            <h2 style={{ margin: 0 }}>Xizmat turini qo'shish</h2>
+            <h2 style={{ margin: 0 }}>{t('isa.types.title')}</h2>
             <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-muted)' }}>
-              Bo'lim: <strong style={{ color: 'var(--text)' }}>{department.name}</strong>
+              {t('isa.types.department')}<strong style={{ color: 'var(--text)' }}>{department.name}</strong>
             </p>
           </div>
           <button className="btn btn-primary" onClick={openAdd}>
-            + Yangi tur
+            {t('isa.types.add')}
           </button>
         </div>
 
         {loading ? (
-          <div style={{ padding: 30, textAlign: 'center', color: 'var(--text-muted)' }}>Yuklanmoqda...</div>
+          <div style={{ padding: 30, textAlign: 'center', color: 'var(--text-muted)' }}>{t('state.loading')}</div>
         ) : (
           <div style={{
             border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden',
@@ -252,24 +255,24 @@ function TypesDialog({ department, onClose }) {
                 <thead>
                   <tr>
                     <th style={{ width: 60 }}>№</th>
-                    <th>Nomi</th>
-                    <th style={{ width: 180, textAlign: 'right' }}>Действия</th>
+                    <th>{t('field.name')}</th>
+                    <th style={{ width: 180, textAlign: 'right' }}>{t('field.actions')}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {types.length === 0 ? (
                     <tr>
                       <td colSpan={3} style={{ textAlign: 'center', padding: 30, color: 'var(--text-muted)' }}>
-                        Hali xizmat turi qo'shilmagan
+                        {t('isa.types.empty')}
                       </td>
                     </tr>
-                  ) : types.map((t, i) => (
-                    <tr key={t.id}>
+                  ) : types.map((item, i) => (
+                    <tr key={item.id}>
                       <td>{i + 1}</td>
-                      <td>{t.name}</td>
+                      <td>{item.name}</td>
                       <td style={{ textAlign: 'right' }}>
-                        <IconBtn icon="✏️" title="Tahrirlash" onClick={() => openEdit(t)} />
-                        <IconBtn icon="🗑️" title="O'chirish" tone="danger" onClick={() => del(t)} />
+                        <IconBtn icon="✏️" title={t('btn.edit')} onClick={() => openEdit(item)} />
+                        <IconBtn icon="🗑️" title={t('btn.delete')} tone="danger" onClick={() => del(item)} />
                       </td>
                     </tr>
                   ))}
@@ -280,18 +283,18 @@ function TypesDialog({ department, onClose }) {
         )}
 
         <div className="modal-actions" style={{ marginTop: 16 }}>
-          <button className="btn btn-outline" onClick={onClose}>Yopish</button>
+          <button className="btn btn-outline" onClick={onClose}>{t('btn.close')}</button>
         </div>
 
         {inner && (
           <NameDialog
-            title={inner.mode === 'add' ? "Xizmat turini qo'shish" : "Xizmat turini tahrirlash"}
+            title={inner.mode === 'add' ? t('isa.type.add') : t('isa.type.edit')}
             value={inner.name}
             onChange={(v) => setInner({ ...inner, name: v })}
             onClose={closeInner}
             onSave={save}
             busy={busy}
-            placeholder="Masalan: Yorug'lik tarmog'ini ta'mirlash"
+            placeholder={t('isa.type.placeholder')}
           />
         )}
       </div>
@@ -306,6 +309,7 @@ function NameDialog({
   title, value, onChange, onClose, onSave, busy, placeholder,
   switchValue, onSwitchChange, switchLabel, switchHint,
 }) {
+  const { t } = useI18n()
   const canSave = useMemo(() => value.trim().length > 0, [value])
   const hasSwitch = typeof onSwitchChange === 'function'
 
@@ -319,7 +323,7 @@ function NameDialog({
       <div className="modal" style={{ maxWidth: 460 }} onClick={e => e.stopPropagation()}>
         <h2 style={{ marginBottom: 12 }}>{title}</h2>
         <div className="form-group">
-          <label>Nomi *</label>
+          <label>{t('isa.field.name')}</label>
           <input
             className="form-input"
             value={value}
@@ -342,9 +346,9 @@ function NameDialog({
         )}
 
         <div className="modal-actions">
-          <button className="btn btn-outline" onClick={onClose}>Bekor qilish</button>
+          <button className="btn btn-outline" onClick={onClose}>{t('btn.cancel')}</button>
           <button className="btn btn-primary" disabled={!canSave || busy} onClick={onSave}>
-            {busy ? 'Saqlanmoqda...' : 'Saqlash'}
+            {busy ? t('btn.saving') : t('btn.save')}
           </button>
         </div>
       </div>

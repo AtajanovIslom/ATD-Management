@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../api/axios'
 import { useAuth } from '../context/AuthContext'
+import { useI18n } from '../i18n'
 
 /**
  * Eslatma ogohlantirishlari.
@@ -16,6 +17,7 @@ const CHECK_INTERVAL_MS = 60 * 1000  // har daqiqada tekshiramiz
 
 export default function ReminderNotification() {
   const { user } = useAuth()
+  const { t, formatDate } = useI18n()
   const navigate = useNavigate()
   const [items, setItems] = useState([])
   const [show, setShow] = useState(false)
@@ -68,9 +70,9 @@ export default function ReminderNotification() {
             flexShrink: 0,
           }}>🔔</div>
           <div style={{ flex: 1 }}>
-            <h2 style={{ margin: 0, fontSize: 18 }}>Yaqinlashayotgan eslatmalar</h2>
+            <h2 style={{ margin: 0, fontSize: 18 }}>{t('reminderPopup.title')}</h2>
             <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>
-              {items.length} ta eslatma 5 kun ichida yakunlanishi kerak
+              {t('reminderPopup.subtitle', { n: items.length })}
             </p>
           </div>
         </div>
@@ -91,7 +93,7 @@ export default function ReminderNotification() {
               }}>
                 <button
                   onClick={() => toggle(r.id)}
-                  title="Bajardim"
+                  title={t('reminderPopup.markDone')}
                   style={{
                     width: 20, height: 20, minWidth: 20,
                     border: `2px solid ${color}`,
@@ -104,8 +106,8 @@ export default function ReminderNotification() {
                     {r.message}
                   </div>
                   <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    <span>📅 {formatDate(r.remind_date)}</span>
-                    <span style={{ color, fontWeight: 600 }}>{daysText(r.days_left)}</span>
+                    <span>📅 {formatDate(r.remind_date, { day: '2-digit', month: 'long', year: 'numeric' })}</span>
+                    <span style={{ color, fontWeight: 600 }}>{daysText(t, r.days_left)}</span>
                     {r.notify_interval_label && <span>🔔 {r.notify_interval_label}</span>}
                   </div>
                 </div>
@@ -115,9 +117,9 @@ export default function ReminderNotification() {
         </div>
 
         <div className="modal-actions" style={{ justifyContent: 'space-between', marginTop: 14 }}>
-          <button className="btn btn-outline" onClick={close}>Keyinroq</button>
+          <button className="btn btn-outline" onClick={close}>{t('btn.later')}</button>
           <button className="btn btn-primary" onClick={goToPage}>
-            🗓️ Eslatmalarim
+            🗓️ {t('reminderPopup.goToPage')}
           </button>
         </div>
       </div>
@@ -135,16 +137,10 @@ function colorForDays(days) {
   return `hsl(${Math.round(t * 120)}, 85%, 45%)`
 }
 
-function daysText(days) {
+function daysText(t, days) {
   if (days === null || days === undefined) return ''
-  if (days < 0) return `Muddati o‘tgan (${Math.abs(days)} kun)`
-  if (days === 0) return 'Bugun!'
-  if (days === 1) return 'Ertaga'
-  return `${days} kun qoldi`
-}
-
-function formatDate(iso) {
-  if (!iso) return ''
-  const d = new Date(iso)
-  return d.toLocaleDateString('uz-UZ', { day: '2-digit', month: 'long', year: 'numeric' })
+  if (days < 0) return t('time.overdueDays', { n: Math.abs(days) })
+  if (days === 0) return t('time.todayExcl')
+  if (days === 1) return t('time.tomorrow')
+  return t('time.daysLeft', { n: days })
 }

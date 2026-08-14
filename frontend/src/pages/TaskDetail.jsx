@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { useI18n } from '../i18n'
+import { statusLabel } from '../i18n/labels'
 import api from '../api/axios'
 
-const downloadFile = async (url, originalName) => {
+const downloadFile = async (url, originalName, errorText) => {
   try {
     const res = await api.get(url, { responseType: 'blob' })
     const blobUrl = window.URL.createObjectURL(res.data)
@@ -13,7 +15,7 @@ const downloadFile = async (url, originalName) => {
     a.click()
     window.URL.revokeObjectURL(blobUrl)
   } catch (err) {
-    alert('Faylni yuklab bo\'lmadi')
+    alert(errorText)
   }
 }
 
@@ -21,6 +23,7 @@ export default function TaskDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { user, isDeptAdmin, isAdmin: isDeptOrHigher } = useAuth()
+  const { t, formatDate: fmtDate } = useI18n()
   // isAdmin = barcha rahbarlar (bo'lim rahbari, boshqarma rahbari, superadmin)
   const isAdmin = isDeptAdmin
   // Boshqarma rahbari va yuqori (bo'lim rahbari kirmaydi) — tugallanган vazifani
@@ -58,26 +61,16 @@ export default function TaskDetail() {
     }
   }
 
-  const formatDate = (iso) => {
-    if (!iso) return '—'
-    return new Date(iso).toLocaleDateString('uz-UZ', {
-      year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
-    })
-  }
+  const formatDate = (iso) => fmtDate(iso, {
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+  }) || '—'
 
-  const formatShortDate = (iso) => {
-    if (!iso) return '—'
-    return new Date(iso).toLocaleDateString('uz-UZ', { year: 'numeric', month: '2-digit', day: '2-digit' })
-  }
+  const formatShortDate = (iso) =>
+    fmtDate(iso, { year: 'numeric', month: '2-digit', day: '2-digit' }) || '—'
 
-  const statusLabel = (s) => {
-    if (s === 'active') return 'Faol'
-    if (s === 'in_progress') return 'Jarayonda'
-    if (s === 'review') return 'Tekshiruvda'
-    if (s === 'returned') return 'Qayta ko\'rib chiqilsin'
-    if (s === 'completed') return 'Tugallangan'
-    return s
-  }
+  const statusText = (s) => statusLabel(t, s)
+
+  const download = (f) => downloadFile(f.download_url, f.original_name, t('task.file.downloadFailed'))
 
   const statusClass = (s) => {
     if (s === 'active') return 'badge-active'
@@ -93,17 +86,17 @@ export default function TaskDetail() {
       const res = await api.put(`/tasks/${id}`, { status: newStatus })
       setTask(res.data)
     } catch (err) {
-      alert(err.response?.data?.error || 'Xatolik yuz berdi')
+      alert(err.response?.data?.error || t('state.error'))
     }
   }
 
   const handleDelete = async () => {
-    if (!window.confirm('Vazifani o\'chirmoqchimisiz?')) return
+    if (!window.confirm(t('task.delete.confirm'))) return
     try {
       await api.delete(`/tasks/${id}`)
       navigate('/')
     } catch (err) {
-      alert(err.response?.data?.error || 'Xatolik yuz berdi')
+      alert(err.response?.data?.error || t('state.error'))
     }
   }
 
@@ -141,7 +134,7 @@ export default function TaskDetail() {
       setTask(res.data)
       setEditModal(false)
     } catch (err) {
-      alert(err.response?.data?.error || 'Xatolik yuz berdi')
+      alert(err.response?.data?.error || t('state.error'))
     } finally {
       setEditBusy(false)
     }
@@ -155,7 +148,7 @@ export default function TaskDetail() {
       setTask(res.data)
       setAssignModal(false)
     } catch (err) {
-      alert(err.response?.data?.error || 'Xatolik yuz berdi')
+      alert(err.response?.data?.error || t('state.error'))
     } finally {
       setReassignBusy(false)
     }
@@ -180,7 +173,7 @@ export default function TaskDetail() {
       setReports(reportsRes.data)
       setTask(taskRes.data)
     } catch (err) {
-      alert(err.response?.data?.error || 'Xatolik yuz berdi')
+      alert(err.response?.data?.error || t('state.error'))
     }
   }
 
@@ -195,8 +188,8 @@ export default function TaskDetail() {
     return false
   })()
 
-  if (loading) return <div className="empty-state"><p>Yuklanmoqda...</p></div>
-  if (!task) return <div className="empty-state"><p>Vazifa topilmadi</p></div>
+  if (loading) return <div className="empty-state"><p>{t('state.loading')}</p></div>
+  if (!task) return <div className="empty-state"><p>{t('task.notFound')}</p></div>
 
   return (
     <div>
@@ -204,7 +197,7 @@ export default function TaskDetail() {
         <div>
           <h1>{task.name}</h1>
           <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>
-            Vazifa #{task.id}
+            {t('task.number', { id: task.id })}
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -212,41 +205,41 @@ export default function TaskDetail() {
               yuklab bo'lmaydi (backend ham buni qaytaradi) */}
           {isAdmin && task.status !== 'completed' && task.status !== 'review' && (
             <button className="btn btn-primary btn-sm" onClick={openAssign}>
-              👤 Xodimga yuklash
+              👤 {t('task.assignToWorker')}
             </button>
           )}
           {isAdmin && (
             <button className="btn btn-outline btn-sm" onClick={openEdit}>
-              ✏️ Tahrirlash
+              ✏️ {t('btn.edit')}
             </button>
           )}
           {isAdmin && (
-            <button className="btn btn-danger btn-sm" onClick={handleDelete}>O'chirish</button>
+            <button className="btn btn-danger btn-sm" onClick={handleDelete}>{t('btn.delete')}</button>
           )}
-          <button className="btn btn-outline btn-sm" onClick={() => navigate(-1)}>← Orqaga</button>
+          <button className="btn btn-outline btn-sm" onClick={() => navigate(-1)}>← {t('btn.back')}</button>
         </div>
       </div>
 
       {editModal && (
         <div className="modal-overlay" onClick={() => setEditModal(false)}>
           <div className="modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
-            <h2 style={{ marginBottom: 12 }}>✏️ Vazifani tahrirlash</h2>
+            <h2 style={{ marginBottom: 12 }}>✏️ {t('task.edit.title')}</h2>
             <div className="form-group">
-              <label>Vazifa nomi *</label>
+              <label>{t('task.field.name')}</label>
               <input className="form-input" value={editName}
                 onChange={e => setEditName(e.target.value)} autoFocus />
             </div>
             <div className="form-group">
-              <label>Tavsif</label>
+              <label>{t('task.edit.description')}</label>
               <textarea className="form-input" rows={4} value={editDesc}
                 onChange={e => setEditDesc(e.target.value)}
-                placeholder="Vazifa tavsifi..." />
+                placeholder={t('task.edit.description.placeholder')} />
             </div>
             <div className="modal-actions">
-              <button className="btn btn-outline" onClick={() => setEditModal(false)}>Bekor</button>
+              <button className="btn btn-outline" onClick={() => setEditModal(false)}>{t('btn.cancel')}</button>
               <button className="btn btn-primary" onClick={handleEditSave}
                 disabled={!editName.trim() || editBusy}>
-                {editBusy ? 'Saqlanmoqda...' : 'Saqlash'}
+                {editBusy ? t('btn.saving') : t('btn.save')}
               </button>
             </div>
           </div>
@@ -256,16 +249,16 @@ export default function TaskDetail() {
       {assignModal && (
         <div className="modal-overlay" onClick={() => setAssignModal(false)}>
           <div className="modal" style={{ maxWidth: 460 }} onClick={e => e.stopPropagation()}>
-            <h2 style={{ marginBottom: 4 }}>👤 Vazifani xodimga yuklash</h2>
+            <h2 style={{ marginBottom: 4 }}>👤 {t('task.assignModal.title')}</h2>
             <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>
-              Joriy ijrochi: <strong>{task.assignee_name || task.assignee_names?.join(', ') || task.team_name || '—'}</strong>
+              {t('task.assignModal.current')}<strong>{task.assignee_name || task.assignee_names?.join(', ') || task.team_name || '—'}</strong>
             </p>
 
             <div className="form-group">
-              <label>Yangi ijrochi(lar) — bir yoki bir nechta</label>
+              <label>{t('task.assignModal.newAssignees')}</label>
               {workers.length === 0 ? (
                 <div style={{ fontSize: 12, color: 'var(--text-muted)', padding: 10 }}>
-                  Yuklash uchun xodim topilmadi
+                  {t('task.assignModal.noWorkers')}
                 </div>
               ) : (
                 <div style={{
@@ -283,8 +276,8 @@ export default function TaskDetail() {
                         onChange={() => toggleWorker(w.id)} />
                       <span style={{ color: 'var(--text-secondary)' }}>
                         {w.full_name} {w.position ? `(${w.position})` : ''} {
-                          w.id === user.id ? '— O\'zingiz'
-                            : w.role === 'department_admin' ? '— Bo\'lim rahbari' : ''
+                          w.id === user.id ? `— ${t('task.assignModal.you')}`
+                            : w.role === 'department_admin' ? `— ${t('task.assignModal.deptHead')}` : ''
                         }
                       </span>
                     </label>
@@ -292,15 +285,15 @@ export default function TaskDetail() {
                 </div>
               )}
               <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
-                Tanlangan: {selectedWorkers.length}
+                {t('task.assignModal.selected', { n: selectedWorkers.length })}
               </div>
             </div>
 
             <div className="modal-actions">
-              <button className="btn btn-outline" onClick={() => setAssignModal(false)}>Bekor</button>
+              <button className="btn btn-outline" onClick={() => setAssignModal(false)}>{t('btn.cancel')}</button>
               <button className="btn btn-primary" onClick={handleReassign}
                 disabled={selectedWorkers.length === 0 || reassignBusy}>
-                {reassignBusy ? 'Yuklanmoqda...' : 'Yuklash'}
+                {reassignBusy ? t('task.assignModal.submitting') : t('task.assignModal.submit')}
               </button>
             </div>
           </div>
@@ -311,16 +304,16 @@ export default function TaskDetail() {
         <div className="card">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
             <span className={`badge ${statusClass(task.status)}`} style={{ fontSize: 13, padding: '4px 12px' }}>
-              {statusLabel(task.status)}
+              {statusText(task.status)}
             </span>
             <div style={{ display: 'flex', gap: 6 }}>
               {isAdmin && task.status === 'review' && (
                 <>
                   <button className="btn btn-success btn-sm" onClick={() => handleStatusChange('completed')}>
-                    ✓ Qabul qilish
+                    ✓ {t('task.accept')}
                   </button>
                   <button className="btn btn-warning btn-sm" onClick={() => handleStatusChange('returned')}>
-                    ↩ Qayta yuklash
+                    ↩ {t('task.returnBack')}
                   </button>
                 </>
               )}
@@ -329,11 +322,11 @@ export default function TaskDetail() {
               {canReturnCompleted && task.status === 'completed' && (
                 <button className="btn btn-warning btn-sm"
                   onClick={() => {
-                    if (window.confirm('Tugallangan vazifani qayta ishga qaytarasizmi?')) {
+                    if (window.confirm(t('task.returnCompleted.confirm'))) {
                       handleStatusChange('returned')
                     }
                   }}>
-                  ↩ Qayta ishlashga yuborish
+                  ↩ {t('task.returnCompleted')}
                 </button>
               )}
             </div>
@@ -348,19 +341,19 @@ export default function TaskDetail() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {task.team_name && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 12, color: 'var(--text-muted)', minWidth: 100 }}>Guruh:</span>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)', minWidth: 100 }}>{t('task.label.team')}</span>
                 <span className="team-chip">{task.team_name}</span>
               </div>
             )}
             {task.assignee_name && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 12, color: 'var(--text-muted)', minWidth: 100 }}>Mas'ul shaxs:</span>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)', minWidth: 100 }}>{t('task.label.responsible')}</span>
                 <span className="member-mini-chip member-assignee">{task.assignee_name}</span>
               </div>
             )}
             {task.assignees?.length > 0 && (
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                <span style={{ fontSize: 12, color: 'var(--text-muted)', minWidth: 100, paddingTop: 4 }}>Bajaruvchilar:</span>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)', minWidth: 100, paddingTop: 4 }}>{t('task.label.assignees')}</span>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                   {task.assignees.map(a => (
                     <span key={a.id} className="member-mini-chip member-assignee">{a.full_name}</span>
@@ -370,7 +363,7 @@ export default function TaskDetail() {
             )}
             {task.team_members?.length > 0 && (
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                <span style={{ fontSize: 12, color: 'var(--text-muted)', minWidth: 100, paddingTop: 4 }}>A'zolar:</span>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)', minWidth: 100, paddingTop: 4 }}>{t('task.label.members')}</span>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                   {task.team_members.map(m => (
                     <span key={m.id} className={`member-mini-chip ${task.assignee_id === m.id ? 'member-assignee' : ''}`}>
@@ -384,25 +377,25 @@ export default function TaskDetail() {
         </div>
 
         <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <h3 style={{ fontSize: 14, color: 'var(--text-white)' }}>Vazifa ma'lumotlari</h3>
+          <h3 style={{ fontSize: 14, color: 'var(--text-white)' }}>{t('task.info.title')}</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Boshlangan sana</span>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{t('task.info.started')}</span>
               <strong style={{ fontSize: 13, color: 'var(--text-primary)' }}>{formatShortDate(task.start_date || task.created_at)}</strong>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Topshirish muddati</span>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{t('task.info.deadline')}</span>
               <strong style={{ fontSize: 13, color: task.is_overdue ? 'var(--danger)' : 'var(--text-primary)' }}>
                 {formatShortDate(task.deadline)}
                 {task.is_overdue && ' ⚠️'}
               </strong>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Holat</span>
-              <span className={`badge ${statusClass(task.status)}`}>{statusLabel(task.status)}</span>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{t('field.status')}</span>
+              <span className={`badge ${statusClass(task.status)}`}>{statusText(task.status)}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Hisobotlar</span>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{t('task.info.reports')}</span>
               <strong style={{ fontSize: 13, color: 'var(--text-primary)' }}>{reports.length}</strong>
             </div>
           </div>
@@ -412,12 +405,12 @@ export default function TaskDetail() {
       {task.attachments?.length > 0 && (
         <div className="card" style={{ marginBottom: 16 }}>
           <h3 style={{ fontSize: 14, color: 'var(--text-white)', marginBottom: 12 }}>
-            📎 Biriktirilgan fayllar ({task.attachments.length})
+            📎 {t('task.attachments', { n: task.attachments.length })}
           </h3>
           <div className="report-files">
             {task.attachments.map(f => (
               <button key={f.id} className="report-file-chip"
-                onClick={() => downloadFile(f.download_url, f.original_name)}>
+                onClick={() => download(f)}>
                 📎 {f.original_name}
               </button>
             ))}
@@ -427,26 +420,26 @@ export default function TaskDetail() {
 
       {task.status === 'returned' && (
         <div className="alert alert-error" style={{ marginBottom: 16 }}>
-          ↩ Bu vazifa admin tomonidan qayta ko'rib chiqish uchun qaytarildi. Iltimos, tuzatib, yangi hisobot bilan qayta yuboring.
+          ↩ {t('task.returnedNotice')}
         </div>
       )}
 
       {/* Write report */}
       {canUserReport && (
         <div className="card" style={{ marginBottom: 16 }}>
-          <h3 style={{ fontSize: 14, color: 'var(--text-white)', marginBottom: 4 }}>Hisobot yozish</h3>
+          <h3 style={{ fontSize: 14, color: 'var(--text-white)', marginBottom: 4 }}>{t('task.report.title')}</h3>
           <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 12 }}>
-            Hisobot yuborilgach, vazifa admin tekshiruviga o'tadi.
+            {t('task.report.hint')}
           </p>
           <div className="form-group">
             <textarea className="form-input" value={reportText}
               onChange={e => setReportText(e.target.value)}
-              placeholder="Bugun nima qilindi, qanday natijalar erishildi..."
+              placeholder={t('task.report.placeholder')}
               rows={3} />
           </div>
           <div className="form-group" style={{ marginBottom: 8 }}>
             <label style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, display: 'block' }}>
-              📎 Fayl biriktirish (ixtiyoriy)
+              📎 {t('task.report.attachFile')}
             </label>
             <input type="file" multiple className="form-input" style={{ fontSize: 12, padding: 6 }}
               onChange={e => setReportFiles(Array.from(e.target.files))} />
@@ -461,7 +454,7 @@ export default function TaskDetail() {
             )}
           </div>
           <button className="btn btn-primary" onClick={handleReport} disabled={!reportText.trim()}>
-            Hisobotni yuborish
+            {t('task.report.submit')}
           </button>
         </div>
       )}
@@ -469,16 +462,16 @@ export default function TaskDetail() {
       {!canUserReport && !isAdmin && (
         <div className="card" style={{ marginBottom: 16, textAlign: 'center', padding: 20 }}>
           <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>
-            Sizda hisobot topshirish huquqi yo'q.
+            {t('task.report.noRight')}
           </p>
         </div>
       )}
 
       {/* Reports history */}
       <div className="card">
-        <h3 style={{ fontSize: 14, color: 'var(--text-white)', marginBottom: 12 }}>Hisobotlar tarixi ({reports.length})</h3>
+        <h3 style={{ fontSize: 14, color: 'var(--text-white)', marginBottom: 12 }}>{t('task.report.history', { n: reports.length })}</h3>
         {reports.length === 0 ? (
-          <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>Hali hisobot yozilmagan</p>
+          <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>{t('task.report.empty')}</p>
         ) : (
           <div className="reports-list">
             {reports.map(r => (
@@ -497,7 +490,7 @@ export default function TaskDetail() {
                   <div className="report-files">
                     {r.files.map(f => (
                       <button key={f.id} className="report-file-chip"
-                        onClick={() => downloadFile(f.download_url, f.original_name)}>
+                        onClick={() => download(f)}>
                         📎 {f.original_name}
                       </button>
                     ))}

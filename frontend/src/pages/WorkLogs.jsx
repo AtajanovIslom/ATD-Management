@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import api from '../api/axios'
 import { useAuth } from '../context/AuthContext'
+import { useI18n } from '../i18n'
 
 /**
  * Xodimning kunlik ish hisoboti sahifasi.
@@ -20,7 +21,9 @@ const today = () => new Date().toISOString().slice(0, 10)
 
 export default function WorkLogs() {
   const { user, isDeptAdmin } = useAuth()
+  const { t, formatDate: fmtDate } = useI18n()
   const canInteractive = isDeptAdmin || user?.division_is_service_provider
+  const formatDate = (iso) => fmtDate(iso, { day: '2-digit', month: 'long', year: 'numeric', weekday: 'short' })
 
   const [logs, setLogs] = useState([])
   const [projects, setProjects] = useState([])
@@ -64,7 +67,7 @@ export default function WorkLogs() {
   }
 
   const onDelete = async (item) => {
-    if (!window.confirm("Ushbu hisobotni o'chirmoqchimisiz?")) return
+    if (!window.confirm(t('wl.delete.confirm'))) return
     await api.delete(`/work-logs/${item.id}`)
     await load()
   }
@@ -73,37 +76,37 @@ export default function WorkLogs() {
     <div>
       <div className="page-header">
         <div>
-          <h1 style={{ margin: 0 }}>📓 Kunlik hisobotim</h1>
+          <h1 style={{ margin: 0 }}>📓 {t('wl.title')}</h1>
           <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>
-            Kun davomida bajargan vazifa/loyiha/interaktiv arizalarni tanlab, izoh bilan bitta hisobot ko'rinishida yuboring
+            {t('wl.subtitle')}
           </p>
         </div>
         <button className="btn btn-primary" onClick={() => setDialog({ mode: 'add' })}>
-          + Yangi hisobot
+          {t('wl.add')}
         </button>
       </div>
 
       <div className="card" style={{ padding: 12, marginBottom: 12, display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
         <div>
-          <label style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Dan</label>
+          <label style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>{t('wl.from')}</label>
           <input type="date" className="form-input" value={range.from}
             onChange={e => setRange({ ...range, from: e.target.value })} />
         </div>
         <div>
-          <label style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Gacha</label>
+          <label style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>{t('wl.to')}</label>
           <input type="date" className="form-input" value={range.to}
             onChange={e => setRange({ ...range, to: e.target.value })} />
         </div>
         {(range.from || range.to) && (
-          <button className="btn btn-outline btn-sm" onClick={() => setRange({ from: '', to: '' })}>Tozalash</button>
+          <button className="btn btn-outline btn-sm" onClick={() => setRange({ from: '', to: '' })}>{t('btn.reset')}</button>
         )}
       </div>
 
       {loading ? (
-        <div className="card" style={{ padding: 30, textAlign: 'center', color: 'var(--text-muted)' }}>Yuklanmoqda...</div>
+        <div className="card" style={{ padding: 30, textAlign: 'center', color: 'var(--text-muted)' }}>{t('state.loading')}</div>
       ) : logs.length === 0 ? (
         <div className="card" style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
-          Hisobot yo'q. "+ Yangi hisobot" bilan qo'shing.
+          {t('wl.empty')}
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -134,6 +137,7 @@ export default function WorkLogs() {
           tasks={tasks}
           interactiveReqs={interactiveReqs}
           canInteractive={canInteractive}
+          t={t}
           onClose={() => setDialog(null)}
           onSave={onSave}
         />
@@ -145,13 +149,13 @@ export default function WorkLogs() {
 
 /* ---- Interaktiv ariza uchun ko'rinadigan nom ---- */
 function interactiveName(r) {
-  const types = (r.types || []).map(t => t.name).join(', ')
+  const types = (r.types || []).map(x => x.name).join(', ')
   return types || r.tracking_id || `#${r.id}`
 }
 
 
 /* ---- Bitta hisobot dialogi (yaratish va tahrirlash uchun umumiy) ---- */
-function ReportDialog({ mode, item, projects, tasks, interactiveReqs, canInteractive, onClose, onSave }) {
+function ReportDialog({ mode, item, projects, tasks, interactiveReqs, canInteractive, onClose, onSave, t }) {
   const [workDate, setWorkDate] = useState(item?.work_date || today())
   const [note, setNote] = useState(mode === 'edit' ? extractNote(item?.content || '') : '')
   const [pickedTasks, setPickedTasks] = useState([])
@@ -176,19 +180,19 @@ function ReportDialog({ mode, item, projects, tasks, interactiveReqs, canInterac
     setBusy(true)
     try {
       const content = buildContent({
-        tasks: taskOptions.filter(t => pickedTasks.includes(t.id)),
+        tasks: taskOptions.filter(x => pickedTasks.includes(x.id)),
         projects: projectOptions.filter(p => pickedProjects.includes(p.id)),
         interactive: interactiveOptions.filter(r => pickedInteractive.includes(r.id)),
         note: note.trim(),
       })
       if (!content.trim()) {
-        alert("Hisobot bo'sh bo'lishi mumkin emas")
+        alert(t('wl.err.empty'))
         setBusy(false)
         return
       }
       await onSave({ id: item?.id, work_date: workDate, content })
     } catch (err) {
-      alert(err.response?.data?.error || 'Xatolik')
+      alert(err.response?.data?.error || t('state.error'))
     } finally {
       setBusy(false)
     }
@@ -198,31 +202,31 @@ function ReportDialog({ mode, item, projects, tasks, interactiveReqs, canInterac
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" style={{ maxWidth: 720 }} onClick={e => e.stopPropagation()}>
         <h2 style={{ marginBottom: 4 }}>
-          {mode === 'edit' ? '✏️ Hisobotni tahrirlash' : '📓 Yangi kunlik hisobot'}
+          {mode === 'edit' ? `✏️ ${t('wl.dialog.edit')}` : `📓 ${t('wl.dialog.add')}`}
         </h2>
         <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
-          Bugun bajargan vazifa, loyiha va interaktiv arizalarni belgilang. Pastda umumiy izoh yozing.
+          {t('wl.dialog.hint')}
         </p>
 
         <form onSubmit={submit}>
           <div className="form-group">
-            <label>Sana *</label>
+            <label>{t('wl.field.date')}</label>
             <input type="date" className="form-input" style={{ maxWidth: 200 }}
               value={workDate} onChange={e => setWorkDate(e.target.value)} required />
           </div>
 
           <PickerBlock
-            title="📝 Vazifalar"
-            emptyText="Sizda vazifa yo'q"
+            title={t('wl.picker.tasks')}
+            emptyText={t('wl.picker.tasks.empty')}
             options={taskOptions}
             picked={pickedTasks}
             onToggle={(id) => toggle(setPickedTasks, pickedTasks, id)}
-            renderLabel={t => t.name}
+            renderLabel={task => task.name}
           />
 
           <PickerBlock
-            title="🚀 Loyihalar"
-            emptyText="Sizga loyiha yuklanmagan"
+            title={t('wl.picker.projects')}
+            emptyText={t('wl.picker.projects.empty')}
             options={projectOptions}
             picked={pickedProjects}
             onToggle={(id) => toggle(setPickedProjects, pickedProjects, id)}
@@ -231,8 +235,8 @@ function ReportDialog({ mode, item, projects, tasks, interactiveReqs, canInterac
 
           {canInteractive && (
             <PickerBlock
-              title="🧩 Interaktiv arizalar"
-              emptyText="Interaktiv ariza yo'q"
+              title={t('wl.picker.interactive')}
+              emptyText={t('wl.picker.interactive.empty')}
               options={interactiveOptions}
               picked={pickedInteractive}
               onToggle={(id) => toggle(setPickedInteractive, pickedInteractive, id)}
@@ -241,16 +245,16 @@ function ReportDialog({ mode, item, projects, tasks, interactiveReqs, canInterac
           )}
 
           <div className="form-group">
-            <label>Izoh</label>
+            <label>{t('wl.field.note')}</label>
             <textarea className="form-input" rows={4} value={note}
               onChange={e => setNote(e.target.value)}
-              placeholder="Bugungi ish haqida qo'shimcha izoh, natijalar, muammolar..." />
+              placeholder={t('wl.field.note.placeholder')} />
           </div>
 
           {mode === 'edit' && item?.content && (
             <details style={{ marginBottom: 12 }}>
               <summary style={{ fontSize: 11, color: 'var(--text-muted)', cursor: 'pointer' }}>
-                Joriy hisobot matni
+                {t('wl.currentText')}
               </summary>
               <pre style={{
                 fontSize: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
@@ -260,9 +264,9 @@ function ReportDialog({ mode, item, projects, tasks, interactiveReqs, canInterac
           )}
 
           <div className="modal-actions">
-            <button type="button" className="btn btn-outline" onClick={onClose}>Bekor</button>
+            <button type="button" className="btn btn-outline" onClick={onClose}>{t('btn.cancel')}</button>
             <button type="submit" className="btn btn-primary" disabled={!canSave || busy}>
-              {busy ? 'Saqlanmoqda...' : 'Saqlash'}
+              {busy ? t('btn.saving') : t('btn.save')}
             </button>
           </div>
         </form>
@@ -306,7 +310,7 @@ function PickerBlock({ title, emptyText, options, picked, onToggle, renderLabel 
 function buildContent({ tasks, projects, interactive, note }) {
   const parts = []
   if (tasks.length) {
-    parts.push('📝 Vazifalar:\n' + tasks.map(t => `  • ${t.name}`).join('\n'))
+    parts.push('📝 Vazifalar:\n' + tasks.map(x => `  • ${x.name}`).join('\n'))
   }
   if (projects.length) {
     parts.push('🚀 Loyihalar:\n' + projects.map(p => `  • ${p.name}`).join('\n'))
@@ -329,8 +333,3 @@ function extractNote(content) {
   return content.slice(idx + marker.length).trim()
 }
 
-
-function formatDate(iso) {
-  if (!iso) return ''
-  return new Date(iso).toLocaleDateString('uz-UZ', { day: '2-digit', month: 'long', year: 'numeric', weekday: 'short' })
-}

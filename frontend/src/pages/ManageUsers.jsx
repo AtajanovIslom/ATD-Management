@@ -1,18 +1,19 @@
 import { useState, useEffect } from 'react'
 import api from '../api/axios'
+import { useI18n } from '../i18n'
+import { roleLabel } from '../i18n/labels'
 
-const ROLE_LABELS = {
-  superadmin: '👑 Bosh Admin',
-  director: '🎖️ Direktor',
-  deputy_director: "🥈 Direktor o'rinbosari",
-  admin: "Boshqarma rahbari",
-  department_admin: "Bo'lim rahbari",
-  user: 'Xodim',
+// Rol yonidagi belgilar — matni `role.*` kalitlaridan olinadi
+const ROLE_ICONS = {
+  superadmin: '👑 ',
+  director: '🎖️ ',
+  deputy_director: '🥈 ',
 }
 
 const TOP_ROLES = ['superadmin', 'director', 'deputy_director']
 
 export default function ManageUsers() {
+  const { t } = useI18n()
   const [users, setUsers] = useState([])
   const [departments, setDepartments] = useState([])
   const [divisions, setDivisions] = useState([])
@@ -78,8 +79,8 @@ export default function ManageUsers() {
     e.preventDefault()
     setError('')
     if (form.password) {
-      if (form.password.length < 4) return setError('Parol kamida 4 ta belgi')
-      if (form.password.includes(' ')) return setError('Parolda probel bo\'lmasin')
+      if (form.password.length < 4) return setError(t('users.err.passwordShort'))
+      if (form.password.includes(' ')) return setError(t('users.err.passwordSpace'))
     }
     setLoading(true)
     try {
@@ -92,7 +93,7 @@ export default function ManageUsers() {
       setShowModal(false)
       loadAll()
     } catch (err) {
-      setError(err.response?.data?.error || 'Xatolik yuz berdi')
+      setError(err.response?.data?.error || t('state.error'))
     } finally {
       setLoading(false)
     }
@@ -113,7 +114,7 @@ export default function ManageUsers() {
   const submitVacation = async () => {
     if (!vacDialog?.user) return
     if (!vacForm.from_date || !vacForm.to_date) {
-      alert("Sana tanlash shart")
+      alert(t('vac.err.pickDates'))
       return
     }
     setVacBusy(true)
@@ -128,7 +129,7 @@ export default function ManageUsers() {
       setVacDialog(null)
       loadAll()
     } catch (err) {
-      alert(err.response?.data?.error || "Xatolik")
+      alert(err.response?.data?.error || t('state.error'))
     } finally {
       setVacBusy(false)
     }
@@ -141,16 +142,16 @@ export default function ManageUsers() {
       const r = await api.get(`/vacations?user_id=${user.id}&active=1`)
       const v = r.data[0]
       if (!v) return
-      if (!window.confirm(`${user.full_name} tatilini bekor qilmoqchimisiz?`)) return
+      if (!window.confirm(t('vac.remove.confirm', { name: user.full_name }))) return
       await api.delete(`/vacations/${v.id}`)
       loadAll()
     } catch (err) {
-      alert(err.response?.data?.error || "Xatolik")
+      alert(err.response?.data?.error || t('state.error'))
     }
   }
 
   const handleDelete = async (user) => {
-    if (!window.confirm(`${user.full_name}ni o'chirmoqchimisiz?`)) return
+    if (!window.confirm(t('users.delete.confirm', { name: user.full_name }))) return
     await api.delete(`/users/${user.id}`)
     loadAll()
   }
@@ -169,12 +170,12 @@ export default function ManageUsers() {
   // Boshqarma → { rahbar: [admin], divs: {divName: [xodimlar]} }
   const grouped = {}
   rest.forEach(u => {
-    const deptName = u.department_name || u.department || 'Belgilanmagan'
+    const deptName = u.department_name || u.department || t('users.unassignedDept')
     if (!grouped[deptName]) grouped[deptName] = { rahbar: [], divs: {} }
     if (u.role === 'admin') {
       grouped[deptName].rahbar.push(u)
     } else {
-      const divName = u.division_name || "Bo'lim belgilanmagan"
+      const divName = u.division_name || t('users.unassignedDiv')
       if (!grouped[deptName].divs[divName]) grouped[deptName].divs[divName] = []
       grouped[deptName].divs[divName].push(u)
     }
@@ -182,19 +183,19 @@ export default function ManageUsers() {
 
   const toggleCollapse = (key) => setCollapsed(prev => ({ ...prev, [key]: !prev[key] }))
 
-  const tableProps = { showPasswords, copiedId, togglePassword, copyLink, openEdit, handleDelete, openVacation, removeVacation }
+  const tableProps = { t, showPasswords, copiedId, togglePassword, copyLink, openEdit, handleDelete, openVacation, removeVacation }
 
   return (
     <div>
       <div className="page-header">
-        <h1>Xodimlar boshqaruvi</h1>
-        <button className="btn btn-primary" onClick={openAdd}>+ Xodim qo'shish</button>
+        <h1>{t('users.title')}</h1>
+        <button className="btn btn-primary" onClick={openAdd}>{t('users.add')}</button>
       </div>
 
       {topLeadership.length > 0 && (
         <div className="card" style={{ marginBottom: 12, borderLeft: '3px solid #f59e0b' }}>
           <h2 style={{ fontSize: 15, margin: '0 0 12px 0' }}>
-            ⭐ Yuqori bo'g'in rahbariyat ({topLeadership.length})
+            ⭐ {t('users.topLeadership', { n: topLeadership.length })}
           </h2>
           <div className="table-wrap">
             <UserTable users={topLeadership} {...tableProps} />
@@ -204,7 +205,7 @@ export default function ManageUsers() {
 
       {topLeadership.length === 0 && Object.keys(grouped).length === 0 && (
         <div className="card" style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
-          Xodimlar topilmadi
+          {t('users.notFound')}
         </div>
       )}
 
@@ -221,7 +222,7 @@ export default function ManageUsers() {
                 <span style={{ fontSize: 12 }}>{deptOpen ? '▼' : '▶'}</span>
                 🏢 {deptName}
                 <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 400 }}>
-                  ({deptCount} kishi)
+                  {t('users.peopleCount', { n: deptCount })}
                 </span>
               </h2>
             </div>
@@ -229,7 +230,7 @@ export default function ManageUsers() {
             {deptOpen && rahbar.length > 0 && (
               <div style={{ marginBottom: 12 }}>
                 <div style={{ padding: '6px 0', fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                  👤 Boshqarma rahbari
+                  👤 {t('users.deptHead')}
                 </div>
                 <div className="table-wrap">
                   <UserTable users={rahbar} {...tableProps} />
@@ -263,46 +264,46 @@ export default function ManageUsers() {
       {vacDialog && (
         <div className="modal-overlay" onClick={() => setVacDialog(null)}>
           <div className="modal" style={{ maxWidth: 460 }} onClick={e => e.stopPropagation()}>
-            <h2 style={{ marginBottom: 4 }}>🏖 Tatil berish</h2>
+            <h2 style={{ marginBottom: 4 }}>🏖 {t('vac.give')}</h2>
             <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>
-              Xodim: <strong style={{ color: 'var(--text)' }}>{vacDialog.user.full_name}</strong>
+              {t('vac.employee')}<strong style={{ color: 'var(--text)' }}>{vacDialog.user.full_name}</strong>
             </p>
 
             <div className="form-group">
-              <label>Tatil turi *</label>
+              <label>{t('vac.type')}</label>
               <select className="form-input" value={vacForm.type}
                 onChange={e => setVacForm({ ...vacForm, type: e.target.value })}>
-                <option value="annual">Yillik tatil (otpuska)</option>
-                <option value="unpaid">Haq to'lanmaydigan (BS)</option>
-                <option value="sick">Kasallik (balnishniy)</option>
-                <option value="otgul">O'tgul (ishlab berilgan vaqt uchun)</option>
+                <option value="annual">{t('vac.type.annual')}</option>
+                <option value="unpaid">{t('vac.type.unpaid')}</option>
+                <option value="sick">{t('vac.type.sick')}</option>
+                <option value="otgul">{t('vac.type.otgul')}</option>
               </select>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div className="form-group">
-                <label>Boshlash *</label>
+                <label>{t('vac.from')}</label>
                 <input type="date" className="form-input" value={vacForm.from_date}
                   onChange={e => setVacForm({ ...vacForm, from_date: e.target.value })} />
               </div>
               <div className="form-group">
-                <label>Tugash *</label>
+                <label>{t('vac.to')}</label>
                 <input type="date" className="form-input" value={vacForm.to_date}
                   onChange={e => setVacForm({ ...vacForm, to_date: e.target.value })} />
               </div>
             </div>
 
             <div className="form-group">
-              <label>Izoh (ixtiyoriy)</label>
+              <label>{t('vac.note')}</label>
               <textarea className="form-input" rows={2} value={vacForm.note}
                 onChange={e => setVacForm({ ...vacForm, note: e.target.value })}
-                placeholder="Sabab, buyruq raqami va h.k." />
+                placeholder={t('vac.note.placeholder')} />
             </div>
 
             <div className="modal-actions">
-              <button className="btn btn-outline" onClick={() => setVacDialog(null)}>Bekor</button>
+              <button className="btn btn-outline" onClick={() => setVacDialog(null)}>{t('btn.cancel')}</button>
               <button className="btn btn-primary" onClick={submitVacation} disabled={vacBusy}>
-                {vacBusy ? 'Saqlanmoqda...' : 'Rasmiylashtirish'}
+                {vacBusy ? t('btn.saving') : t('vac.submit')}
               </button>
             </div>
           </div>
@@ -312,72 +313,72 @@ export default function ManageUsers() {
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
-            <h2>{editUser ? 'Foydalanuvchini tahrirlash' : "Yangi xodim qo'shish"}</h2>
+            <h2>{editUser ? t('users.modal.edit') : t('users.modal.add')}</h2>
             {error && <div className="alert alert-error">{error}</div>}
             <form onSubmit={handleSave}>
               <div className="form-group">
-                <label>Ism sharifi *</label>
+                <label>{t('users.field.fullName')}</label>
                 <input className="form-input" value={form.full_name}
                   onChange={e => setForm({ ...form, full_name: e.target.value })} required />
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div className="form-group">
-                  <label>Boshqarma</label>
+                  <label>{t('users.field.department')}</label>
                   <select className="form-input" value={form.department_id}
                     onChange={e => setForm({ ...form, department_id: e.target.value, division_id: '' })}>
-                    <option value="">— Tanlang —</option>
+                    <option value="">{t('users.select')}</option>
                     {departments.map(d => (<option key={d.id} value={d.id}>{d.name}</option>))}
                   </select>
                 </div>
                 <div className="form-group">
-                  <label>Bo'lim</label>
+                  <label>{t('users.field.division')}</label>
                   <select className="form-input" value={form.division_id}
                     onChange={e => setForm({ ...form, division_id: e.target.value })}
                     disabled={!form.department_id}>
-                    <option value="">— Tanlang —</option>
+                    <option value="">{t('users.select')}</option>
                     {filteredDivs.map(d => (<option key={d.id} value={d.id}>{d.name}</option>))}
                   </select>
                 </div>
               </div>
               <div className="form-group">
-                <label>Lavozim</label>
+                <label>{t('users.field.position')}</label>
                 <input className="form-input" value={form.position}
                   onChange={e => setForm({ ...form, position: e.target.value })} />
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div className="form-group">
-                  <label>Tabel raqami *</label>
+                  <label>{t('users.field.tabNumber')}</label>
                   <input className="form-input" value={form.tab_number}
                     onChange={e => setForm({ ...form, tab_number: e.target.value })} required />
                 </div>
                 <div className="form-group">
-                  <label>Telefon</label>
+                  <label>{t('users.field.phone')}</label>
                   <input className="form-input" value={form.phone}
                     onChange={e => setForm({ ...form, phone: e.target.value })} />
                 </div>
               </div>
               <div className="form-group">
-                <label>Email</label>
+                <label>{t('users.field.email')}</label>
                 <input className="form-input" type="email" value={form.email}
                   onChange={e => setForm({ ...form, email: e.target.value })} />
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div className="form-group">
-                  <label>Login</label>
+                  <label>{t('users.field.login')}</label>
                   <input className="form-input" value={form.login}
                     onChange={e => setForm({ ...form, login: e.target.value })} />
                 </div>
                 <div className="form-group">
-                  <label>{editUser ? 'Yangi parol' : 'Parol'}</label>
+                  <label>{editUser ? t('users.field.newPassword') : t('users.field.password')}</label>
                   <input className="form-input" type="text" value={form.password}
                     onChange={e => setForm({ ...form, password: e.target.value })}
-                    placeholder={editUser ? "Bo'sh qoldirsangiz saqlanadi" : '4+ belgi, probelsiz'} />
+                    placeholder={editUser ? t('users.field.password.keep') : t('users.field.password.hint')} />
                 </div>
               </div>
               <div className="modal-actions">
-                <button type="button" className="btn btn-outline" onClick={() => setShowModal(false)}>Bekor qilish</button>
+                <button type="button" className="btn btn-outline" onClick={() => setShowModal(false)}>{t('btn.cancel')}</button>
                 <button type="submit" className="btn btn-primary" disabled={loading}>
-                  {loading ? 'Saqlanmoqda...' : 'Saqlash'}
+                  {loading ? t('btn.saving') : t('btn.save')}
                 </button>
               </div>
             </form>
@@ -388,28 +389,27 @@ export default function ManageUsers() {
   )
 }
 
-function UserTable({ users, showPasswords, copiedId, togglePassword, copyLink, openEdit, handleDelete, openVacation, removeVacation }) {
-  const vacColor = (t) => (
-    t === 'annual' ? '#3b82f6'   // ko'k
-    : t === 'sick' ? '#ef4444'   // qizil
-    : t === 'otgul' ? '#10b981'  // yashil
-    : '#f59e0b'                  // BS — sariq
+function UserTable({ t, users, showPasswords, copiedId, togglePassword, copyLink, openEdit, handleDelete, openVacation, removeVacation }) {
+  const { formatDate } = useI18n()
+  const vacColor = (type) => (
+    type === 'annual' ? '#3b82f6'   // ko'k
+    : type === 'sick' ? '#ef4444'   // qizil
+    : type === 'otgul' ? '#10b981'  // yashil
+    : '#f59e0b'                     // BS — sariq
   )
-  const vacShort = (t) => (
-    t === 'annual' ? 'Otpuska' : t === 'sick' ? 'Kasallik' : t === 'otgul' ? "O'tgul" : 'BS'
-  )
-  const fmt = (iso) => iso ? new Date(iso).toLocaleDateString('uz-UZ', { day: '2-digit', month: '2-digit' }) : ''
+  const vacShort = (type) => t(`vac.short.${type}`)
+  const fmt = (iso) => formatDate(iso, { day: '2-digit', month: '2-digit' })
   return (
     <table>
       <thead>
         <tr>
-          <th>Ism sharifi</th>
-          <th>Rol</th>
-          <th>Lavozim</th>
-          <th>Tabel</th>
-          <th>Login</th>
-          <th>Parol</th>
-          <th>Amallar</th>
+          <th>{t('users.th.fullName')}</th>
+          <th>{t('users.th.role')}</th>
+          <th>{t('users.th.position')}</th>
+          <th>{t('users.th.tab')}</th>
+          <th>{t('users.th.login')}</th>
+          <th>{t('users.th.password')}</th>
+          <th>{t('field.actions')}</th>
         </tr>
       </thead>
       <tbody>
@@ -430,7 +430,7 @@ function UserTable({ users, showPasswords, copiedId, togglePassword, copyLink, o
             </td>
             <td>
               <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                {ROLE_LABELS[u.role] || u.role}
+                {(ROLE_ICONS[u.role] || '') + roleLabel(t, u.role)}
               </span>
             </td>
             <td>{u.position || '—'}</td>
@@ -443,37 +443,37 @@ function UserTable({ users, showPasswords, copiedId, togglePassword, copyLink, o
                     <code>{showPasswords[u.id] ? (u.plain_password || '***') : '••••••'}</code>
                     <button className="btn btn-outline btn-sm" style={{ padding: '2px 6px', fontSize: 11 }}
                       onClick={() => togglePassword(u.id)}>
-                      {showPasswords[u.id] ? 'Yashirish' : "Ko'rish"}
+                      {showPasswords[u.id] ? t('users.hidePassword') : t('users.showPassword')}
                     </button>
                   </span>
                 </td>
               </>
             ) : (
               <td colSpan={2}>
-                <span className="badge" style={{ marginRight: 6 }}>Ro'yxatdan o'tmagan</span>
+                <span className="badge" style={{ marginRight: 6 }}>{t('users.notRegistered')}</span>
                 <button className="btn btn-outline btn-sm" style={{ padding: '2px 6px', fontSize: 11 }}
                   onClick={() => copyLink(u)}>
-                  {copiedId === u.id ? 'Nusxalandi!' : 'Havolani nusxalash'}
+                  {copiedId === u.id ? t('users.copied') : t('users.copyLink')}
                 </button>
               </td>
             )}
             <td style={{ whiteSpace: 'nowrap' }}>
               {u.active_vacation ? (
                 <button className="btn btn-outline btn-sm" onClick={() => removeVacation(u)}
-                  title="Tatilni bekor qilish" style={{ marginRight: 4, color: '#f59e0b' }}>
-                  🏖 Bekor
+                  title={t('vac.cancelTitle')} style={{ marginRight: 4, color: '#f59e0b' }}>
+                  🏖 {t('vac.cancel')}
                 </button>
               ) : (
                 <button className="btn btn-outline btn-sm" onClick={() => openVacation(u)}
-                  title="Tatil berish" style={{ marginRight: 4 }}>
-                  🏖 Tatil
+                  title={t('vac.give')} style={{ marginRight: 4 }}>
+                  🏖 {t('vac.short')}
                 </button>
               )}
               <button className="btn btn-outline btn-sm" onClick={() => openEdit(u)} style={{ marginRight: 4 }}>
-                Tahrirlash
+                {t('btn.edit')}
               </button>
               <button className="btn btn-danger btn-sm" onClick={() => handleDelete(u)}>
-                O'chirish
+                {t('btn.delete')}
               </button>
             </td>
           </tr>

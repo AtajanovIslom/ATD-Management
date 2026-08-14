@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import api from '../api/axios'
+import { useI18n } from '../i18n'
 
 export default function Reports() {
+  const { t, formatDateTime } = useI18n()
   const [filters, setFilters] = useState({
     worker_name: '', tab_number: '', status: '', date_from: '', date_to: ''
   })
@@ -30,70 +32,65 @@ export default function Reports() {
     setSearched(false)
   }
 
-  const formatDate = (iso) => {
-    if (!iso) return '—'
-    return new Date(iso).toLocaleDateString('uz-UZ', {
-      year: 'numeric', month: '2-digit', day: '2-digit',
-      hour: '2-digit', minute: '2-digit'
-    })
-  }
+  const formatDate = (iso) => formatDateTime(iso, {
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit',
+  }) || '—'
 
   const isOverdue = (deadline, status) => {
     return status !== 'bajarilgan' && new Date(deadline) < new Date()
   }
 
   const statusLabel = (s) => {
-    if (s === 'korilmagan') return "Ko'rilmagan"
-    if (s === 'jarayonda') return 'Jarayonda'
-    if (s === 'bajarilgan') return 'Bajarilgan'
-    return s
+    const key = `reports.status.${s}`
+    return t(key) === key ? s : t(key)
   }
 
   return (
     <div>
       <div className="page-header">
-        <h1>Hisobotlar</h1>
+        <h1>{t('reports.title')}</h1>
       </div>
 
       <div className="card" style={{ marginBottom: 16 }}>
         <div className="filter-bar">
           <div className="form-group">
-            <label>Ishchi ismi</label>
+            <label>{t('reports.workerName')}</label>
             <input className="form-input" value={filters.worker_name}
               onChange={e => setFilters({ ...filters, worker_name: e.target.value })}
-              placeholder="Ism bo'yicha..." />
+              placeholder={t('reports.workerName.placeholder')} />
           </div>
           <div className="form-group">
-            <label>Tabel raqami</label>
+            <label>{t('reports.tabNumber')}</label>
             <input className="form-input" value={filters.tab_number}
               onChange={e => setFilters({ ...filters, tab_number: e.target.value })}
-              placeholder="Tabel..." />
+              placeholder={t('reports.tabNumber.placeholder')} />
           </div>
           <div className="form-group">
-            <label>Holat</label>
+            <label>{t('field.status')}</label>
             <select className="form-input" value={filters.status}
               onChange={e => setFilters({ ...filters, status: e.target.value })}>
-              <option value="">Barchasi</option>
-              <option value="korilmagan">Ko'rilmagan</option>
-              <option value="jarayonda">Jarayonda</option>
-              <option value="bajarilgan">Bajarilgan</option>
+              <option value="">{t('btn.all')}</option>
+              <option value="korilmagan">{t('reports.status.korilmagan')}</option>
+              <option value="jarayonda">{t('reports.status.jarayonda')}</option>
+              <option value="bajarilgan">{t('reports.status.bajarilgan')}</option>
             </select>
           </div>
           <div className="form-group">
-            <label>Sanadan</label>
+            <label>{t('reports.dateFrom')}</label>
             <input type="date" className="form-input" value={filters.date_from}
               onChange={e => setFilters({ ...filters, date_from: e.target.value })} />
           </div>
           <div className="form-group">
-            <label>Sanagacha</label>
+            <label>{t('reports.dateTo')}</label>
             <input type="date" className="form-input" value={filters.date_to}
               onChange={e => setFilters({ ...filters, date_to: e.target.value })} />
           </div>
           <div className="form-group" style={{ display: 'flex', gap: 8 }}>
             <button className="btn btn-primary" onClick={handleSearch} disabled={loading}>
-              {loading ? 'Qidirilmoqda...' : 'Qidirish'}
+              {loading ? t('reports.searching') : t('btn.search')}
             </button>
-            <button className="btn btn-outline" onClick={handleReset}>Tozalash</button>
+            <button className="btn btn-outline" onClick={handleReset}>{t('btn.reset')}</button>
           </div>
         </div>
       </div>
@@ -101,31 +98,31 @@ export default function Reports() {
       <div className="card">
         {!searched ? (
           <div className="empty-state">
-            <p>Filtr bo'yicha qidirish uchun yuqoridagi maydonlarni to'ldiring</p>
+            <p>{t('reports.fillFilters')}</p>
           </div>
         ) : results.length === 0 ? (
           <div className="empty-state">
-            <p>Natija topilmadi</p>
+            <p>{t('reports.noResults')}</p>
           </div>
         ) : (
           <>
             <div style={{ marginBottom: 12, fontSize: 13, color: '#6b7280' }}>
-              Jami: {results.length} ta natija
+              {t('reports.totalResults', { n: results.length })}
             </div>
             <div className="table-wrap">
               <table>
                 <thead>
                   <tr>
                     <th>#</th>
-                    <th>Ishchi</th>
-                    <th>Bo'linma</th>
-                    <th>Tabel</th>
-                    <th>Vazifa</th>
-                    <th>Muddat</th>
-                    <th>Holat</th>
-                    <th>Tafsilot</th>
-                    <th>Bajarilgan vaqt</th>
-                    <th>Rahbar</th>
+                    <th>{t('reports.th.worker')}</th>
+                    <th>{t('reports.th.unit')}</th>
+                    <th>{t('reports.th.tab')}</th>
+                    <th>{t('reports.th.task')}</th>
+                    <th>{t('field.deadline')}</th>
+                    <th>{t('field.status')}</th>
+                    <th>{t('reports.th.detail')}</th>
+                    <th>{t('reports.th.completedAt')}</th>
+                    <th>{t('reports.th.manager')}</th>
                   </tr>
                 </thead>
                 <tbody>

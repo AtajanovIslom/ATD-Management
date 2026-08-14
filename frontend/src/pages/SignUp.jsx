@@ -2,10 +2,13 @@ import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import api from '../api/axios'
 import { useAuth } from '../context/AuthContext'
+import { useI18n } from '../i18n'
+import LanguageSwitcher from '../components/LanguageSwitcher'
 
 export default function SignUp() {
   const navigate = useNavigate()
   const { setSession } = useAuth()
+  const { t } = useI18n()
   const [form, setForm] = useState({
     full_name: '', position: '', tab_number: '', login: '', password: '', confirmPassword: ''
   })
@@ -19,19 +22,19 @@ export default function SignUp() {
     setError('')
 
     if (form.login.includes(' ')) {
-      setError('Loginda probel bo\'lmasligi kerak')
+      setError(t('auth.err.loginSpace'))
       return
     }
     if (form.password.length < 4) {
-      setError('Parol kamida 4 ta belgidan iborat bo\'lishi kerak')
+      setError(t('auth.err.passwordShort'))
       return
     }
     if (form.password.includes(' ')) {
-      setError('Parolda probel bo\'lmasligi kerak')
+      setError(t('auth.err.passwordSpace'))
       return
     }
     if (form.password !== form.confirmPassword) {
-      setError('Parollar mos kelmadi')
+      setError(t('auth.err.passwordMismatch'))
       return
     }
 
@@ -42,7 +45,7 @@ export default function SignUp() {
       setSession(res.data.token, res.data.user)
       navigate('/')
     } catch (err) {
-      setError(err.response?.data?.error || 'Xatolik yuz berdi')
+      setError(err.response?.data?.error || t('state.error'))
     } finally {
       setLoading(false)
     }
@@ -51,47 +54,48 @@ export default function SignUp() {
   return (
     <div className="login-container">
       <div className="login-box">
+        <LanguageSwitcher variant="plain" />
         <img src="/logo.png" alt="ATD" className="login-logo-img" />
-        <h1 className="brand-title">ATD Management</h1>
-        <p>Yangi xodim ro'yxatdan o'tishi</p>
+        <h1 className="brand-title">{t('app.name')}</h1>
+        <p>{t('auth.signup.subtitle')}</p>
         {error && <div className="alert alert-error">{error}</div>}
         <form onSubmit={handleSubmit}>
           <div className="form-group">
-            <label>Ism sharifi *</label>
+            <label>{t('auth.field.fullName')}</label>
             <input className="form-input" value={form.full_name}
-              onChange={set('full_name')} placeholder="F.I.Sh." required />
+              onChange={set('full_name')} placeholder={t('auth.field.fullName.placeholder')} required />
           </div>
           <div className="form-group">
-            <label>Lavozim</label>
+            <label>{t('auth.field.position')}</label>
             <input className="form-input" value={form.position}
-              onChange={set('position')} placeholder="Lavozimingiz" />
+              onChange={set('position')} placeholder={t('auth.field.position.placeholder')} />
           </div>
           <div className="form-group">
-            <label>Tabel raqami *</label>
+            <label>{t('auth.field.tabNumber')}</label>
             <input className="form-input" value={form.tab_number}
-              onChange={set('tab_number')} placeholder="Tabel raqamingiz" required />
+              onChange={set('tab_number')} placeholder={t('auth.field.tabNumber.placeholder')} required />
           </div>
           <div className="form-group">
-            <label>Login *</label>
+            <label>{t('auth.field.loginRequired')}</label>
             <input className="form-input" value={form.login}
-              onChange={set('login')} placeholder="Loginingizni tanlang" required />
+              onChange={set('login')} placeholder={t('auth.field.login.placeholder')} required />
           </div>
           <div className="form-group">
-            <label>Parol * (kamida 4 belgi, probelsiz)</label>
+            <label>{t('auth.field.passwordRequired')}</label>
             <input className="form-input" type="text" value={form.password}
-              onChange={set('password')} placeholder="Parolingizni tanlang" required />
+              onChange={set('password')} placeholder={t('auth.field.password.placeholder')} required />
           </div>
           <div className="form-group">
-            <label>Parolni tasdiqlang *</label>
+            <label>{t('auth.field.confirmPassword')}</label>
             <input className="form-input" type="text" value={form.confirmPassword}
-              onChange={set('confirmPassword')} placeholder="Parolni qayta kiriting" required />
+              onChange={set('confirmPassword')} placeholder={t('auth.field.confirmPassword.placeholder')} required />
           </div>
           <button className="btn btn-primary btn-full" type="submit" disabled={loading}>
-            {loading ? 'Saqlanmoqda...' : 'Ro\'yxatdan o\'tish'}
+            {loading ? t('btn.saving') : t('auth.signup.submit')}
           </button>
         </form>
         <p style={{ marginTop: 16, textAlign: 'center' }}>
-          Akkauntingiz bormi? <Link to="/login">Kirish</Link>
+          {t('auth.haveAccount')} <Link to="/login">{t('auth.login.link')}</Link>
         </p>
       </div>
     </div>

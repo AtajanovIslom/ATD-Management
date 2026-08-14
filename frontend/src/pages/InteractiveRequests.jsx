@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import api from '../api/axios'
 import { useAuth } from '../context/AuthContext'
+import { useI18n } from '../i18n'
 
 /**
  * Interaktiv arizalar boshqaruv sahifasi.
@@ -12,16 +13,25 @@ import { useAuth } from '../context/AuthContext'
  *   * → rejected  (istalgan paytda)
  */
 
+// Matnlari `ir.status.*` kalitlaridan olinadi
 const STATUS = {
-  new:            { label: 'Yangi',                color: '#3b82f6', bg: 'rgba(59,130,246,0.15)',  icon: '🆕' },
-  in_progress:    { label: 'Ishlash jarayonida',   color: '#f59e0b', bg: 'rgba(245,158,11,0.15)',  icon: '⚙️' },
-  pending_review: { label: 'Tasdiqlash kutilmoqda', color: '#8b5cf6', bg: 'rgba(139,92,246,0.15)', icon: '⏳' },
-  completed:      { label: 'Yakunlandi',           color: '#10b981', bg: 'rgba(16,185,129,0.15)',  icon: '✅' },
-  rejected:       { label: 'Rad etildi',           color: '#ef4444', bg: 'rgba(239,68,68,0.15)',   icon: '❌' },
+  new:            { color: '#3b82f6', bg: 'rgba(59,130,246,0.15)', icon: '🆕' },
+  in_progress:    { color: '#f59e0b', bg: 'rgba(245,158,11,0.15)', icon: '⚙️' },
+  pending_review: { color: '#8b5cf6', bg: 'rgba(139,92,246,0.15)', icon: '⏳' },
+  completed:      { color: '#10b981', bg: 'rgba(16,185,129,0.15)', icon: '✅' },
+  rejected:       { color: '#ef4444', bg: 'rgba(239,68,68,0.15)',  icon: '❌' },
+}
+
+// Ariza statusi matni — tarjima topilmasa kodning o'zi ko'rsatiladi
+const statusText = (t, code) => {
+  const key = `ir.status.${code}`
+  return t(key) === key ? code : t(key)
 }
 
 export default function InteractiveRequests() {
   const { user, isAnyAdmin, isAdmin } = useAuth()
+  const { t, formatDateTime } = useI18n()
+  const fmt = (iso) => formatDateTime(iso) || '—'
 
   const [items, setItems] = useState([])
   const [summary, setSummary] = useState({ total: 0, by_status: {} })
@@ -65,7 +75,7 @@ export default function InteractiveRequests() {
       const res = await api.get(`/interactive-requests/${r.id}`)
       setSelected(res.data)
     } catch (err) {
-      alert(err.response?.data?.error || 'Xatolik')
+      alert(err.response?.data?.error || t('state.error'))
     }
   }
 
@@ -75,15 +85,15 @@ export default function InteractiveRequests() {
     try {
       const { type, req } = modal
       if (type === 'assign') {
-        if (!modalData.user_id) { alert('Xodim tanlang'); setBusy(false); return }
+        if (!modalData.user_id) { alert(t('ir.err.pickWorker')); setBusy(false); return }
         await api.post(`/interactive-requests/${req.id}/assign`, { user_id: modalData.user_id })
       } else if (type === 'submit_review') {
         await api.post(`/interactive-requests/${req.id}/submit-review`, { result_note: modalData.result_note || '' })
       } else if (type === 'return') {
-        if (!modalData.return_reason?.trim()) { alert("Sabab kiritilishi shart"); setBusy(false); return }
+        if (!modalData.return_reason?.trim()) { alert(t('ir.err.needReason')); setBusy(false); return }
         await api.post(`/interactive-requests/${req.id}/return`, { return_reason: modalData.return_reason })
       } else if (type === 'reject') {
-        if (!modalData.reject_reason?.trim()) { alert("Sabab kiritilishi shart"); setBusy(false); return }
+        if (!modalData.reject_reason?.trim()) { alert(t('ir.err.needReason')); setBusy(false); return }
         await api.post(`/interactive-requests/${req.id}/reject`, { reject_reason: modalData.reject_reason })
       } else if (type === 'approve') {
         await api.post(`/interactive-requests/${req.id}/approve`)
@@ -92,7 +102,7 @@ export default function InteractiveRequests() {
       await load()
       if (selected?.id === req.id) openReq(selected)
     } catch (err) {
-      alert(err.response?.data?.error || 'Xatolik')
+      alert(err.response?.data?.error || t('state.error'))
     } finally {
       setBusy(false)
     }
@@ -101,24 +111,24 @@ export default function InteractiveRequests() {
   const isMine = (r) => r.assigned_to === user?.id
 
   const handleDelete = async (req) => {
-    if (!window.confirm(`Ariza #${req.id} ni o'chirmoqchimisiz? Bu amalni qaytarib bo'lmaydi.`)) return
+    if (!window.confirm(t('ir.delete.confirm', { id: req.id }))) return
     try {
       await api.delete(`/interactive-requests/${req.id}`)
       if (selected?.id === req.id) setSelected(null)
       await load()
     } catch (err) {
-      alert(err.response?.data?.error || 'Xatolik')
+      alert(err.response?.data?.error || t('state.error'))
     }
   }
 
-  if (loading) return <div className="loading">Yuklanmoqda...</div>
+  if (loading) return <div className="loading">{t('state.loading')}</div>
 
   return (
     <div>
       <div className="page-header">
-        <h1 style={{ margin: 0 }}>📥 Interaktiv arizalar</h1>
+        <h1 style={{ margin: 0 }}>📥 {t('ir.title')}</h1>
         <button className="btn btn-primary" onClick={() => setWalkinOpen(true)}>
-          + Ariza yaratish
+          {t('ir.create')}
         </button>
       </div>
 
@@ -127,11 +137,11 @@ export default function InteractiveRequests() {
         display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
         gap: 10, marginBottom: 12,
       }}>
-        <StatCard label="Jami" value={summary.total} color="#6366f1"
+        <StatCard label={t('ir.stat.total')} value={summary.total} color="#6366f1"
           onClick={() => setFilter('')} active={!filter} />
         {Object.entries(STATUS).map(([k, s]) => (
           <StatCard key={k}
-            label={s.label} value={summary.by_status[k] || 0} color={s.color}
+            label={statusText(t, k)} value={summary.by_status[k] || 0} color={s.color}
             onClick={() => setFilter(filter === k ? '' : k)} active={filter === k}
           />
         ))}
@@ -143,19 +153,19 @@ export default function InteractiveRequests() {
             <table>
               <thead>
                 <tr>
-                  <th>Sana</th>
-                  <th>Tabel</th>
-                  <th>Telefon</th>
-                  <th>Xizmat turlari</th>
-                  <th>Holat</th>
-                  <th>Bajaruvchi</th>
+                  <th>{t('ir.th.date')}</th>
+                  <th>{t('ir.th.tab')}</th>
+                  <th>{t('ir.th.phone')}</th>
+                  <th>{t('ir.th.serviceTypes')}</th>
+                  <th>{t('field.status')}</th>
+                  <th>{t('ir.th.executor')}</th>
                   <th></th>
                 </tr>
               </thead>
               <tbody>
                 {items.length === 0 ? (
                   <tr><td colSpan={7} style={{ textAlign: 'center', padding: 30, color: 'var(--text-muted)' }}>
-                    Arizalar yo'q
+                    {t('ir.empty')}
                   </td></tr>
                 ) : items.map(r => (
                   <tr key={r.id}
@@ -186,27 +196,27 @@ export default function InteractiveRequests() {
                     </td>
                     <td>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                        {(r.types || []).map(t => (
-                          <span key={t.id} style={{
+                        {(r.types || []).map(type => (
+                          <span key={type.id} style={{
                             fontSize: 11, padding: '1px 6px', borderRadius: 3,
                             background: 'rgba(99,102,241,0.1)', color: '#6366f1',
-                          }}>{t.name}</span>
+                          }}>{type.name}</span>
                         ))}
                       </div>
                       <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>{r.department_name}</div>
                     </td>
                     <td>
-                      <StatusBadge status={r.status} />
+                      <StatusBadge status={r.status} t={t} />
                       {(r.return_count || 0) > 0 && (
                         <div style={{ fontSize: 10, color: '#ef4444', fontWeight: 600, marginTop: 2 }}>
-                          ↩ {r.return_count} marta qaytarilgan
+                          {t('ir.returnedTimes', { n: r.return_count })}
                         </div>
                       )}
                     </td>
                     <td style={{ fontSize: 12 }}>{r.assignee_name || '—'}</td>
                     <td>
                       <button className="btn btn-outline btn-sm" onClick={e => { e.stopPropagation(); openReq(r) }}>
-                        Ochish
+                        {t('ir.open')}
                       </button>
                     </td>
                   </tr>
@@ -227,6 +237,8 @@ export default function InteractiveRequests() {
             onApprove={(req) => submitModalWith(req, 'approve')}
             onEdit={(req) => setEditReq(req)}
             onDelete={handleDelete}
+            t={t}
+            fmt={fmt}
           />
         )}
       </div>
@@ -241,12 +253,14 @@ export default function InteractiveRequests() {
           onClose={() => setModal(null)}
           onSubmit={submitModal}
           busy={busy}
+          t={t}
         />
       )}
 
       {/* Walk-in yaratish modal */}
       {walkinOpen && (
         <WalkinModal
+          t={t}
           onClose={() => setWalkinOpen(false)}
           onCreated={async () => { setWalkinOpen(false); await load() }}
         />
@@ -255,6 +269,7 @@ export default function InteractiveRequests() {
       {/* Ariza tahrirlash modal */}
       {editReq && (
         <EditModal
+          t={t}
           req={editReq}
           onClose={() => setEditReq(null)}
           onSaved={async (updated) => {
@@ -274,7 +289,7 @@ export default function InteractiveRequests() {
       await load()
       if (selected?.id === req.id) openReq(selected)
     } catch (err) {
-      alert(err.response?.data?.error || 'Xatolik')
+      alert(err.response?.data?.error || t('state.error'))
     } finally {
       setBusy(false)
     }
@@ -284,7 +299,7 @@ export default function InteractiveRequests() {
 
 /* -------------------------- Ariza tafsilotlari -------------------------- */
 
-function RequestDetail({ r, isMine, isAnyAdmin, isAdmin, onClose, onAction, onApprove, onEdit, onDelete }) {
+function RequestDetail({ r, isMine, isAnyAdmin, isAdmin, onClose, onAction, onApprove, onEdit, onDelete, t, fmt }) {
   const canEdit = isAnyAdmin && r.status !== 'completed' && r.status !== 'rejected'
   // Tarixdan oxirgi "uzatish" yozuvini topamiz — ariza sizga peer bo'lim
   // rahbaridan uzatilgan bo'lsa banner ko'rsatish uchun.
@@ -294,9 +309,9 @@ function RequestDetail({ r, isMine, isAnyAdmin, isAdmin, onClose, onAction, onAp
     <div className="card">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
         <div>
-          <StatusBadge status={r.status} />
+          <StatusBadge status={r.status} t={t} />
           <h2 style={{ fontSize: 15, margin: '6px 0 2px' }}>
-            {r.types?.map(t => t.name).join(', ') || '—'}
+            {r.types?.map(type => type.name).join(', ') || '—'}
           </h2>
           <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
             {r.department_name} · Tracking: <code>{r.tracking_id}</code>
@@ -312,21 +327,21 @@ function RequestDetail({ r, isMine, isAnyAdmin, isAdmin, onClose, onAction, onAp
           border: '1px solid #3b82f6', borderRadius: 6,
           fontSize: 13,
         }}>
-          🔄 <strong>Sizga uzatildi:</strong> {lastTransfer.note}
+          🔄 <strong>{t('ir.transferredToYou')}</strong> {lastTransfer.note}
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
-            "Xodimga biriktirish" tugmasi orqali o'z xodimingizga topshiring.
+            {t('ir.transferredToYou.hint')}
           </div>
         </div>
       )}
 
-      <Section title="Arizachi">
-        <Row label="Tabel">{r.tabel_num}</Row>
-        {r.full_name && <Row label="Ism sharifi">{r.full_name}</Row>}
-        {r.position && <Row label="Lavozim">{r.position}</Row>}
-        {r.division && <Row label="Bo'lim">{r.division}</Row>}
-        <Row label="Telefon">{r.phone_num}</Row>
-        <Row label="Manba">
-          {r.source === 'walkin' ? '📝 Xodim tomonidan (walk-in)' : '📱 Mobil ilova'}
+      <Section title={t('ir.section.applicant')}>
+        <Row label={t('ir.row.tab')}>{r.tabel_num}</Row>
+        {r.full_name && <Row label={t('ir.row.fullName')}>{r.full_name}</Row>}
+        {r.position && <Row label={t('ir.row.position')}>{r.position}</Row>}
+        {r.division && <Row label={t('ir.row.division')}>{r.division}</Row>}
+        <Row label={t('ir.row.phone')}>{r.phone_num}</Row>
+        <Row label={t('ir.row.source')}>
+          {r.source === 'walkin' ? t('ir.source.walkin') : t('ir.source.mobile')}
         </Row>
         {r.comment && (
           <div style={{
@@ -337,16 +352,16 @@ function RequestDetail({ r, isMine, isAnyAdmin, isAdmin, onClose, onAction, onAp
         )}
       </Section>
 
-      <Section title="Jarayon">
-        {r.assignee_name && <Row label="Bajaruvchi">{r.assignee_name}</Row>}
-        {r.assigner_name && <Row label="Biriktirdi">{r.assigner_name}</Row>}
-        {r.reviewer_name && <Row label="Tasdiqladi/Ko'rdi">{r.reviewer_name}</Row>}
-        {r.assigned_at && <Row label="Biriktirilgan">{fmt(r.assigned_at)}</Row>}
-        {r.submitted_review_at && <Row label="Bajarildi deb yuborilgan">{fmt(r.submitted_review_at)}</Row>}
-        {r.completed_at && <Row label="Yakunlangan">{fmt(r.completed_at)}</Row>}
+      <Section title={t('ir.section.process')}>
+        {r.assignee_name && <Row label={t('ir.row.executor')}>{r.assignee_name}</Row>}
+        {r.assigner_name && <Row label={t('ir.row.assigner')}>{r.assigner_name}</Row>}
+        {r.reviewer_name && <Row label={t('ir.row.reviewer')}>{r.reviewer_name}</Row>}
+        {r.assigned_at && <Row label={t('ir.row.assignedAt')}>{fmt(r.assigned_at)}</Row>}
+        {r.submitted_review_at && <Row label={t('ir.row.submittedAt')}>{fmt(r.submitted_review_at)}</Row>}
+        {r.completed_at && <Row label={t('ir.row.completedAt')}>{fmt(r.completed_at)}</Row>}
         {(r.return_count || 0) > 0 && (
-          <Row label="Qaytarilgan">
-            <span style={{ color: '#ef4444', fontWeight: 600 }}>{r.return_count} marta</span>
+          <Row label={t('ir.row.returned')}>
+            <span style={{ color: '#ef4444', fontWeight: 600 }}>{t('ir.returnedCount', { n: r.return_count })}</span>
           </Row>
         )}
         {r.result_note && (
@@ -354,19 +369,19 @@ function RequestDetail({ r, isMine, isAnyAdmin, isAdmin, onClose, onAction, onAp
             padding: 10, background: 'rgba(16,185,129,0.08)',
             border: '1px solid #10b981', borderRadius: 6,
             fontSize: 13, whiteSpace: 'pre-wrap', marginTop: 4,
-          }}><strong>✅ Xodim natijasi:</strong> {r.result_note}</div>
+          }}><strong>{t('ir.resultNote')}</strong> {r.result_note}</div>
         )}
         {r.reject_reason && (
           <div style={{
             padding: 10, background: 'rgba(239,68,68,0.08)',
             border: '1px solid #ef4444', borderRadius: 6,
             fontSize: 13, whiteSpace: 'pre-wrap', marginTop: 4,
-          }}><strong>❌ Rad etish sababi:</strong> {r.reject_reason}</div>
+          }}><strong>{t('ir.rejectReason')}</strong> {r.reject_reason}</div>
         )}
       </Section>
 
       {r.history?.length > 0 && (
-        <Section title="Tarix">
+        <Section title={t('ir.section.history')}>
           <div style={{ borderLeft: '2px solid var(--border)', paddingLeft: 12, marginLeft: 4 }}>
             {r.history.map((h, i) => {
               const s = STATUS[h.status]
@@ -378,7 +393,7 @@ function RequestDetail({ r, isMine, isAnyAdmin, isAdmin, onClose, onAction, onAp
                     background: s?.color || 'var(--text-muted)',
                   }} />
                   <div style={{ fontSize: 13, fontWeight: 600, color: s?.color }}>
-                    {s?.icon} {h.status_label}
+                    {s?.icon} {statusText(t, h.status)}
                   </div>
                   {h.note && <div style={{ fontSize: 12, marginTop: 2 }}>{h.note}</div>}
                   <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
@@ -395,46 +410,46 @@ function RequestDetail({ r, isMine, isAnyAdmin, isAdmin, onClose, onAction, onAp
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 14 }}>
         {canEdit && (
           <button className="btn btn-outline" onClick={() => onEdit(r)}>
-            ✏️ Tahrirlash
+            ✏️ {t('btn.edit')}
           </button>
         )}
         {isAnyAdmin && r.status === 'new' && (
           <button className="btn btn-primary" onClick={() => onAction('assign', r)}>
-            📌 Xodimga biriktirish
+            {t('ir.action.assign')}
           </button>
         )}
         {isAnyAdmin && r.status === 'in_progress' && (
           <button className="btn btn-outline" onClick={() => onAction('assign', r)}>
-            🔄 Boshqa xodimga
+            {t('ir.action.reassign')}
           </button>
         )}
 
         {(isMine || isAnyAdmin) && r.status === 'in_progress' && (
           <button className="btn btn-primary" onClick={() => onAction('submit_review', r)}>
-            ✅ Bajarildi
+            {t('ir.action.done')}
           </button>
         )}
 
         {isAnyAdmin && r.status === 'pending_review' && (
           <>
             <button className="btn btn-primary" onClick={() => onApprove(r)}>
-              ✔️ Tasdiqlash
+              {t('ir.action.approve')}
             </button>
             <button className="btn btn-outline" onClick={() => onAction('return', r)}>
-              ↩ Qaytarish
+              {t('ir.action.return')}
             </button>
           </>
         )}
 
         {isAnyAdmin && r.status !== 'completed' && r.status !== 'rejected' && (
           <button className="btn btn-danger" onClick={() => onAction('reject', r)}>
-            ❌ Rad etish
+            {t('ir.action.reject')}
           </button>
         )}
         {isAdmin && (
           <button className="btn btn-danger" onClick={() => onDelete(r)}
-            title="Arizani butunlay o'chirish">
-            🗑️ O'chirish
+            title={t('ir.action.delete.title')}>
+            {t('ir.action.delete')}
           </button>
         )}
       </div>
@@ -445,14 +460,8 @@ function RequestDetail({ r, isMine, isAnyAdmin, isAdmin, onClose, onAction, onAp
 
 /* -------------------------- Action modal ------------------------------- */
 
-function ActionModal({ modal, workers, modalData, setModalData, onClose, onSubmit, busy }) {
-  const titles = {
-    assign: '📌 Xodimga biriktirish / uzatish',
-    submit_review: '✅ Ariza bajarildi',
-    return: '↩ Qaytarish',
-    reject: '❌ Rad etish',
-  }
-  const t = modal.type
+function ActionModal({ modal, workers, modalData, setModalData, onClose, onSubmit, busy, t }) {
+  const kind = modal.type
 
   // O'z bo'lim xodimlari va peer bo'lim rahbarlarini ajratamiz
   const ownWorkers = workers.filter(w => w.role !== 'department_admin')
@@ -461,16 +470,16 @@ function ActionModal({ modal, workers, modalData, setModalData, onClose, onSubmi
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={e => e.stopPropagation()}>
-        <h2>{titles[t]}</h2>
+        <h2>{t(`ir.modal.${kind}`)}</h2>
 
-        {t === 'assign' && (
+        {kind === 'assign' && (
           <div className="form-group">
-            <label>Xodim yoki bo'lim rahbarini tanlang</label>
+            <label>{t('ir.assign.label')}</label>
             <select className="form-input" value={modalData.user_id || ''}
               onChange={e => setModalData({ user_id: e.target.value })}>
-              <option value="">— Tanlang —</option>
+              <option value="">{t('users.select')}</option>
               {ownWorkers.length > 0 && (
-                <optgroup label="O'z xodimlaringiz">
+                <optgroup label={t('ir.assign.ownWorkers')}>
                   {ownWorkers.map(w => (
                     <option key={w.id} value={w.id}>
                       {w.full_name}{w.position ? ' · ' + w.position : ''}
@@ -479,7 +488,7 @@ function ActionModal({ modal, workers, modalData, setModalData, onClose, onSubmi
                 </optgroup>
               )}
               {peerAdmins.length > 0 && (
-                <optgroup label="🔄 Boshqa bo'lim rahbariga uzatish">
+                <optgroup label={t('ir.assign.peerAdmins')}>
                   {peerAdmins.map(w => (
                     <option key={w.id} value={w.id}>
                       {w.full_name}{w.division_name ? ' — ' + w.division_name : ''}
@@ -490,53 +499,52 @@ function ActionModal({ modal, workers, modalData, setModalData, onClose, onSubmi
             </select>
             {peerAdmins.length > 0 && (
               <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
-                💡 Ariza boshqa bo'limga tegishli bo'lsa, tegishli bo'lim rahbariga uzating —
-                ular qabul qilib o'z xodimlariga biriktiradi.
+                {t('ir.assign.hint')}
               </div>
             )}
           </div>
         )}
 
-        {t === 'submit_review' && (
+        {kind === 'submit_review' && (
           <div className="form-group">
-            <label>Natija (ixtiyoriy)</label>
+            <label>{t('ir.result.label')}</label>
             <textarea className="form-input" rows={4}
               value={modalData.result_note || ''}
               onChange={e => setModalData({ ...modalData, result_note: e.target.value })}
-              placeholder="Nima qilindi..."
+              placeholder={t('ir.result.placeholder')}
             />
           </div>
         )}
 
-        {t === 'return' && (
+        {kind === 'return' && (
           <div className="form-group">
-            <label>Qaytarish sababi *</label>
+            <label>{t('ir.return.label')}</label>
             <textarea className="form-input" rows={4}
               value={modalData.return_reason || ''}
               onChange={e => setModalData({ ...modalData, return_reason: e.target.value })}
-              placeholder="Nima chala qolgan, nima to'g'rilash kerak..."
+              placeholder={t('ir.return.placeholder')}
             />
           </div>
         )}
 
-        {t === 'reject' && (
+        {kind === 'reject' && (
           <div className="form-group">
-            <label>Rad etish sababi *</label>
+            <label>{t('ir.reject.label')}</label>
             <textarea className="form-input" rows={4}
               value={modalData.reject_reason || ''}
               onChange={e => setModalData({ ...modalData, reject_reason: e.target.value })}
-              placeholder="Nima uchun rad etilyapti..."
+              placeholder={t('ir.reject.placeholder')}
             />
           </div>
         )}
 
         <div className="modal-actions">
-          <button className="btn btn-outline" onClick={onClose}>Bekor</button>
+          <button className="btn btn-outline" onClick={onClose}>{t('btn.cancel')}</button>
           <button
-            className={t === 'reject' ? 'btn btn-danger' : 'btn btn-primary'}
+            className={kind === 'reject' ? 'btn btn-danger' : 'btn btn-primary'}
             disabled={busy}
             onClick={onSubmit}>
-            {busy ? 'Saqlanmoqda...' : 'Tasdiqlash'}
+            {busy ? t('btn.saving') : t('btn.confirm')}
           </button>
         </div>
       </div>
@@ -547,7 +555,7 @@ function ActionModal({ modal, workers, modalData, setModalData, onClose, onSubmi
 
 /* -------------------------- Walk-in yaratish --------------------------- */
 
-function WalkinModal({ onClose, onCreated }) {
+function WalkinModal({ onClose, onCreated, t }) {
   const [depts, setDepts] = useState([])
   const [types, setTypes] = useState([])
   const [form, setForm] = useState({
@@ -583,7 +591,7 @@ function WalkinModal({ onClose, onCreated }) {
     setEmpLoading(true)
     setEmpError('')
     let cancelled = false
-    const t = setTimeout(async () => {
+    const timer = setTimeout(async () => {
       try {
         const res = await api.get(`/public/interactive/employee/${encodeURIComponent(tab)}`)
         if (cancelled) return
@@ -599,12 +607,12 @@ function WalkinModal({ onClose, onCreated }) {
       } catch (err) {
         if (cancelled) return
         setEmp({ full_name: '', position: '', division: '' })
-        setEmpError(err.response?.data?.error || 'Xodim topilmadi')
+        setEmpError(err.response?.data?.error || t('ir.emp.notFound'))
       } finally {
         if (!cancelled) setEmpLoading(false)
       }
     }, 500)  // 500ms debounce
-    return () => { cancelled = true; clearTimeout(t) }
+    return () => { cancelled = true; clearTimeout(timer) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.tabel_num])
 
@@ -624,10 +632,10 @@ function WalkinModal({ onClose, onCreated }) {
     e.preventDefault()
     setError('')
     if (!form.phone_num || !form.tabel_num || !form.department_id) {
-      setError('Barcha majburiy maydonlarni to\'ldiring'); return
+      setError(t('ir.err.requiredFields')); return
     }
     if (form.type_ids.length === 0) {
-      setError('Kamida bitta xizmat turini tanlang'); return
+      setError(t('ir.err.pickType')); return
     }
     setBusy(true)
     try {
@@ -640,7 +648,7 @@ function WalkinModal({ onClose, onCreated }) {
       })
       onCreated()
     } catch (err) {
-      setError(err.response?.data?.error || 'Xatolik')
+      setError(err.response?.data?.error || t('state.error'))
     } finally {
       setBusy(false)
     }
@@ -649,22 +657,22 @@ function WalkinModal({ onClose, onCreated }) {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()}>
-        <h2>📝 Yangi ariza yaratish</h2>
+        <h2>{t('ir.walkin.title')}</h2>
         <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
-          Og'zaki kelgan zayavkani tizimga kiritish. Yaratilgach avtomatik sizga biriktiriladi.
+          {t('ir.walkin.hint')}
         </p>
         {error && <div className="alert alert-error" style={{ marginBottom: 10 }}>{error}</div>}
 
         <form onSubmit={submit}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div className="form-group">
-              <label>Tabel raqami *</label>
+              <label>{t('ir.field.tabNumber')}</label>
               <input className="form-input" value={form.tabel_num}
                 onChange={e => setForm({ ...form, tabel_num: e.target.value.replace(/\D/g, '') })}
                 placeholder="104074" required />
               {empLoading && (
                 <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3 }}>
-                  ⏳ Xodim ma'lumotlari yuklanmoqda...
+                  {t('ir.emp.loading')}
                 </div>
               )}
               {empError && (
@@ -674,12 +682,12 @@ function WalkinModal({ onClose, onCreated }) {
               )}
               {emp.full_name && !empLoading && (
                 <div style={{ fontSize: 11, color: '#10b981', marginTop: 3 }}>
-                  ✓ Xodim topildi
+                  {t('ir.emp.found')}
                 </div>
               )}
             </div>
             <div className="form-group">
-              <label>Telefon raqami *</label>
+              <label>{t('ir.field.phone')}</label>
               <input className="form-input" value={form.phone_num}
                 onChange={e => setForm({ ...form, phone_num: e.target.value })}
                 placeholder="+998..." required />
@@ -696,66 +704,66 @@ function WalkinModal({ onClose, onCreated }) {
               fontSize: 11, fontWeight: 700, color: 'var(--text-muted)',
               textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8,
             }}>
-              📇 Xodim ma'lumotlari (ISUP)
+              {t('ir.emp.block')}
             </div>
             <div className="form-group" style={{ marginBottom: 8 }}>
-              <label style={{ fontSize: 11 }}>Ism sharifi</label>
+              <label style={{ fontSize: 11 }}>{t('ir.emp.fullName')}</label>
               <input className="form-input" value={emp.full_name} readOnly disabled
-                placeholder="Tabel raqami kiritilgach avtomatik chiqadi" />
+                placeholder={t('ir.emp.fullName.placeholder')} />
             </div>
             <div className="form-group" style={{ marginBottom: 8 }}>
-              <label style={{ fontSize: 11 }}>Lavozim</label>
+              <label style={{ fontSize: 11 }}>{t('ir.emp.position')}</label>
               <input className="form-input" value={emp.position} readOnly disabled
                 placeholder="—" />
             </div>
             <div className="form-group" style={{ marginBottom: 0 }}>
-              <label style={{ fontSize: 11 }}>Bo'lim</label>
+              <label style={{ fontSize: 11 }}>{t('ir.emp.division')}</label>
               <input className="form-input" value={emp.division} readOnly disabled
                 placeholder="—" />
             </div>
           </div>
 
           <div className="form-group">
-            <label>Interaktiv xizmat kategoriyasi *</label>
+            <label>{t('ir.field.category')}</label>
             <select className="form-input" value={form.department_id}
               onChange={e => setForm({ ...form, department_id: e.target.value, type_ids: [] })}>
-              <option value="">— Tanlang —</option>
+              <option value="">{t('users.select')}</option>
               {depts.map(d => (
                 <option key={d.id} value={d.id}>
-                  {d.name} {d.multi_type ? '(bir nechta tanlash mumkin)' : ''}
+                  {d.name} {d.multi_type ? t('ir.multiHint') : ''}
                 </option>
               ))}
             </select>
             {depts.length === 0 && (
               <div style={{ fontSize: 11, color: '#ef4444', marginTop: 4 }}>
-                ⚠ Hali kategoriya yo'q. "Interaktiv xizmatlar" sahifasida qo'shing.
+                {t('ir.noCategories')}
               </div>
             )}
           </div>
 
           {form.department_id && (
             <div className="form-group">
-              <label>Xizmat turi {isMulti ? '(bir yoki bir nechta)' : ''}</label>
+              <label>{t('ir.field.serviceType')} {isMulti ? t('ir.field.serviceType.multi') : ''}</label>
               <div style={{
                 border: '1px solid var(--border)', borderRadius: 6,
                 maxHeight: 220, overflowY: 'auto', padding: 4,
               }}>
                 {types.length === 0 ? (
                   <p style={{ padding: 10, textAlign: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
-                    Bu bo'limda tur yo'q
+                    {t('ir.noTypes')}
                   </p>
-                ) : types.map(t => (
-                  <label key={t.id} style={{
+                ) : types.map(type => (
+                  <label key={type.id} style={{
                     display: 'flex', alignItems: 'center', gap: 8,
                     padding: '6px 10px', cursor: 'pointer', borderRadius: 4,
-                    background: form.type_ids.includes(t.id) ? 'rgba(99,102,241,0.1)' : 'transparent',
+                    background: form.type_ids.includes(type.id) ? 'rgba(99,102,241,0.1)' : 'transparent',
                   }}>
                     <input
                       type={isMulti ? 'checkbox' : 'radio'} name="type"
-                      checked={form.type_ids.includes(t.id)}
-                      onChange={() => toggleType(t.id)}
+                      checked={form.type_ids.includes(type.id)}
+                      onChange={() => toggleType(type.id)}
                     />
-                    <span style={{ fontSize: 13 }}>{t.name}</span>
+                    <span style={{ fontSize: 13 }}>{type.name}</span>
                   </label>
                 ))}
               </div>
@@ -763,18 +771,18 @@ function WalkinModal({ onClose, onCreated }) {
           )}
 
           <div className="form-group">
-            <label>Izoh</label>
+            <label>{t('ir.field.comment')}</label>
             <textarea className="form-input" rows={3}
               value={form.comment}
               onChange={e => setForm({ ...form, comment: e.target.value })}
-              placeholder="Muammo tafsilotlari..."
+              placeholder={t('ir.field.comment.placeholder')}
             />
           </div>
 
           <div className="modal-actions">
-            <button type="button" className="btn btn-outline" onClick={onClose}>Bekor</button>
+            <button type="button" className="btn btn-outline" onClick={onClose}>{t('btn.cancel')}</button>
             <button type="submit" className="btn btn-primary" disabled={busy}>
-              {busy ? 'Yaratilyapti...' : 'Ariza yaratish'}
+              {busy ? t('ir.walkin.submitting') : t('ir.walkin.submit')}
             </button>
           </div>
         </form>
@@ -786,14 +794,14 @@ function WalkinModal({ onClose, onCreated }) {
 
 /* -------------------------- Ariza tahrirlash --------------------------- */
 
-function EditModal({ req, onClose, onSaved }) {
+function EditModal({ req, onClose, onSaved, t }) {
   const [depts, setDepts] = useState([])
   const [types, setTypes] = useState([])
   const [form, setForm] = useState({
     phone_num: req.phone_num || '',
     tabel_num: req.tabel_num || '',
     department_id: String(req.department_id || ''),
-    type_ids: (req.types || []).map(t => t.id),
+    type_ids: (req.types || []).map(type => type.id),
     comment: req.comment || '',
   })
   const [busy, setBusy] = useState(false)
@@ -828,10 +836,10 @@ function EditModal({ req, onClose, onSaved }) {
     e.preventDefault()
     setError('')
     if (!form.phone_num.trim() || !form.tabel_num.trim() || !form.department_id) {
-      setError("Majburiy maydonlarni to'ldiring"); return
+      setError(t('ir.err.requiredFieldsShort')); return
     }
     if (form.type_ids.length === 0) {
-      setError("Kamida bitta xizmat turini tanlang"); return
+      setError(t('ir.err.pickType')); return
     }
     setBusy(true)
     try {
@@ -844,7 +852,7 @@ function EditModal({ req, onClose, onSaved }) {
       })
       onSaved(res.data)
     } catch (err) {
-      setError(err.response?.data?.error || 'Xatolik')
+      setError(err.response?.data?.error || t('state.error'))
     } finally {
       setBusy(false)
     }
@@ -853,7 +861,7 @@ function EditModal({ req, onClose, onSaved }) {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()}>
-        <h2>✏️ Arizani tahrirlash</h2>
+        <h2>{t('ir.edit.title')}</h2>
         <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
           Tracking: <code>{req.tracking_id}</code>
         </p>
@@ -862,13 +870,13 @@ function EditModal({ req, onClose, onSaved }) {
         <form onSubmit={submit}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div className="form-group">
-              <label>Tabel raqami *</label>
+              <label>{t('ir.field.tabNumber')}</label>
               <input className="form-input" value={form.tabel_num}
                 onChange={e => setForm({ ...form, tabel_num: e.target.value.replace(/\D/g, '') })}
                 required />
             </div>
             <div className="form-group">
-              <label>Telefon raqami *</label>
+              <label>{t('ir.field.phone')}</label>
               <input className="form-input" value={form.phone_num}
                 onChange={e => setForm({ ...form, phone_num: e.target.value })}
                 required />
@@ -876,13 +884,13 @@ function EditModal({ req, onClose, onSaved }) {
           </div>
 
           <div className="form-group">
-            <label>Interaktiv xizmat kategoriyasi *</label>
+            <label>{t('ir.field.category')}</label>
             <select className="form-input" value={form.department_id}
               onChange={e => setForm({ ...form, department_id: e.target.value, type_ids: [] })}>
-              <option value="">— Tanlang —</option>
+              <option value="">{t('users.select')}</option>
               {depts.map(d => (
                 <option key={d.id} value={d.id}>
-                  {d.name} {d.multi_type ? '(bir nechta tanlash mumkin)' : ''}
+                  {d.name} {d.multi_type ? t('ir.multiHint') : ''}
                 </option>
               ))}
             </select>
@@ -890,27 +898,27 @@ function EditModal({ req, onClose, onSaved }) {
 
           {form.department_id && (
             <div className="form-group">
-              <label>Xizmat turi {isMulti ? '(bir yoki bir nechta)' : ''}</label>
+              <label>{t('ir.field.serviceType')} {isMulti ? t('ir.field.serviceType.multi') : ''}</label>
               <div style={{
                 border: '1px solid var(--border)', borderRadius: 6,
                 maxHeight: 220, overflowY: 'auto', padding: 4,
               }}>
                 {types.length === 0 ? (
                   <p style={{ padding: 10, textAlign: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
-                    Bu bo'limda tur yo'q
+                    {t('ir.noTypes')}
                   </p>
-                ) : types.map(t => (
-                  <label key={t.id} style={{
+                ) : types.map(type => (
+                  <label key={type.id} style={{
                     display: 'flex', alignItems: 'center', gap: 8,
                     padding: '6px 10px', cursor: 'pointer', borderRadius: 4,
-                    background: form.type_ids.includes(t.id) ? 'rgba(99,102,241,0.1)' : 'transparent',
+                    background: form.type_ids.includes(type.id) ? 'rgba(99,102,241,0.1)' : 'transparent',
                   }}>
                     <input
                       type={isMulti ? 'checkbox' : 'radio'} name="type"
-                      checked={form.type_ids.includes(t.id)}
-                      onChange={() => toggleType(t.id)}
+                      checked={form.type_ids.includes(type.id)}
+                      onChange={() => toggleType(type.id)}
                     />
-                    <span style={{ fontSize: 13 }}>{t.name}</span>
+                    <span style={{ fontSize: 13 }}>{type.name}</span>
                   </label>
                 ))}
               </div>
@@ -918,18 +926,18 @@ function EditModal({ req, onClose, onSaved }) {
           )}
 
           <div className="form-group">
-            <label>Izoh</label>
+            <label>{t('ir.field.comment')}</label>
             <textarea className="form-input" rows={3}
               value={form.comment}
               onChange={e => setForm({ ...form, comment: e.target.value })}
-              placeholder="Muammo tafsilotlari..."
+              placeholder={t('ir.field.comment.placeholder')}
             />
           </div>
 
           <div className="modal-actions">
-            <button type="button" className="btn btn-outline" onClick={onClose}>Bekor</button>
+            <button type="button" className="btn btn-outline" onClick={onClose}>{t('btn.cancel')}</button>
             <button type="submit" className="btn btn-primary" disabled={busy}>
-              {busy ? 'Saqlanmoqda...' : 'Saqlash'}
+              {busy ? t('btn.saving') : t('btn.save')}
             </button>
           </div>
         </form>
@@ -957,7 +965,7 @@ function StatCard({ label, value, color, onClick, active }) {
   )
 }
 
-function StatusBadge({ status }) {
+function StatusBadge({ status, t }) {
   const s = STATUS[status]
   if (!s) return <span>{status}</span>
   return (
@@ -966,7 +974,7 @@ function StatusBadge({ status }) {
       padding: '3px 8px', borderRadius: 4,
       background: s.bg, color: s.color, whiteSpace: 'nowrap',
     }}>
-      {s.icon} {s.label}
+      {s.icon} {statusText(t, status)}
     </span>
   )
 }
@@ -990,12 +998,4 @@ function Row({ label, children }) {
       <span style={{ flex: 1 }}>{children}</span>
     </div>
   )
-}
-
-function fmt(iso) {
-  if (!iso) return '—'
-  return new Date(iso).toLocaleString('uz-UZ', {
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit',
-  })
 }

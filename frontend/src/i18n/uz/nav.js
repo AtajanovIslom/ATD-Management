@@ -1,0 +1,19 @@
+// Chap menyu
+export default {
+  'nav.dashboard': 'Boshqaruv paneli',
+  'nav.reminders': 'Eslatmalarim',
+  'nav.workLogs': 'Kunlik hisobotim',
+  'nav.departmentWorkLogs': 'Xodimlar hisobotlari',
+  'nav.statistics': 'Statistika',
+  'nav.createProject': 'Loyiha yaratish',
+  'nav.createTask': 'Vazifa yaratish',
+  'nav.teams': 'Guruhlar',
+  'nav.departments': 'Boshqarmalar',
+  'nav.users': 'Xodimlar',
+  'nav.deptUsers': "Bo'lim xodimlari",
+  'nav.interactiveServices': 'Interaktiv xizmatlar Admin',
+  'nav.interactiveRequests': 'Interaktiv arizalar',
+  'nav.roles': 'Rol va huquqlar',
+  'nav.auditLogs': 'Audit jurnali',
+  'nav.logout': 'Chiqish',
+}

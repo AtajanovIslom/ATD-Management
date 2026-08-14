@@ -1,0 +1,40 @@
+// Вход, регистрация, регистрация по ссылке-приглашению
+export default {
+  'auth.login.subtitle': 'Вход в систему управления проектами',
+  'auth.login.label': 'Логин',
+  'auth.login.placeholder': 'Введите логин',
+  'auth.password.label': 'Пароль',
+  'auth.password.placeholder': 'Введите пароль',
+  'auth.login.submit': 'Войти',
+  'auth.login.submitting': 'Вход...',
+  'auth.noAccount': 'Нет аккаунта?',
+  'auth.haveAccount': 'Уже есть аккаунт?',
+  'auth.signup.link': 'Зарегистрироваться',
+  'auth.login.link': 'Войти',
+
+  'auth.signup.subtitle': 'Регистрация нового сотрудника',
+  'auth.signup.submit': 'Зарегистрироваться',
+  'auth.field.fullName': 'Ф.И.О. *',
+  'auth.field.fullName.placeholder': 'Ф.И.О.',
+  'auth.field.position': 'Должность',
+  'auth.field.position.placeholder': 'Ваша должность',
+  'auth.field.tabNumber': 'Табельный номер *',
+  'auth.field.tabNumber.placeholder': 'Ваш табельный номер',
+  'auth.field.loginRequired': 'Логин *',
+  'auth.field.login.placeholder': 'Придумайте логин',
+  'auth.field.passwordRequired': 'Пароль * (минимум 4 символа, без пробелов)',
+  'auth.field.password.placeholder': 'Придумайте пароль',
+  'auth.field.confirmPassword': 'Подтвердите пароль *',
+  'auth.field.confirmPassword.placeholder': 'Повторите пароль',
+
+  'auth.register.welcome': 'Добро пожаловать, {name}! Задайте логин и пароль для входа в систему.',
+  'auth.register.invalidLink': 'Ссылка недействительна',
+  'auth.register.backToLogin': 'Вернуться на страницу входа',
+
+  // Сообщения проверки
+  'auth.err.loginSpace': 'Логин не должен содержать пробелов',
+  'auth.err.loginRequired': 'Логин обязателен и не должен содержать пробелов',
+  'auth.err.passwordShort': 'Пароль должен содержать минимум 4 символа',
+  'auth.err.passwordSpace': 'Пароль не должен содержать пробелов',
+  'auth.err.passwordMismatch': 'Пароли не совпадают',
+}

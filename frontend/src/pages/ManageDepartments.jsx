@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react'
 import api from '../api/axios'
 import { useAuth } from '../context/AuthContext'
+import { useI18n } from '../i18n'
 
 export default function ManageDepartments() {
   const { can, isSuperAdmin } = useAuth()
+  const { t } = useI18n()
   const [departments, setDepartments] = useState([])
   const [expanded, setExpanded] = useState({})
   const [loading, setLoading] = useState(true)
@@ -34,7 +36,7 @@ export default function ManageDepartments() {
       const res = await api.get('/departments')
       setDepartments(res.data)
     } catch {
-      setError("Ma'lumotlarni yuklashda xatolik")
+      setError(t('depts.loadError'))
     } finally {
       setLoading(false)
     }
@@ -70,19 +72,19 @@ export default function ManageDepartments() {
       setDeptModal(false)
       load()
     } catch (err) {
-      setError(err.response?.data?.error || 'Xatolik yuz berdi')
+      setError(err.response?.data?.error || t('state.error'))
     } finally {
       setSaving(false)
     }
   }
 
   const deleteDept = async (dept) => {
-    if (!window.confirm(`"${dept.name}" boshqarmasini o'chirmoqchimisiz? Barcha bo'limlar ham o'chiriladi!`)) return
+    if (!window.confirm(t('depts.delete.confirm', { name: dept.name }))) return
     try {
       await api.delete(`/departments/${dept.id}`)
       load()
     } catch (err) {
-      alert(err.response?.data?.error || 'Xatolik')
+      alert(err.response?.data?.error || t('state.error'))
     }
   }
 
@@ -114,19 +116,19 @@ export default function ManageDepartments() {
       setDivModal(false)
       load()
     } catch (err) {
-      setError(err.response?.data?.error || 'Xatolik yuz berdi')
+      setError(err.response?.data?.error || t('state.error'))
     } finally {
       setSaving(false)
     }
   }
 
   const deleteDiv = async (div) => {
-    if (!window.confirm(`"${div.name}" bo'limini o'chirmoqchimisiz?`)) return
+    if (!window.confirm(t('div.delete.confirm', { name: div.name }))) return
     try {
       await api.delete(`/divisions/${div.id}`)
       load()
     } catch (err) {
-      alert(err.response?.data?.error || 'Xatolik')
+      alert(err.response?.data?.error || t('state.error'))
     }
   }
 
@@ -164,7 +166,7 @@ export default function ManageDepartments() {
       setMembersModal(null)
       load()
     } catch (err) {
-      alert(err.response?.data?.error || 'Xatolik')
+      alert(err.response?.data?.error || t('state.error'))
     } finally {
       setSaving(false)
     }
@@ -182,24 +184,24 @@ export default function ManageDepartments() {
       setServiceModal(res.data)
       load()
     } catch (err) {
-      alert(err.response?.data?.error || 'Xatolik')
+      alert(err.response?.data?.error || t('state.error'))
     }
   }
 
-  if (loading) return <div className="loading">Yuklanmoqda...</div>
+  if (loading) return <div className="loading">{t('state.loading')}</div>
 
   return (
     <div>
       <div className="page-header">
-        <h1>Boshqarmalar va Bo'limlar</h1>
+        <h1>{t('depts.title')}</h1>
         {can('dept.create') && (
-          <button className="btn btn-primary" onClick={openAddDept}>+ Boshqarma qo'shish</button>
+          <button className="btn btn-primary" onClick={openAddDept}>{t('depts.add')}</button>
         )}
       </div>
 
       {departments.length === 0 ? (
         <div className="card" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 40 }}>
-          Hali boshqarma qo'shilmagan
+          {t('depts.empty')}
         </div>
       ) : (
         departments.map(dept => (
@@ -212,17 +214,17 @@ export default function ManageDepartments() {
                   <strong style={{ fontSize: 16 }}>{dept.name}</strong>
                   {dept.description && <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{dept.description}</div>}
                 </div>
-                <span className="badge" style={{ marginLeft: 8 }}>{dept.division_count} bo'lim</span>
+                <span className="badge" style={{ marginLeft: 8 }}>{t('depts.divisionCount', { n: dept.division_count })}</span>
               </div>
               <div style={{ display: 'flex', gap: 6 }}>
                 {can('div.create') && (
-                  <button className="btn btn-outline btn-sm" onClick={() => openAddDiv(dept.id)}>+ Bo'lim</button>
+                  <button className="btn btn-outline btn-sm" onClick={() => openAddDiv(dept.id)}>{t('depts.addDivision')}</button>
                 )}
                 {can('dept.edit') && (
-                  <button className="btn btn-outline btn-sm" onClick={() => openEditDept(dept)}>Tahrirlash</button>
+                  <button className="btn btn-outline btn-sm" onClick={() => openEditDept(dept)}>{t('btn.edit')}</button>
                 )}
                 {can('dept.delete') && (
-                  <button className="btn btn-danger btn-sm" onClick={() => deleteDept(dept)}>O'chirish</button>
+                  <button className="btn btn-danger btn-sm" onClick={() => deleteDept(dept)}>{t('btn.delete')}</button>
                 )}
               </div>
             </div>
@@ -230,7 +232,7 @@ export default function ManageDepartments() {
             {expanded[dept.id] && (
               <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
                 {dept.divisions.length === 0 ? (
-                  <p style={{ color: 'var(--text-muted)', fontSize: 13, margin: 0 }}>Hali bo'lim qo'shilmagan</p>
+                  <p style={{ color: 'var(--text-muted)', fontSize: 13, margin: 0 }}>{t('depts.noDivisions')}</p>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {dept.divisions.map(div => (
@@ -252,7 +254,7 @@ export default function ManageDepartments() {
                               borderRadius: 4, background: 'rgba(16, 185, 129, 0.15)',
                               color: '#10b981', fontWeight: 600,
                             }}>
-                              🧩 Interaktiv xizmat ko'rsatadi
+                              🧩 {t('div.isServiceProvider')}
                             </span>
                           )}
                           {div.description && (
@@ -263,10 +265,10 @@ export default function ManageDepartments() {
                               <span key={m.id} className="badge" style={{ marginRight: 4, fontSize: 11 }}>{m.full_name}</span>
                             ))}
                             {div.members.length > 5 && (
-                              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>+{div.members.length - 5} ta</span>
+                              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{t('div.moreMembers', { n: div.members.length - 5 })}</span>
                             )}
                             {div.members.length === 0 && (
-                              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Xodim yo'q</span>
+                              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{t('div.noMembers')}</span>
                             )}
                           </div>
                         </div>
@@ -275,21 +277,21 @@ export default function ManageDepartments() {
                             <button
                               className={`btn btn-sm ${div.is_service_provider ? 'btn-primary' : 'btn-outline'}`}
                               onClick={() => openServiceConfig(div)}
-                              title="Interaktiv xizmat ko'rsatuvchi bo'lim sifatida belgilash"
+                              title={t('div.serviceBtn.title')}
                             >
-                              🧩 Servis
+                              🧩 {t('div.serviceBtn')}
                             </button>
                           )}
                           {can('div.members') && (
                             <button className="btn btn-outline btn-sm" onClick={() => openMembers(div)}>
-                              👥 Xodimlar ({div.member_count})
+                              👥 {t('div.membersBtn', { n: div.member_count })}
                             </button>
                           )}
                           {can('div.edit') && (
-                            <button className="btn btn-outline btn-sm" onClick={() => openEditDiv(div)}>Tahrirlash</button>
+                            <button className="btn btn-outline btn-sm" onClick={() => openEditDiv(div)}>{t('btn.edit')}</button>
                           )}
                           {can('div.delete') && (
-                            <button className="btn btn-danger btn-sm" onClick={() => deleteDiv(div)}>O'chirish</button>
+                            <button className="btn btn-danger btn-sm" onClick={() => deleteDiv(div)}>{t('btn.delete')}</button>
                           )}
                         </div>
                       </div>
@@ -306,23 +308,23 @@ export default function ManageDepartments() {
       {deptModal && (
         <div className="modal-overlay" onClick={() => setDeptModal(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
-            <h2>{editDept ? 'Boshqarmani tahrirlash' : "Yangi boshqarma qo'shish"}</h2>
+            <h2>{editDept ? t('depts.modal.edit') : t('depts.modal.add')}</h2>
             {error && <div className="alert alert-error">{error}</div>}
             <form onSubmit={saveDept}>
               <div className="form-group">
-                <label>Boshqarma nomi *</label>
+                <label>{t('depts.field.name')}</label>
                 <input className="form-input" value={deptForm.name}
                   onChange={e => setDeptForm({ ...deptForm, name: e.target.value })} required />
               </div>
               <div className="form-group">
-                <label>Tavsif</label>
+                <label>{t('field.description')}</label>
                 <textarea className="form-input" rows={2} value={deptForm.description}
                   onChange={e => setDeptForm({ ...deptForm, description: e.target.value })} />
               </div>
               <div className="modal-actions">
-                <button type="button" className="btn btn-outline" onClick={() => setDeptModal(false)}>Bekor qilish</button>
+                <button type="button" className="btn btn-outline" onClick={() => setDeptModal(false)}>{t('btn.cancel')}</button>
                 <button type="submit" className="btn btn-primary" disabled={saving}>
-                  {saving ? 'Saqlanmoqda...' : 'Saqlash'}
+                  {saving ? t('btn.saving') : t('btn.save')}
                 </button>
               </div>
             </form>
@@ -334,33 +336,33 @@ export default function ManageDepartments() {
       {divModal && (
         <div className="modal-overlay" onClick={() => setDivModal(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
-            <h2>{editDiv ? "Bo'limni tahrirlash" : "Yangi bo'lim qo'shish"}</h2>
+            <h2>{editDiv ? t('div.modal.edit') : t('div.modal.add')}</h2>
             {error && <div className="alert alert-error">{error}</div>}
             <form onSubmit={saveDiv}>
               <div className="form-group">
-                <label>Boshqarma *</label>
+                <label>{t('users.field.department')} *</label>
                 <select className="form-input" value={divForm.department_id}
                   onChange={e => setDivForm({ ...divForm, department_id: e.target.value })} required>
-                  <option value="">— Tanlang —</option>
+                  <option value="">{t('users.select')}</option>
                   {departments.map(d => (
                     <option key={d.id} value={d.id}>{d.name}</option>
                   ))}
                 </select>
               </div>
               <div className="form-group">
-                <label>Bo'lim nomi *</label>
+                <label>{t('div.field.name')}</label>
                 <input className="form-input" value={divForm.name}
                   onChange={e => setDivForm({ ...divForm, name: e.target.value })} required />
               </div>
               <div className="form-group">
-                <label>Tavsif</label>
+                <label>{t('field.description')}</label>
                 <textarea className="form-input" rows={2} value={divForm.description}
                   onChange={e => setDivForm({ ...divForm, description: e.target.value })} />
               </div>
               <div className="modal-actions">
-                <button type="button" className="btn btn-outline" onClick={() => setDivModal(false)}>Bekor qilish</button>
+                <button type="button" className="btn btn-outline" onClick={() => setDivModal(false)}>{t('btn.cancel')}</button>
                 <button type="submit" className="btn btn-primary" disabled={saving}>
-                  {saving ? 'Saqlanmoqda...' : 'Saqlash'}
+                  {saving ? t('btn.saving') : t('btn.save')}
                 </button>
               </div>
             </form>
@@ -372,13 +374,13 @@ export default function ManageDepartments() {
       {membersModal && (
         <div className="modal-overlay" onClick={() => setMembersModal(null)}>
           <div className="modal" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()}>
-            <h2>"{membersModal.name}" bo'limi xodimlari</h2>
+            <h2>{t('div.members.title', { name: membersModal.name })}</h2>
             <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>
-              Xodimlarni belgilash/olib tashlash orqali bo'limga qo'shing yoki chiqaring
+              {t('div.members.hint')}
             </p>
             <div style={{ maxHeight: 340, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 6 }}>
               {allUsers.length === 0 ? (
-                <p style={{ padding: 16, color: 'var(--text-muted)', margin: 0 }}>Xodimlar topilmadi</p>
+                <p style={{ padding: 16, color: 'var(--text-muted)', margin: 0 }}>{t('div.members.empty')}</p>
               ) : (
                 allUsers.map(u => (
                   <label key={u.id} style={{
@@ -397,9 +399,9 @@ export default function ManageDepartments() {
               )}
             </div>
             <div className="modal-actions" style={{ marginTop: 16 }}>
-              <button className="btn btn-outline" onClick={() => setMembersModal(null)}>Bekor qilish</button>
+              <button className="btn btn-outline" onClick={() => setMembersModal(null)}>{t('btn.cancel')}</button>
               <button className="btn btn-primary" onClick={saveMembers} disabled={saving}>
-                {saving ? 'Saqlanmoqda...' : 'Saqlash'}
+                {saving ? t('btn.saving') : t('btn.save')}
               </button>
             </div>
           </div>
@@ -410,9 +412,9 @@ export default function ManageDepartments() {
       {serviceModal && (
         <div className="modal-overlay" onClick={() => setServiceModal(null)}>
           <div className="modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
-            <h2 style={{ marginBottom: 4 }}>🧩 Interaktiv xizmat bo'limi</h2>
+            <h2 style={{ marginBottom: 4 }}>🧩 {t('service.modal.title')}</h2>
             <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>
-              "{serviceModal.name}" bo'limi interaktiv xizmatlar ko'rsatishini belgilash
+              {t('service.modal.subtitle', { name: serviceModal.name })}
             </p>
 
             <div style={{
@@ -427,24 +429,24 @@ export default function ManageDepartments() {
                 <div>
                   <div style={{ fontWeight: 600, marginBottom: 4 }}>
                     {serviceModal.is_service_provider
-                      ? "✅ Bo'lim interaktiv xizmat ko'rsatadi"
-                      : "⚪ Bo'lim interaktiv xizmat ko'rsatmaydi"}
+                      ? t('service.enabled')
+                      : t('service.disabled')}
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                    Belgilangan bo'lsa, bu bo'lim xodimlariga interaktiv arizalarni biriktirish mumkin bo'ladi
+                    {t('service.hint')}
                   </div>
                 </div>
                 <button
                   className={`btn ${serviceModal.is_service_provider ? 'btn-outline' : 'btn-primary'}`}
                   onClick={() => toggleServiceProvider(!serviceModal.is_service_provider)}
                 >
-                  {serviceModal.is_service_provider ? "O'chirish" : "Yoqish"}
+                  {serviceModal.is_service_provider ? t('service.turnOff') : t('service.turnOn')}
                 </button>
               </div>
             </div>
 
             <div className="modal-actions">
-              <button className="btn btn-primary" onClick={() => setServiceModal(null)}>Yopish</button>
+              <button className="btn btn-primary" onClick={() => setServiceModal(null)}>{t('btn.close')}</button>
             </div>
           </div>
         </div>
