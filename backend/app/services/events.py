@@ -14,6 +14,7 @@ TASK_ASSIGNED = 'task_assigned'
 TASK_REVIEW = 'task_review'
 TASK_COMPLETED = 'task_completed'
 TASK_RETURNED = 'task_returned'
+TASK_CANCELLED = 'task_cancelled'
 
 STAGE_ASSIGNED = 'stage_assigned'
 STAGE_REVIEW = 'stage_review'
@@ -137,6 +138,18 @@ def task_status_changed(task, status, actor=None, reason=''):
             event=TASK_RETURNED,
             title='Vazifa qaytarildi',
             body=f'{task.name} — {reason}' if reason else task.name,
+            entity_type='task',
+            entity_id=task.id,
+            actor=actor,
+        )
+
+    if status == 'cancelled':
+        note = (task.cancel_reason or '').strip()
+        return notify(
+            _task_worker_ids(task),
+            event=TASK_CANCELLED,
+            title='Vazifa bekor qilindi',
+            body=f'{task.name} — {note}' if note else task.name,
             entity_type='task',
             entity_id=task.id,
             actor=actor,

@@ -11,6 +11,8 @@ import ManageTeams from './pages/ManageTeams'
 import ManageDepartments from './pages/ManageDepartments'
 import ManageRoles from './pages/ManageRoles'
 import ProjectDetail from './pages/ProjectDetail'
+import Projects from './pages/Projects'
+import Tasks from './pages/Tasks'
 import CreateTask from './pages/CreateTask'
 import TaskDetail from './pages/TaskDetail'
 import UserDashboard from './pages/UserDashboard'
@@ -79,6 +81,10 @@ export default function App() {
           {canView('dashboard') && (
             <Route path="/" element={isDeptAdmin ? <AdminDashboard /> : <UserDashboard />} />
           )}
+          {/* Loyihalar va Vazifalar — holat bo'yicha alohida oynalar bilan.
+              Ro'yxat backend'da rol scope'i bo'yicha filtrlanadi. */}
+          {canView('projects') && <Route path="/projects" element={<Projects />} />}
+          {canView('tasks') && <Route path="/tasks" element={<Tasks />} />}
           {canView('reminders') && <Route path="/reminders" element={<Reminders />} />}
           {canView('work_logs') && <Route path="/work-logs" element={<WorkLogs />} />}
           {canView('department_work_logs') && (

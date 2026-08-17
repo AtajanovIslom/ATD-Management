@@ -59,6 +59,26 @@ def get_tasks():
     return jsonify([t.to_list_dict() for t in tasks])
 
 
+@tasks_bp.route('/counts', methods=['GET'])
+@jwt_required()
+def task_counts():
+    """Holat oynalari sarlavhasidagi sonlar (rol scope'i bo'yicha).
+       Har rolga ochiq — foydalanuvchi faqat o'ziga ko'rinadigan vazifalar
+       sonini oladi."""
+    user_id = int(get_jwt_identity())
+    role, dept_id, div_id = get_scope(get_jwt())
+    tasks = _scoped_tasks(role, dept_id, div_id, user_id)
+    return jsonify({
+        'total': len(tasks),
+        'active': sum(1 for t in tasks if (t.status or 'active') in Task.ACTIVE_STATUSES),
+        'completed': sum(1 for t in tasks if t.status == 'completed'),
+        'cancelled': sum(1 for t in tasks if t.status == 'cancelled'),
+        'review': sum(1 for t in tasks if t.status == 'review'),
+        'returned': sum(1 for t in tasks if t.status == 'returned'),
+        'overdue': sum(1 for t in tasks if t.is_overdue),
+    })
+
+
 @tasks_bp.route('/browse', methods=['GET'])
 @jwt_required()
 def browse_tasks():
@@ -81,11 +101,12 @@ def browse_tasks():
     all_tasks = _scoped_tasks(role, dept_id, div_id, user_id)
 
     # Status
-    # 'active' — barcha ishdagi (active/in_progress/review/returned), completed emas
+    # 'active' — barcha ishdagi (active/in_progress/review/returned);
+    #            tugallangan va bekor qilinganlar bunga kirmaydi
     # boshqa qiymatlar — aynan shu status
     status = (request.args.get('status') or 'all').strip()
     if status == 'active':
-        all_tasks = [t for t in all_tasks if (t.status or '') != 'completed']
+        all_tasks = [t for t in all_tasks if (t.status or 'active') in Task.ACTIVE_STATUSES]
     elif status and status != 'all':
         all_tasks = [t for t in all_tasks if (t.status or '') == status]
 
@@ -118,12 +139,10 @@ def browse_tasks():
     if d_from or d_to:
         def in_range(t):
             ref = None
-            if t.completed_at:
-                ref = t.completed_at.date() if hasattr(t.completed_at, 'date') else t.completed_at
-            elif t.deadline:
-                ref = t.deadline.date() if hasattr(t.deadline, 'date') else t.deadline
-            elif t.start_date:
-                ref = t.start_date.date() if hasattr(t.start_date, 'date') else t.start_date
+            for value in (t.completed_at, t.cancelled_at, t.deadline, t.start_date):
+                if value:
+                    ref = value.date() if hasattr(value, 'date') else value
+                    break
             if not ref:
                 return False
             if d_from and ref < d_from:
@@ -316,8 +335,21 @@ def update_task(task_id):
             # Ijrochi (rahbar bo'lsa ham) "bajardim" deb yuboradi
             if not is_assignee:
                 return jsonify({'error': 'Sizda bu vazifani bajarildi deb yuborish huquqi yo\'q'}), 403
+            if task.status == 'cancelled':
+                return jsonify({'error': "Bekor qilingan vazifa bo'yicha ish yuborib bo'lmaydi"}), 400
             if not TaskReport.query.filter_by(task_id=task.id).first():
                 return jsonify({'error': 'Avval hisobot topshiring'}), 400
+        elif new_status == 'cancelled':
+            # Vazifani faqat rahbar bekor qiladi
+            if not is_admin:
+                return jsonify({'error': 'Faqat rahbar vazifani bekor qiladi'}), 403
+            if task.status == 'completed':
+                return jsonify({'error': "Tugallangan vazifani bekor qilib bo'lmaydi"}), 400
+            task.cancelled_at = datetime.now(timezone.utc)
+            task.cancel_reason = (data.get('cancel_reason') or '').strip()
+            task.completed_at = None
+            log_audit('cancel', 'task', task.id, entity_label=task.name,
+                      details=task.cancel_reason)
         elif new_status in ('completed', 'returned'):
             # Faqat rahbar tasdiqlaydi/qaytaradi
             if not is_admin:
@@ -341,6 +373,16 @@ def update_task(task_id):
             # active/in_progress kabi holatlarga faqat rahbar (yoki o'zi ijrochi)
             if not is_admin and not is_assignee:
                 return jsonify({'error': 'Ruxsat yo\'q'}), 403
+            # Bekor qilingan vazifani ishga qaytarish — faqat rahbar
+            if task.status == 'cancelled':
+                if not is_admin:
+                    return jsonify({'error': 'Faqat rahbar vazifani qayta ochadi'}), 403
+                log_audit('update', 'task', task.id, entity_label=task.name,
+                          details='bekor qilingan vazifa qayta ochildi')
+
+        if new_status != 'cancelled':
+            task.cancelled_at = None
+            task.cancel_reason = ''
 
         task.status = new_status
         events.task_status_changed(task, new_status,
@@ -465,6 +507,8 @@ def reassign_task(task_id):
     task = Task.query.get_or_404(task_id)
     if task.status == 'completed':
         return jsonify({'error': "Yakunlangan vazifani qayta yuklab bo'lmaydi"}), 400
+    if task.status == 'cancelled':
+        return jsonify({'error': "Bekor qilingan vazifani yuklab bo'lmaydi"}), 400
     if task.status == 'review':
         return jsonify({'error': "Tekshiruvdagi vazifa avval tasdiqlansin yoki qaytarilsin"}), 400
 
@@ -626,6 +670,7 @@ def task_stats():
         'review': sum(1 for t in tasks if t.status == 'review'),
         'returned': sum(1 for t in tasks if t.status == 'returned'),
         'completed': sum(1 for t in tasks if t.status == 'completed'),
+        'cancelled': sum(1 for t in tasks if t.status == 'cancelled'),
         'overdue': sum(1 for t in tasks if t.is_overdue),
     })
 
@@ -665,7 +710,10 @@ def task_full_stats():
                 'total': 0, 'completed': 0, 'on_time': 0, 'late': 0, 'in_work': 0,
             }
         p = perf[label]
-        p['total'] += 1
+        # Bekor qilingan vazifa samaradorlikka kirmaydi — u bajarilishi
+        # kutilmagan, jami ishga qo'shilsa ko'rsatkich nohaq pasayardi
+        if t.status != 'cancelled':
+            p['total'] += 1
         if t.status == 'completed':
             p['completed'] += 1
             dl = _strip_tz(t.deadline)
@@ -697,6 +745,7 @@ def task_full_stats():
         'review': sum(1 for t in tasks if t.status == 'review'),
         'returned': sum(1 for t in tasks if t.status == 'returned'),
         'completed': sum(1 for t in tasks if t.status == 'completed'),
+        'cancelled': sum(1 for t in tasks if t.status == 'cancelled'),
         'overdue': sum(1 for t in tasks if t.is_overdue),
         'performance': list(perf.values()),
         'tasks': task_list,

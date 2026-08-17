@@ -150,10 +150,15 @@ export function AuthProvider({ children }) {
   const isDeptAdmin = isAdmin || role === 'department_admin'
   const isAnyAdmin = isDeptAdmin
 
+  // Rol berish oynasida alohida berilgan qo'shimcha huquqlar
+  const extraPerms = user?.permissions || []
+
   // Soddalashtirilgan huquq tekshiruvi
   const can = (permission) => {
     if (!user) return false
     if (isSuperAdmin) return true
+    // Roldan qat'i nazar alohida berilgan huquq (masalan 'project.edit')
+    if (extraPerms.includes(permission)) return true
 
     const adminPerms = [
       'project.create', 'project.edit', 'task.create', 'task.edit',

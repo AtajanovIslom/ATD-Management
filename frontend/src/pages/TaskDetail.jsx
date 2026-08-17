@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useI18n } from '../i18n'
 import { statusLabel } from '../i18n/labels'
+import { statusClass } from '../components/ProjectCard'
 import api from '../api/axios'
 
 const downloadFile = async (url, originalName, errorText) => {
@@ -72,22 +73,20 @@ export default function TaskDetail() {
 
   const download = (f) => downloadFile(f.download_url, f.original_name, t('task.file.downloadFailed'))
 
-  const statusClass = (s) => {
-    if (s === 'active') return 'badge-active'
-    if (s === 'in_progress') return 'badge-active'
-    if (s === 'review') return 'badge-review'
-    if (s === 'returned') return 'badge-on_hold'
-    if (s === 'completed') return 'badge-completed'
-    return 'badge-on_hold'
-  }
-
-  const handleStatusChange = async (newStatus) => {
+  const handleStatusChange = async (newStatus, extra = {}) => {
     try {
-      const res = await api.put(`/tasks/${id}`, { status: newStatus })
+      const res = await api.put(`/tasks/${id}`, { status: newStatus, ...extra })
       setTask(res.data)
     } catch (err) {
       alert(err.response?.data?.error || t('state.error'))
     }
+  }
+
+  /** Vazifani bekor qilish — sabab so'raladi, vazifa "Bekor qilingan" oynasiga o'tadi */
+  const handleCancelTask = () => {
+    const reason = window.prompt(t('task.cancel.reasonPrompt'), '')
+    if (reason === null) return
+    handleStatusChange('cancelled', { cancel_reason: reason })
   }
 
   const handleDelete = async () => {
@@ -181,7 +180,7 @@ export default function TaskDetail() {
   // ijrochi ekanligi rol emas, biriktirish bilan aniqlanadi.
   const canUserReport = (() => {
     if (!task) return false
-    if (task.status === 'completed') return false
+    if (task.status === 'completed' || task.status === 'cancelled') return false
     if (task.assignee_id === user.id) return true
     if (task.assignees?.some(a => a.id === user.id)) return true
     if (!task.assignee_id && !task.assignees?.length && task.team_members?.some(m => m.id === user.id)) return true
@@ -329,6 +328,18 @@ export default function TaskDetail() {
                   ↩ {t('task.returnCompleted')}
                 </button>
               )}
+              {/* Bekor qilish — rahbarga. Tugallangan vazifa bekor qilinmaydi. */}
+              {isAdmin && task.status !== 'completed' && task.status !== 'cancelled' && (
+                <button className="btn btn-danger btn-sm" onClick={handleCancelTask}>
+                  🚫 {t('task.cancelTask')}
+                </button>
+              )}
+              {/* Bekor qilinganini qayta ishga qaytarish */}
+              {isAdmin && task.status === 'cancelled' && (
+                <button className="btn btn-outline btn-sm" onClick={() => handleStatusChange('active')}>
+                  ▶ {t('task.reopen')}
+                </button>
+              )}
             </div>
           </div>
 
@@ -421,6 +432,13 @@ export default function TaskDetail() {
       {task.status === 'returned' && (
         <div className="alert alert-error" style={{ marginBottom: 16 }}>
           ↩ {t('task.returnedNotice')}
+        </div>
+      )}
+
+      {task.status === 'cancelled' && (
+        <div className="alert alert-error" style={{ marginBottom: 16 }}>
+          🚫 {t('task.cancelledNotice')}
+          {task.cancel_reason && <> — {task.cancel_reason}</>}
         </div>
       )}
 

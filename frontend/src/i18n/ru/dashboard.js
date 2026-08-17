@@ -20,6 +20,22 @@ export default {
   'dash.allProjects': 'Все проекты',
   'dash.noProjects': 'Проекты ещё не созданы',
   'dash.allTasks': 'Все задачи',
+  'dash.activeProjects': 'Активные проекты',
+  'dash.activeTasks': 'Активные задачи',
+  'dash.noActiveProjects': 'Нет активных проектов',
+  'dash.noActiveTasks': 'Нет активных задач',
+  'dash.seeAll': 'Все',
+
+  // ── Страница проектов ──
+  'projects.title': 'Проекты',
+  'projects.searchPlaceholder': '🔍 Название проекта или участник...',
+  'projects.emptyTab': 'В этой вкладке нет проектов',
+  'projects.finishedAt': 'Завершён',
+  'projects.readyToFinish': 'Все этапы готовы — можно завершить',
+
+  // ── Страница задач ──
+  'tasks.title': 'Задачи',
+  'tasks.finishedAt': 'Завершена',
   'dash.searchPlaceholder': '🔍 Ф.И.О. сотрудника или табельный номер...',
   'dash.count.review': 'На проверке',
   'dash.count.returned': 'Возвращено',

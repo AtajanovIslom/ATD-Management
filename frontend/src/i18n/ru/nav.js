@@ -1,6 +1,8 @@
 // Левое меню
 export default {
   'nav.dashboard': 'Панель управления',
+  'nav.projects': 'Проекты',
+  'nav.tasks': 'Задачи',
   'nav.reminders': 'Мои напоминания',
   'nav.workLogs': 'Мой ежедневный отчёт',
   'nav.departmentWorkLogs': 'Отчёты сотрудников',

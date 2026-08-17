@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useI18n } from '../i18n'
 import { statusLabel } from '../i18n/labels'
+import { statusClass } from '../components/ProjectCard'
 import api from '../api/axios'
 
 const downloadFile = async (url, originalName) => {
@@ -46,7 +47,7 @@ function DonutChart({ percent, label }) {
 
 export default function ProjectDetail() {
   const { id } = useParams()
-  const { user, isAdmin, isDeptAdmin } = useAuth()
+  const { user, isAdmin, isDeptAdmin, can } = useAuth()
   const { t, formatDate: fmtDate } = useI18n()
   const navigate = useNavigate()
   const [project, setProject] = useState(null)
@@ -151,8 +152,32 @@ export default function ProjectDetail() {
   }
 
   // Loyihani boshqarish huquqi: boshqarma rahbari va yuqori — barcha loyihalar,
-  // bo'lim rahbari — faqat o'zi yaratgan loyiha (backend ham shu qoidada)
-  const canManage = isAdmin || (isDeptAdmin && project?.created_by === user.id)
+  // bo'lim rahbari — faqat o'zi yaratgan loyiha, hamda rol berish oynasida
+  // "Loyihani tahrirlash" huquqi berilgan xodim (backend ham shu qoidada).
+  // Loyihani yakunlash ham shu huquq tarkibiga kiradi.
+  const canManage = isAdmin || (isDeptAdmin && project?.created_by === user.id) || can('project.edit')
+
+  /** Loyihani yakunlash / bekor qilish / nofaol qilish / qayta faollashtirish */
+  const changeProjectStatus = async (status, reason = '') => {
+    try {
+      const res = await api.post(`/projects/${id}/status`, { status, reason })
+      setProject(res.data)
+      setEditForm(f => ({ ...f, status: res.data.status }))
+    } catch (err) {
+      alert(err.response?.data?.error || t('state.error'))
+    }
+  }
+
+  const handleFinish = () => {
+    if (!window.confirm(t('project.finish.confirm'))) return
+    changeProjectStatus('completed')
+  }
+
+  const handleCancelProject = () => {
+    const reason = window.prompt(t('project.cancel.reasonPrompt'), '')
+    if (reason === null) return
+    changeProjectStatus('cancelled', reason)
+  }
 
   const canManageSubStages = (s) => {
     return canManage || s.assignee_id === user.id || s.assignees?.some(a => a.id === user.id) ||
@@ -208,8 +233,11 @@ export default function ProjectDetail() {
 
   const handleEditSave = async () => {
     try {
+      // Holat alohida endpoint orqali o'zgaradi (yakunlash/bekor qilish
+      // tugmalari) — bu yerda yuborilmaydi
+      const { status, ...fields } = editForm
       await api.put(`/projects/${id}`, {
-        ...editForm,
+        ...fields,
         start_date: editForm.start_date ? new Date(editForm.start_date + 'T00:00:00').toISOString() : null,
         deadline: editForm.deadline ? new Date(editForm.deadline + 'T23:59:59').toISOString() : null,
       })
@@ -325,6 +353,13 @@ export default function ProjectDetail() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {/* Loyihani yakunlash — barcha bosqichlar tasdiqlangach chiqadi.
+              Huquqi tahrirlash bilan bir xil. */}
+          {canManage && project.can_finish && (
+            <button className="btn btn-success btn-sm" onClick={handleFinish}>
+              ✅ {t('project.finish')}
+            </button>
+          )}
           {/* Tahrirlash — loyihani boshqaruvchi rahbarga (bo'lim rahbari uchun:
               o'zi yaratgan loyiha). O'chirish esa faqat boshqarma rahbari va
               yuqori rollarga qoladi. */}
@@ -353,14 +388,49 @@ export default function ProjectDetail() {
             <textarea className="form-input" value={editForm.description}
               onChange={e => setEditForm({ ...editForm, description: e.target.value })} />
           </div>
+          {/* Loyiha holati — yakunlash/bekor qilish shu yerdan boshqariladi
+              (tahrirlash huquqi bilan bir xil huquq talab qiladi) */}
           <div className="form-group">
-            <label>{t('field.status')}</label>
-            <select className="form-input" value={editForm.status}
-              onChange={e => setEditForm({ ...editForm, status: e.target.value })}>
-              <option value="active">{t('status.active')}</option>
-              <option value="on_hold">{t('status.on_hold')}</option>
-              <option value="completed">{t('status.completed')}</option>
-            </select>
+            <label>{t('project.statusSection')}</label>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              <span className={`badge ${statusClass(project.status)}`}>
+                {statusText(project.status)}
+              </span>
+              {project.status !== 'completed' && (
+                <button type="button" className="btn btn-success btn-sm"
+                  onClick={handleFinish} disabled={!project.can_finish}
+                  title={project.can_finish ? '' : t('project.finish.needStages')}>
+                  ✅ {t('project.finish')}
+                </button>
+              )}
+              {project.status !== 'cancelled' && (
+                <button type="button" className="btn btn-danger btn-sm" onClick={handleCancelProject}>
+                  🚫 {t('project.cancelProject')}
+                </button>
+              )}
+              {project.status === 'active' && (
+                <button type="button" className="btn btn-outline btn-sm"
+                  onClick={() => changeProjectStatus('inactive')}>
+                  ⏸ {t('project.makeInactive')}
+                </button>
+              )}
+              {project.status !== 'active' && (
+                <button type="button" className="btn btn-outline btn-sm"
+                  onClick={() => changeProjectStatus('active')}>
+                  ▶ {t('project.makeActive')}
+                </button>
+              )}
+            </div>
+            {!project.can_finish && project.status !== 'completed' && (
+              <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
+                {t('project.finish.needStages')}
+              </p>
+            )}
+            {project.cancel_reason && (
+              <p style={{ fontSize: 11, color: 'var(--danger)', marginTop: 6 }}>
+                🚫 {project.cancel_reason}
+              </p>
+            )}
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
             <div className="form-group">
@@ -688,7 +758,7 @@ export default function ProjectDetail() {
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)' }}>
               <span>{t('field.status')}</span>
-              <span className={`badge badge-${project.status === 'active' ? 'active' : project.status === 'completed' ? 'completed' : 'on_hold'}`}>
+              <span className={`badge ${statusClass(project.status)}`}>
                 {statusText(project.status)}
               </span>
             </div>

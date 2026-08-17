@@ -495,9 +495,62 @@ table tr:last-child td {
   color: var(--success);
 }
 
-.badge-on_hold {
+.badge-on_hold, .badge-inactive {
   background: var(--info-bg);
   color: var(--info);
+}
+
+.badge-cancelled {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+
+/* Holat oynalari (Faol / Tugallangan / Bekor qilingan / Nofaol) */
+.status-tabs {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 14px;
+}
+
+.status-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-bottom: -1px;
+}
+
+.status-tab:hover { color: var(--text-primary); }
+
+.status-tab-active {
+  color: var(--text-primary);
+  background: var(--bg-card, rgba(255, 255, 255, 0.04));
+  border-color: var(--border);
+  border-bottom: 1px solid var(--bg-card, transparent);
+}
+
+.status-tab-count {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 10px;
+  background: var(--bg-input, rgba(255, 255, 255, 0.08));
+  color: var(--text-muted);
+}
+
+.status-tab-active .status-tab-count {
+  background: var(--accent, #6366f1);
+  color: #fff;
 }
 
 /* Priority */

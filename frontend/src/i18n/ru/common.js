@@ -44,6 +44,7 @@ export default {
   'status.done': 'Выполнено',
   'status.pending': 'Ожидание',
   'status.on_hold': 'Приостановлено',
+  'status.inactive': 'Неактивно',
   'status.cancelled': 'Отменено',
   'status.overdue': 'Просрочено',
 

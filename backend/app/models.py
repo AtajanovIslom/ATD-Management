@@ -806,9 +806,16 @@ class User(db.Model):
             'division_is_service_provider': bool(div.is_service_provider) if div else False,
             'department_id': self.department_id,
             'department_name': dept.name if dept else None,
+            # Roldan tashqari qo'shimcha berilgan huquqlar (masalan 'project.edit')
+            'permissions': self.extra_permissions(),
             'active_vacation': self._active_vacation_dict(),
             'created_at': self.created_at.isoformat() if self.created_at else None,
         }
+
+    def extra_permissions(self):
+        """Rol berish oynasida qo'shimcha belgilangan huquqlar ro'yxati."""
+        ap = self.admin_permission
+        return list(ap.permissions or []) if ap else []
 
     def _active_vacation_dict(self):
         """Bugun amalda bo'lgan tatil (agar bor bo'lsa) — assignee ro'yxatida
@@ -857,7 +864,30 @@ class Team(db.Model):
 
 
 class Project(db.Model):
+    """Loyiha.
+
+    Holatlar (status):
+      active     — Faol (ish ketyapti)
+      completed  — Tugallangan (barcha bosqichlar bajarilgach rahbar yakunlagan)
+      cancelled  — Bekor qilingan
+      inactive   — Nofaol (vaqtincha to'xtatilgan)
+
+    Eski `on_hold` qiymati `inactive` ga ko'chiriladi (app/__init__.py migratsiyasi).
+    """
     __tablename__ = 'projects'
+
+    STATUS_ACTIVE = 'active'
+    STATUS_COMPLETED = 'completed'
+    STATUS_CANCELLED = 'cancelled'
+    STATUS_INACTIVE = 'inactive'
+    STATUSES = (STATUS_ACTIVE, STATUS_COMPLETED, STATUS_CANCELLED, STATUS_INACTIVE)
+
+    STATUS_LABELS = {
+        STATUS_ACTIVE: 'Faol',
+        STATUS_COMPLETED: 'Tugallangan',
+        STATUS_CANCELLED: 'Bekor qilingan',
+        STATUS_INACTIVE: 'Nofaol',
+    }
 
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(255), nullable=False)
@@ -867,6 +897,9 @@ class Project(db.Model):
     deadline = db.Column(db.DateTime)
     created_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    completed_at = db.Column(db.DateTime)
+    cancelled_at = db.Column(db.DateTime)
+    cancel_reason = db.Column(db.Text, default='')
 
     creator = db.relationship('User', backref='created_projects', lazy=True)
     teams = db.relationship('Team', secondary=project_teams, backref='projects', lazy=True)
@@ -886,13 +919,37 @@ class Project(db.Model):
         done = sum(1 for s in self.stages if s.status == 'completed')
         return round(done / len(self.stages) * 100)
 
+    def all_stages_done(self):
+        """Barcha bosqichlar tasdiqlanganmi — loyihani yakunlash sharti."""
+        return bool(self.stages) and all(s.status == 'completed' for s in self.stages)
+
+    def can_finish(self):
+        """Yakunlash tugmasi ko'rinsinmi: hali yakunlanmagan va bosqichlar tayyor."""
+        return self.status not in (self.STATUS_COMPLETED, self.STATUS_CANCELLED) \
+            and self.all_stages_done()
+
+    def department(self):
+        """Loyiha tegishli bo'lgan boshqarma — yaratuvchisi bo'yicha."""
+        return self.creator.managed_department if self.creator else None
+
+    def _status_fields(self):
+        dept = self.department()
+        return {
+            'status': self.status,
+            'status_label': self.STATUS_LABELS.get(self.status, self.status),
+            'completed_at': self.completed_at.isoformat() if self.completed_at else None,
+            'cancelled_at': self.cancelled_at.isoformat() if self.cancelled_at else None,
+            'cancel_reason': self.cancel_reason or '',
+            'department_id': self.creator.department_id if self.creator else None,
+            'department_name': dept.name if dept else None,
+        }
+
     def to_dict(self):
         cur = self.current_stage()
         return {
             'id': self.id,
             'name': self.name,
             'description': self.description,
-            'status': self.status,
             'start_date': self.start_date.isoformat() if self.start_date else None,
             'deadline': self.deadline.isoformat() if self.deadline else None,
             'created_by': self.created_by,
@@ -903,6 +960,9 @@ class Project(db.Model):
             'attachments': [a.to_dict() for a in self.attachments],
             'current_stage': cur.to_dict() if cur else None,
             'progress': self.progress_percent(),
+            'all_stages_done': self.all_stages_done(),
+            'can_finish': self.can_finish(),
+            **self._status_fields(),
         }
 
     def to_list_dict(self):
@@ -910,14 +970,17 @@ class Project(db.Model):
         return {
             'id': self.id,
             'name': self.name,
-            'status': self.status,
             'start_date': self.start_date.isoformat() if self.start_date else None,
             'deadline': self.deadline.isoformat() if self.deadline else None,
             'created_at': self.created_at.isoformat() if self.created_at else None,
+            'created_by': self.created_by,
+            'creator_name': self.creator.full_name if self.creator else None,
             'teams': [{'id': t.id, 'name': t.name, 'member_count': len(t.members)} for t in self.teams],
             'stage_count': len(self.stages),
             'current_stage_name': cur.name if cur else None,
             'progress': self.progress_percent(),
+            'can_finish': self.can_finish(),
+            **self._status_fields(),
         }
 
 
@@ -1053,7 +1116,19 @@ class DailyReport(db.Model):
 
 
 class Task(db.Model):
+    """Vazifa.
+
+    Holatlar (status):
+      active / in_progress / review / returned — ishdagi (faol) holatlar
+      completed  — Tugallangan (rahbar tasdiqladi)
+      cancelled  — Bekor qilingan (rahbar bekor qildi)
+    """
     __tablename__ = 'tasks'
+
+    STATUS_COMPLETED = 'completed'
+    STATUS_CANCELLED = 'cancelled'
+    # "Faol" oynasiga tushadigan holatlar
+    ACTIVE_STATUSES = ('active', 'in_progress', 'review', 'returned')
 
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(255), nullable=False)
@@ -1066,6 +1141,8 @@ class Task(db.Model):
     created_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     completed_at = db.Column(db.DateTime)
+    cancelled_at = db.Column(db.DateTime)
+    cancel_reason = db.Column(db.Text, default='')
 
     creator = db.relationship('User', foreign_keys=[created_by], backref='created_tasks', lazy=True)
     team = db.relationship('Team', lazy=True)
@@ -1076,6 +1153,9 @@ class Task(db.Model):
 
     @property
     def is_overdue(self):
+        # Bekor qilingan vazifa kechikkan hisoblanmaydi — u endi bajarilmaydi
+        if self.status == self.STATUS_CANCELLED:
+            return False
         now = datetime.utcnow()
         dl = self.deadline.replace(tzinfo=None) if self.deadline and self.deadline.tzinfo else self.deadline
         if dl and self.status == 'completed' and self.completed_at:
@@ -1103,6 +1183,8 @@ class Task(db.Model):
             'creator_name': self.creator.full_name if self.creator else None,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'completed_at': self.completed_at.isoformat() if self.completed_at else None,
+            'cancelled_at': self.cancelled_at.isoformat() if self.cancelled_at else None,
+            'cancel_reason': self.cancel_reason or '',
             'is_overdue': self.is_overdue,
             'reports': [r.to_dict() for r in self.reports],
             'attachments': [a.to_dict() for a in self.attachments],
@@ -1115,12 +1197,15 @@ class Task(db.Model):
             'status': self.status,
             'start_date': self.start_date.isoformat() if self.start_date else None,
             'deadline': self.deadline.isoformat() if self.deadline else None,
+            'completed_at': self.completed_at.isoformat() if self.completed_at else None,
+            'cancelled_at': self.cancelled_at.isoformat() if self.cancelled_at else None,
             'team_name': self.team.name if self.team else None,
             'assignee_id': self.assignee_id,
             'assignee_name': self.assignee.full_name if self.assignee else None,
             'assignee_ids': [a.id for a in self.assignees],
             'assignee_names': [a.full_name for a in self.assignees],
             'created_by': self.created_by,
+            'creator_name': self.creator.full_name if self.creator else None,
             'is_overdue': self.is_overdue,
             'report_count': len(self.reports),
         }

@@ -43,6 +43,8 @@ WORKER_ROLES = ('user', 'agent')
 
 PAGES = [
     {'key': 'dashboard',            'path': '/',                     'icon': '📊',   'label': 'Boshqaruv paneli'},
+    {'key': 'projects',             'path': '/projects',             'icon': '📁',   'label': 'Loyihalar'},
+    {'key': 'tasks',                'path': '/tasks',                'icon': '🗂️',  'label': 'Vazifalar'},
     {'key': 'reminders',            'path': '/reminders',            'icon': '🗓️',  'label': 'Eslatmalarim'},
     {'key': 'work_logs',            'path': '/work-logs',            'icon': '📓',   'label': 'Kunlik hisobotim'},
     {'key': 'department_work_logs', 'path': '/department-work-logs', 'icon': '👥',   'label': 'Xodimlar hisobotlari'},
@@ -64,32 +66,32 @@ PAGE_KEYS = tuple(p['key'] for p in PAGES)
 # Bularni o'zgartirmang: bu "hech kimning ko'rinishi o'zgarmasin" kafolati.
 DEFAULT_ROLE_PAGES = {
     'superadmin': [
-        'dashboard', 'reminders', 'department_work_logs', 'statistics',
+        'dashboard', 'projects', 'tasks', 'reminders', 'department_work_logs', 'statistics',
         'create_project', 'create_task', 'teams', 'departments', 'users',
         'interactive_services', 'interactive_requests', 'roles', 'audit_logs',
     ],
     'director': [
-        'dashboard', 'reminders', 'department_work_logs', 'statistics',
+        'dashboard', 'projects', 'tasks', 'reminders', 'department_work_logs', 'statistics',
         'create_project', 'create_task', 'teams', 'departments', 'users',
         'interactive_services', 'interactive_requests', 'roles', 'audit_logs',
     ],
     # Direktor o'rinbosari barchasini ko'radi, lekin rol bera olmaydi
     'deputy_director': [
-        'dashboard', 'reminders', 'department_work_logs', 'statistics',
+        'dashboard', 'projects', 'tasks', 'reminders', 'department_work_logs', 'statistics',
         'create_project', 'create_task', 'teams', 'departments', 'users',
         'interactive_services', 'interactive_requests', 'audit_logs',
     ],
     'admin': [
-        'dashboard', 'reminders', 'department_work_logs', 'statistics',
+        'dashboard', 'projects', 'tasks', 'reminders', 'department_work_logs', 'statistics',
         'create_project', 'create_task', 'teams', 'departments', 'users',
         'interactive_services', 'interactive_requests',
     ],
     'department_admin': [
-        'dashboard', 'reminders', 'department_work_logs', 'statistics',
+        'dashboard', 'projects', 'tasks', 'reminders', 'department_work_logs', 'statistics',
         'create_project', 'create_task', 'users',
     ],
     'user': [
-        'dashboard', 'reminders', 'work_logs',
+        'dashboard', 'projects', 'tasks', 'reminders', 'work_logs',
     ],
     # Agent — faqat interaktiv arizalar oynasi
     'agent': [
@@ -218,6 +220,21 @@ def can_view_page(role, page_key, is_service_provider=False):
     return page_key in allowed_pages(role, is_service_provider)
 
 
+# Roldan tashqari alohida berilishi mumkin bo'lgan huquqlar. Rol berish
+# oynasida (ManageRoles) katakcha sifatida ko'rinadi va foydalanuvchining
+# `admin_permissions.permissions` ro'yxatida saqlanadi.
+PERMISSION_DEFS = [
+    {
+        'key': 'project.edit',
+        'label': 'Loyihani tahrirlash',
+        'description': "Loyiha ma'lumotlari va bosqichlarini tahrirlash, "
+                       "bosqich ijrosini qabul qilish va loyihani yakunlash",
+    },
+]
+
+PERMISSION_KEYS = tuple(p['key'] for p in PERMISSION_DEFS)
+
+
 def validate_password(password):
     if len(password) < 4:
         return 'Parol kamida 4 ta belgidan iborat bo\'lishi kerak'
@@ -257,6 +274,28 @@ def get_scope(claims):
         claims.get('department_id'),
         claims.get('division_id'),
     )
+
+
+def has_permission(permission, claims=None):
+    """Foydalanuvchida qo'shimcha huquq bormi (rol tekshiruvidan tashqari).
+
+    To'liq kirish rollari (superadmin/direktor/o'rinbosar) uchun doim True.
+    Qolganlar uchun huquq bazadan o'qiladi — JWT uzoq yashaydi (mobil ilovada
+    15 kun), token ichidagi ro'yxatga tayansak endi berilgan huquq xodim
+    qayta kirmaguncha ishlamay turardi.
+    """
+    from flask_jwt_extended import get_jwt, get_jwt_identity
+    from app.models import User
+
+    claims = claims if claims is not None else get_jwt()
+    if claims.get('role', 'user') in FULL_ACCESS_ROLES:
+        return True
+
+    try:
+        user = User.query.get(int(get_jwt_identity()))
+    except (TypeError, ValueError):
+        return False
+    return bool(user) and permission in user.extra_permissions()
 
 
 def dept_user_ids(department_id):

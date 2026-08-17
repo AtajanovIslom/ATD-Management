@@ -44,6 +44,7 @@ export default {
   'status.done': 'Bajarilgan',
   'status.pending': 'Kutilmoqda',
   'status.on_hold': 'To‘xtatilgan',
+  'status.inactive': 'Nofaol',
   'status.cancelled': 'Bekor qilingan',
   'status.overdue': 'Muddati o‘tgan',
 

@@ -7,7 +7,7 @@ from app import db
 from app.models import Project, ProjectStage, ProjectAttachment, DailyReport, ReportAttachment, Team, User, SubStage
 from app.utils import (
     get_scope, is_any_admin, is_admin_or_above, is_superadmin,
-    dept_user_ids, div_user_ids, log_audit, FULL_ACCESS_ROLES,
+    dept_user_ids, div_user_ids, log_audit, has_permission, FULL_ACCESS_ROLES,
 )
 from app.services import events
 
@@ -30,16 +30,19 @@ def can_create_project():
 
 def can_manage_project(project):
     """Mavjud loyihani boshqarish (tahrirlash, bosqich qo'shish/o'chirish,
-       ijroni tekshirish) huquqi:
+       ijroni tekshirish, yakunlash) huquqi:
        - boshqarma rahbari va yuqori: barcha loyihalar
        - bo'lim rahbari: faqat o'zi yaratgan loyiha
+       - "Loyihani tahrirlash" huquqi berilgan xodim: o'ziga ko'rinadigan loyiha
+         (rol berish oynasidagi qo'shimcha huquq)
     """
-    role = get_jwt().get('role', '')
+    claims = get_jwt()
+    role = claims.get('role', '')
     if is_admin_or_above(role):
         return True
     if role == 'department_admin' and project is not None:
         return project.created_by == int(get_jwt_identity())
-    return False
+    return has_permission('project.edit', claims)
 
 
 def _check_division_scope(user_ids, team_ids=()):
@@ -145,6 +148,146 @@ def get_projects():
 
 
     return jsonify([p.to_list_dict() for p in projects])
+
+
+def _project_dept_ids(project):
+    """Loyiha qaysi boshqarmalarga tegishli — yaratuvchi va ijrochilar bo'yicha."""
+    ids = set()
+    if project.creator and project.creator.department_id:
+        ids.add(project.creator.department_id)
+    for s in project.stages:
+        if s.assignee and s.assignee.department_id:
+            ids.add(s.assignee.department_id)
+        for a in s.assignees:
+            if a.department_id:
+                ids.add(a.department_id)
+    for team in project.teams:
+        for m in team.members:
+            if m.department_id:
+                ids.add(m.department_id)
+    return ids
+
+
+def _project_ref_date(p):
+    """Sana filtri uchun tayanch sana: yakunlangan/bekor qilingan sana,
+       aks holda muddat yoki boshlanish sanasi."""
+    for value in (p.completed_at, p.cancelled_at, p.deadline, p.start_date, p.created_at):
+        if value:
+            return value.date() if hasattr(value, 'date') else value
+    return None
+
+
+@projects_bp.route('/browse', methods=['GET'])
+@jwt_required()
+def browse_projects():
+    """Loyihalar sahifasi uchun ro'yxat: holat oynalari + paginatsiya.
+
+    Query params:
+      status  = active|completed|cancelled|inactive|all   (default: active)
+      group   = department|none  (default: none — completed uchun department
+                tanlansa boshqarmalar kesimida guruhlanadi)
+      q       = loyiha nomi yoki ishtirokchi ismi
+      from/to = YYYY-MM-DD  — sana oralig'i
+      page    = 1..N   (default: 1)
+      per_page= 12     (default: 12)
+    """
+    from datetime import date as _date
+    from app.models import Department
+
+    role, dept_id, div_id = get_scope(get_jwt())
+    projects = _scoped_projects(role, dept_id, div_id, int(get_jwt_identity()))
+
+    status = (request.args.get('status') or 'active').strip()
+    if status and status != 'all':
+        projects = [p for p in projects if (p.status or 'active') == status]
+
+    q = (request.args.get('q') or '').strip().lower()
+    if q:
+        def match(p):
+            names = [p.name.lower()]
+            if p.creator:
+                names.append(p.creator.full_name.lower())
+            for team in p.teams:
+                names.append(team.name.lower())
+                names.extend(m.full_name.lower() for m in team.members)
+            for s in p.stages:
+                if s.assignee:
+                    names.append(s.assignee.full_name.lower())
+                names.extend(a.full_name.lower() for a in s.assignees)
+            return any(q in n for n in names)
+        projects = [p for p in projects if match(p)]
+
+    def _pd(s):
+        try:
+            return _date.fromisoformat(s[:10]) if s else None
+        except ValueError:
+            return None
+    d_from = _pd(request.args.get('from'))
+    d_to = _pd(request.args.get('to'))
+    if d_from or d_to:
+        def in_range(p):
+            ref = _project_ref_date(p)
+            if not ref:
+                return False
+            if d_from and ref < d_from:
+                return False
+            if d_to and ref > d_to:
+                return False
+            return True
+        projects = [p for p in projects if in_range(p)]
+
+    total = len(projects)
+
+    # Boshqarmalar kesimida guruhlash (asosan tugallangan loyihalar uchun)
+    if (request.args.get('group') or 'none').strip() == 'department':
+        departments = {d.id: d.name for d in Department.query.order_by(Department.name).all()}
+        by = {}
+        for p in projects:
+            keys = _project_dept_ids(p) or {0}
+            for did in keys:
+                by.setdefault(did, []).append(p)
+        groups = [{
+            'key': did,
+            'label': departments.get(did) or 'Belgilanmagan',
+            'count': len(items),
+            'projects': [p.to_list_dict() for p in items],
+        } for did, items in by.items()]
+        groups.sort(key=lambda g: (g['key'] == 0, g['label']))
+        return jsonify({'total': total, 'group': 'department', 'groups': groups})
+
+    try:
+        page = max(1, int(request.args.get('page', 1)))
+        per_page = min(100, max(1, int(request.args.get('per_page', 12))))
+    except ValueError:
+        page, per_page = 1, 12
+    pages = (total + per_page - 1) // per_page or 1
+    page = min(page, pages)
+    start = (page - 1) * per_page
+
+    return jsonify({
+        'total': total,
+        'page': page,
+        'per_page': per_page,
+        'pages': pages,
+        'projects': [p.to_list_dict() for p in projects[start:start + per_page]],
+    })
+
+
+@projects_bp.route('/counts', methods=['GET'])
+@jwt_required()
+def project_counts():
+    """Holat oynalari sarlavhasidagi sonlar (rol scope'i bo'yicha).
+       Har rolga ochiq — foydalanuvchi baribir faqat o'zi ko'radigan
+       loyihalar sonini oladi."""
+    role, dept_id, div_id = get_scope(get_jwt())
+    projects = _scoped_projects(role, dept_id, div_id, int(get_jwt_identity()))
+    return jsonify({
+        'total': len(projects),
+        'active': sum(1 for p in projects if (p.status or 'active') == 'active'),
+        'completed': sum(1 for p in projects if p.status == 'completed'),
+        'cancelled': sum(1 for p in projects if p.status == 'cancelled'),
+        'inactive': sum(1 for p in projects if p.status in ('inactive', 'on_hold')),
+    })
 
 
 @projects_bp.route('/<int:project_id>', methods=['GET'])
@@ -330,8 +473,10 @@ def update_project(project_id):
         project.name = data['name'].strip()
     if 'description' in data:
         project.description = data['description'].strip()
-    if 'status' in data:
-        project.status = data['status']
+    if 'status' in data and data['status'] != project.status:
+        err = _apply_project_status(project, data['status'], data.get('cancel_reason', ''))
+        if err:
+            return err
     if 'start_date' in data:
         project.start_date = parse_datetime(data['start_date']) if data['start_date'] else None
     if 'deadline' in data:
@@ -344,6 +489,65 @@ def update_project(project_id):
                 project.teams.append(team)
 
     log_audit('update', 'project', project.id, entity_label=project.name)
+    db.session.commit()
+    return jsonify(project.to_dict())
+
+
+def _apply_project_status(project, new_status, reason=''):
+    """Loyiha holatini o'zgartiradi va sana ustunlarini moslaydi.
+
+    Muammo bo'lsa tayyor xato javobini qaytaradi (aks holda None).
+    Yakunlash sharti: barcha bosqichlar tasdiqlangan bo'lishi kerak.
+    """
+    if new_status not in Project.STATUSES:
+        return jsonify({'error': "Noto'g'ri holat"}), 400
+
+    now = datetime.now(timezone.utc)
+
+    if new_status == Project.STATUS_COMPLETED:
+        if not project.stages:
+            return jsonify({'error': "Bosqichsiz loyihani yakunlab bo'lmaydi"}), 400
+        if not project.all_stages_done():
+            left = sum(1 for s in project.stages if s.status != 'completed')
+            return jsonify({
+                'error': f"Avval barcha bosqichlar tasdiqlansin — {left} ta bosqich qoldi"
+            }), 400
+        project.completed_at = now
+        project.cancelled_at = None
+    elif new_status == Project.STATUS_CANCELLED:
+        project.cancelled_at = now
+        project.completed_at = None
+        project.cancel_reason = (reason or '').strip()
+    else:
+        # Faol / nofaol holatga qaytarilganda yakunlash izlari tozalanadi
+        project.completed_at = None
+        project.cancelled_at = None
+        project.cancel_reason = ''
+
+    project.status = new_status
+    log_audit('update', 'project', project.id, entity_label=project.name,
+              details=f"holat: {Project.STATUS_LABELS.get(new_status, new_status)}"
+                      + (f" — {reason.strip()}" if reason and reason.strip() else ''))
+    return None
+
+
+@projects_bp.route('/<int:project_id>/status', methods=['POST'])
+@jwt_required()
+def change_project_status(project_id):
+    """Loyihani yakunlash / bekor qilish / nofaol qilish / qayta faollashtirish.
+
+    Ruxsat loyihani tahrirlash huquqi bilan bir xil — yakunlash tahrirlash
+    funksiyasining bir qismi.
+    """
+    project = Project.query.get_or_404(project_id)
+    if not can_manage_project(project):
+        return jsonify({'error': "Loyihani boshqarish huquqingiz yo'q"}), 403
+
+    data = request.get_json() or {}
+    err = _apply_project_status(project, data.get('status', ''), data.get('reason', ''))
+    if err:
+        return err
+
     db.session.commit()
     return jsonify(project.to_dict())
 
@@ -643,7 +847,8 @@ def get_stats():
     total = len(projects)
     active = sum(1 for p in projects if p.status == 'active')
     completed = sum(1 for p in projects if p.status == 'completed')
-    on_hold = sum(1 for p in projects if p.status == 'on_hold')
+    cancelled = sum(1 for p in projects if p.status == 'cancelled')
+    inactive = sum(1 for p in projects if p.status in ('inactive', 'on_hold'))
     scoped_ids = {p.id for p in projects}
 
     team_performance = {}
@@ -676,7 +881,8 @@ def get_stats():
         'total': total,
         'active': active,
         'completed': completed,
-        'on_hold': on_hold,
+        'cancelled': cancelled,
+        'inactive': inactive,
         'team_performance': list(team_performance.values()),
     })
 

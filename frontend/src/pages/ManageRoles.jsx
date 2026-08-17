@@ -84,6 +84,7 @@ function UserRoles() {
   const [users, setUsers] = useState([])
   const [departments, setDepartments] = useState([])
   const [divisions, setDivisions] = useState([])
+  const [permDefs, setPermDefs] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
 
@@ -92,6 +93,7 @@ function UserRoles() {
   const [newRole, setNewRole] = useState('user')
   const [newDeptId, setNewDeptId] = useState('')
   const [newDivId, setNewDivId] = useState('')
+  const [newPerms, setNewPerms] = useState([])
   const [filteredDivs, setFilteredDivs] = useState([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -101,14 +103,16 @@ function UserRoles() {
   const loadAll = async () => {
     setLoading(true)
     try {
-      const [uRes, dRes] = await Promise.all([
+      const [uRes, dRes, pRes] = await Promise.all([
         api.get('/permissions/users'),
         api.get('/departments'),
+        api.get('/permissions/definitions').catch(() => ({ data: [] })),
       ])
       setUsers(uRes.data.filter(u => u.id !== currentUser.id))
       setDepartments(dRes.data)
       const allDivs = dRes.data.flatMap(d => d.divisions || [])
       setDivisions(allDivs)
+      setPermDefs(pRes.data || [])
     } catch {
       // ignore
     } finally {
@@ -121,8 +125,13 @@ function UserRoles() {
     setNewRole(u.role === 'superadmin' ? 'admin' : u.role)
     setNewDeptId(u.department_id || '')
     setNewDivId(u.division_id || '')
+    setNewPerms(u.permissions || [])
     setError('')
     updateFilteredDivs(u.department_id, divisions)
+  }
+
+  const togglePerm = (key) => {
+    setNewPerms(prev => prev.includes(key) ? prev.filter(p => p !== key) : [...prev, key])
   }
 
   const updateFilteredDivs = (deptId, divList) => {
@@ -167,6 +176,7 @@ function UserRoles() {
         role: newRole,
         department_id: newDeptId ? parseInt(newDeptId) : null,
         division_id: newDivId ? parseInt(newDivId) : null,
+        permissions: newPerms,
       })
       setModal(null)
       await loadAll()
@@ -377,6 +387,39 @@ function UserRoles() {
               </>
             )}
 
+            {/* Qo'shimcha huquqlar — roldan tashqari alohida beriladi
+                (masalan "Loyihani tahrirlash": loyihani tahrirlash va yakunlash) */}
+            {permDefs.length > 0 && (
+              <div className="form-group">
+                <label>{t('roles.field.extraPermissions')}</label>
+                <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8 }}>
+                  {t('roles.extraPermissions.hint')}
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {permDefs.map(p => (
+                    <label key={p.key} style={{
+                      display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer',
+                      padding: 10, borderRadius: 8,
+                      border: `2px solid ${newPerms.includes(p.key) ? 'var(--accent, #6366f1)' : 'var(--border)'}`,
+                      background: newPerms.includes(p.key) ? 'var(--accent-soft, rgba(99,102,241,0.08))' : 'transparent',
+                    }}>
+                      <input type="checkbox" checked={newPerms.includes(p.key)}
+                        onChange={() => togglePerm(p.key)} style={{ marginTop: 2 }} />
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: 13 }}>
+                          {t(`perm.${p.key}`) === `perm.${p.key}` ? p.label : t(`perm.${p.key}`)}
+                        </div>
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                          {t(`perm.${p.key}.desc`) === `perm.${p.key}.desc`
+                            ? p.description : t(`perm.${p.key}.desc`)}
+                        </div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="modal-actions">
               <button className="btn btn-outline" onClick={() => setModal(null)}>{t('btn.cancel')}</button>
               <button className="btn btn-primary" onClick={saveRole} disabled={saving}>
@@ -427,6 +470,15 @@ function UserCard({ u, onEdit, readonly }) {
           }}>
             {(ROLE_ICONS[u.role] || '') + roleLabel(t, u.role)}
           </span>
+          {/* Roldan tashqari berilgan huquqlar ko'rinib tursin */}
+          {(u.permissions || []).map(p => (
+            <span key={p} style={{
+              fontSize: 10, padding: '1px 6px', borderRadius: 3,
+              background: 'rgba(6, 214, 160, 0.15)', color: 'var(--accent)', fontWeight: 600,
+            }}>
+              {t(`perm.${p}`) === `perm.${p}` ? p : t(`perm.${p}`)}
+            </span>
+          ))}
         </div>
         <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
           {u.position || '—'}

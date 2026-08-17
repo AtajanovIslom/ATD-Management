@@ -1,12 +1,13 @@
+from datetime import datetime, timezone
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt, get_jwt_identity
 from app import db
-from app.models import User, Division, RolePage, UserPage
+from app.models import User, Division, RolePage, UserPage, AdminPermission
 from app.utils import (
     get_scope, is_superadmin, can_manage_roles, can_manage_page_access, log_audit,
     PAGES, PAGE_KEYS, LOCKED_ROLES, SERVICE_PROVIDER_PAGES,
     DEFAULT_ROLE_PAGES, role_page_matrix, allowed_pages, allowed_pages_for_user,
-    user_page_override,
+    user_page_override, PERMISSION_DEFS, PERMISSION_KEYS,
 )
 
 permissions_bp = Blueprint('permissions', __name__)
@@ -42,6 +43,25 @@ def get_roles():
     return jsonify([{'value': k, 'label': v} for k, v in ROLE_LABELS.items()])
 
 
+@permissions_bp.route('/definitions', methods=['GET'])
+@jwt_required()
+def get_permission_definitions():
+    """Rol berish oynasida ko'rsatiladigan qo'shimcha huquqlar ro'yxati."""
+    return jsonify(PERMISSION_DEFS)
+
+
+def _set_permissions(user, permissions):
+    """Foydalanuvchining qo'shimcha huquqlarini yangilaydi (commit chaqirmaydi)."""
+    allowed = [p for p in (permissions or []) if p in PERMISSION_KEYS]
+    record = user.admin_permission
+    if record is None:
+        record = AdminPermission(user_id=user.id)
+        db.session.add(record)
+    record.permissions = allowed
+    record.updated_at = datetime.now(timezone.utc)
+    return allowed
+
+
 @permissions_bp.route('/set-role', methods=['POST'])
 @jwt_required()
 def set_role():
@@ -54,6 +74,8 @@ def set_role():
     new_role = data.get('role', 'user')
     dept_id = data.get('department_id') or None
     div_id = data.get('division_id') or None
+    # `permissions` yuborilmasa mavjud huquqlar tegilmaydi (eski mijozlar uchun)
+    permissions = data.get('permissions')
 
     if new_role not in VALID_ROLES:
         return jsonify({'error': "Noto'g'ri rol"}), 400
@@ -64,6 +86,9 @@ def set_role():
         return jsonify({'error': "Bosh admin rolini o'zgartirib bo'lmaydi"}), 400
 
     user.role = new_role
+    granted = None
+    if permissions is not None:
+        granted = _set_permissions(user, permissions)
 
     if new_role == 'admin':
         user.department_id = dept_id
@@ -84,8 +109,10 @@ def set_role():
         else:
             user.department_id = dept_id
 
-    log_audit('set_role', 'user', user.id, entity_label=user.full_name,
-              details=f"role={new_role}, dept_id={user.department_id}, div_id={user.division_id}")
+    details = f"role={new_role}, dept_id={user.department_id}, div_id={user.division_id}"
+    if granted is not None:
+        details += f", huquqlar={','.join(granted) or '—'}"
+    log_audit('set_role', 'user', user.id, entity_label=user.full_name, details=details)
     db.session.commit()
     return jsonify({'message': "Rol o'zgartirildi", 'user': _user_dict(user)})
 
@@ -367,5 +394,6 @@ def _user_dict(u):
         'department_name': dept.name if dept else None,
         'division_id': u.division_id,
         'division_name': div.name if div else None,
+        'permissions': u.extra_permissions(),
         'is_active': u.is_active,
     }

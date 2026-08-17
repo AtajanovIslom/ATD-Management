@@ -163,4 +163,11 @@ export default {
   'pages.overrideHint': "Bu xodimga alohida ruxsat berilgan — roldagi umumiy qiymat unga ta'sir qilmaydi",
   'pages.resetUser': 'Shaxsiy sozlamani olib tashlash',
   'pages.toRole': 'rolga',
+
+  // Roldan tashqari beriladigan qo'shimcha huquqlar
+  'roles.field.extraPermissions': "Qo'shimcha huquqlar",
+  'roles.extraPermissions.hint': "Roldan qat'i nazar alohida beriladigan huquqlar",
+  'perm.project.edit': 'Loyihani tahrirlash',
+  'perm.project.edit.desc': "Loyiha ma'lumotlari va bosqichlarini tahrirlash, "
+    + 'bosqich ijrosini qabul qilish va loyihani yakunlash',
 }

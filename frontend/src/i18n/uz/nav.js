@@ -1,6 +1,8 @@
 // Chap menyu
 export default {
   'nav.dashboard': 'Boshqaruv paneli',
+  'nav.projects': 'Loyihalar',
+  'nav.tasks': 'Vazifalar',
   'nav.reminders': 'Eslatmalarim',
   'nav.workLogs': 'Kunlik hisobotim',
   'nav.departmentWorkLogs': 'Xodimlar hisobotlari',

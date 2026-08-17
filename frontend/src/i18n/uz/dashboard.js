@@ -20,6 +20,22 @@ export default {
   'dash.allProjects': 'Barcha loyihalar',
   'dash.noProjects': 'Hali loyiha yaratilmagan',
   'dash.allTasks': 'Barcha vazifalar',
+  'dash.activeProjects': 'Faol loyihalar',
+  'dash.activeTasks': 'Faol vazifalar',
+  'dash.noActiveProjects': "Faol loyiha yo'q",
+  'dash.noActiveTasks': "Faol vazifa yo'q",
+  'dash.seeAll': 'Barchasi',
+
+  // ── Loyihalar sahifasi ──
+  'projects.title': 'Loyihalar',
+  'projects.searchPlaceholder': '🔍 Loyiha nomi yoki ishtirokchi...',
+  'projects.emptyTab': 'Bu oynada loyiha yo‘q',
+  'projects.finishedAt': 'Yakunlandi',
+  'projects.readyToFinish': 'Barcha bosqichlar tayyor — yakunlash mumkin',
+
+  // ── Vazifalar sahifasi ──
+  'tasks.title': 'Vazifalar',
+  'tasks.finishedAt': 'Tugallandi',
   'dash.searchPlaceholder': '🔍 Xodim FIO yoki tabel...',
   'dash.count.review': 'Tekshiruvda',
   'dash.count.returned': 'Qaytarilgan',

@@ -13,6 +13,9 @@ def _strip(dt):
 
 
 def _summarize(items):
+    # Bekor qilingan ishlar umuman hisobga olinmaydi — ular bajarilishi
+    # kutilmagan, shuning uchun xodim KPI'sini pasaytirmasligi kerak
+    items = [it for it in items if it.status != 'cancelled']
     total = len(items)
     completed = on_time = late = in_progress = 0
     for it in items:

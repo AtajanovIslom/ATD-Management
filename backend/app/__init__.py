@@ -256,6 +256,28 @@ def create_app():
                 CONSTRAINT uq_user_pages_user_page UNIQUE (user_id, page)
             )""",
             "CREATE INDEX IF NOT EXISTS idx_user_pages_user ON user_pages(user_id)",
+            # Loyihani yakunlash / bekor qilish
+            "ALTER TABLE projects ADD COLUMN IF NOT EXISTS completed_at TIMESTAMP",
+            "ALTER TABLE projects ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMP",
+            "ALTER TABLE projects ADD COLUMN IF NOT EXISTS cancel_reason TEXT DEFAULT ''",
+            # Eski "to'xtatilgan" holat endi "nofaol" deb ataladi
+            "UPDATE projects SET status = 'inactive' WHERE status = 'on_hold'",
+            # Yakunlangan eski loyihalarga taxminiy yakunlanish sanasi —
+            # oxirgi bosqich tasdiqlangan vaqt (saralashda bo'sh ustun qolmasin)
+            """UPDATE projects p SET completed_at = (
+                    SELECT MAX(s.completed_at) FROM project_stages s WHERE s.project_id = p.id
+                )
+                WHERE p.status = 'completed' AND p.completed_at IS NULL""",
+            # Vazifani bekor qilish
+            "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMP",
+            "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS cancel_reason TEXT DEFAULT ''",
+            # Rol berishda qo'shimcha huquqlar (masalan "Loyihani tahrirlash")
+            """CREATE TABLE IF NOT EXISTS admin_permissions (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER UNIQUE NOT NULL REFERENCES users(id),
+                permissions JSON DEFAULT '[]',
+                updated_at TIMESTAMP DEFAULT NOW()
+            )""",
         ]
         # Har bir migratsiya o'z tranzaksiyasida bajariladi — bittasi xato bersa
         # keyingilariga ta'sir qilmasin. Ilgari umumiy commit edi, bir SQL rollback
