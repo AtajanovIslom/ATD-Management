@@ -170,4 +170,7 @@ export default {
   'perm.project.edit': 'Loyihani tahrirlash',
   'perm.project.edit.desc': "Loyiha ma'lumotlari va bosqichlarini tahrirlash, "
     + 'bosqich ijrosini qabul qilish va loyihani yakunlash',
+  'perm.task.edit': 'Vazifani tahrirlash',
+  'perm.task.edit.desc': "Vazifa nomi, tavsifi va muddatlarini tahrirlash "
+    + "(yuklash, tasdiqlash va o'chirish rahbarda qoladi)",
 }

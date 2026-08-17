@@ -23,10 +23,14 @@ const downloadFile = async (url, originalName, errorText) => {
 export default function TaskDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { user, isDeptAdmin, isAdmin: isDeptOrHigher } = useAuth()
+  const { user, isDeptAdmin, isAdmin: isDeptOrHigher, can } = useAuth()
   const { t, formatDate: fmtDate } = useI18n()
   // isAdmin = barcha rahbarlar (bo'lim rahbari, boshqarma rahbari, superadmin)
   const isAdmin = isDeptAdmin
+  // Tahrirlash (nomi, tavsifi, muddatlari) — rahbarlar va rol berish oynasida
+  // "Vazifani tahrirlash" huquqi berilgan xodim. Yuklash/tasdiqlash/o'chirish
+  // esa faqat rahbarda qoladi.
+  const canEdit = isAdmin || can('task.edit')
   // Boshqarma rahbari va yuqori (bo'lim rahbari kirmaydi) — tugallanган vazifani
   // qayta yuklash huquqi shu darajaga ega
   const canReturnCompleted = isDeptOrHigher  // useAuth'dagi isAdmin: admin+superadmin
@@ -41,8 +45,7 @@ export default function TaskDetail() {
   const [selectedWorkers, setSelectedWorkers] = useState([])
   const [reassignBusy, setReassignBusy] = useState(false)
   const [editModal, setEditModal] = useState(false)
-  const [editName, setEditName] = useState('')
-  const [editDesc, setEditDesc] = useState('')
+  const [editForm, setEditForm] = useState({ name: '', description: '', start_date: '', deadline: '' })
   const [editBusy, setEditBusy] = useState(false)
 
   useEffect(() => { loadData() }, [id])
@@ -117,18 +120,29 @@ export default function TaskDetail() {
   }
 
   const openEdit = () => {
-    setEditName(task?.name || '')
-    setEditDesc(task?.description || '')
+    setEditForm({
+      name: task?.name || '',
+      description: task?.description || '',
+      // <input type="date"> faqat YYYY-MM-DD qabul qiladi
+      start_date: task?.start_date ? task.start_date.split('T')[0] : '',
+      deadline: task?.deadline ? task.deadline.split('T')[0] : '',
+    })
     setEditModal(true)
   }
 
   const handleEditSave = async () => {
-    if (!editName.trim()) return
+    if (!editForm.name.trim()) return
     setEditBusy(true)
     try {
       const res = await api.put(`/tasks/${id}`, {
-        name: editName.trim(),
-        description: editDesc.trim(),
+        name: editForm.name.trim(),
+        description: editForm.description.trim(),
+        // Boshlanish kun boshidan, muddat esa kun oxiridan hisoblanadi —
+        // vazifa yaratish sahifasidagi qoida bilan bir xil
+        start_date: editForm.start_date
+          ? new Date(editForm.start_date + 'T00:00:00').toISOString() : null,
+        deadline: editForm.deadline
+          ? new Date(editForm.deadline + 'T23:59:59').toISOString() : null,
       })
       setTask(res.data)
       setEditModal(false)
@@ -207,7 +221,7 @@ export default function TaskDetail() {
               👤 {t('task.assignToWorker')}
             </button>
           )}
-          {isAdmin && (
+          {canEdit && (
             <button className="btn btn-outline btn-sm" onClick={openEdit}>
               ✏️ {t('btn.edit')}
             </button>
@@ -225,19 +239,32 @@ export default function TaskDetail() {
             <h2 style={{ marginBottom: 12 }}>✏️ {t('task.edit.title')}</h2>
             <div className="form-group">
               <label>{t('task.field.name')}</label>
-              <input className="form-input" value={editName}
-                onChange={e => setEditName(e.target.value)} autoFocus />
+              <input className="form-input" value={editForm.name}
+                onChange={e => setEditForm({ ...editForm, name: e.target.value })} autoFocus />
             </div>
             <div className="form-group">
               <label>{t('task.edit.description')}</label>
-              <textarea className="form-input" rows={4} value={editDesc}
-                onChange={e => setEditDesc(e.target.value)}
+              <textarea className="form-input" rows={4} value={editForm.description}
+                onChange={e => setEditForm({ ...editForm, description: e.target.value })}
                 placeholder={t('task.edit.description.placeholder')} />
+            </div>
+            {/* Muddatlar — vazifa yaratishdagi kabi ikkita sana */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div className="form-group">
+                <label>{t('task.field.startDate')}</label>
+                <input type="date" className="form-input" value={editForm.start_date}
+                  onChange={e => setEditForm({ ...editForm, start_date: e.target.value })} />
+              </div>
+              <div className="form-group">
+                <label>{t('task.field.deadline')}</label>
+                <input type="date" className="form-input" value={editForm.deadline}
+                  onChange={e => setEditForm({ ...editForm, deadline: e.target.value })} />
+              </div>
             </div>
             <div className="modal-actions">
               <button className="btn btn-outline" onClick={() => setEditModal(false)}>{t('btn.cancel')}</button>
               <button className="btn btn-primary" onClick={handleEditSave}
-                disabled={!editName.trim() || editBusy}>
+                disabled={!editForm.name.trim() || editBusy}>
                 {editBusy ? t('btn.saving') : t('btn.save')}
               </button>
             </div>

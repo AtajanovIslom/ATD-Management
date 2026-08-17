@@ -230,6 +230,12 @@ PERMISSION_DEFS = [
         'description': "Loyiha ma'lumotlari va bosqichlarini tahrirlash, "
                        "bosqich ijrosini qabul qilish va loyihani yakunlash",
     },
+    {
+        'key': 'task.edit',
+        'label': 'Vazifani tahrirlash',
+        'description': "Vazifa nomi, tavsifi va muddatlarini tahrirlash "
+                       "(yuklash, tasdiqlash va o'chirish rahbarda qoladi)",
+    },
 ]
 
 PERMISSION_KEYS = tuple(p['key'] for p in PERMISSION_DEFS)

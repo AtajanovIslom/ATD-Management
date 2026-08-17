@@ -7,7 +7,7 @@ from app import db
 from app.models import Task, TaskReport, TaskAttachment, ReportAttachment, Team, User
 from app.utils import (
     get_scope, is_any_admin, is_admin_or_above, is_superadmin,
-    dept_user_ids, div_user_ids, log_audit,
+    dept_user_ids, div_user_ids, log_audit, has_permission,
 )
 from app.services import events
 
@@ -19,6 +19,16 @@ tasks_bp = Blueprint('tasks', __name__)
 
 def parse_datetime(s):
     return datetime.fromisoformat(s.replace('Z', '+00:00'))
+
+
+def can_edit_task(claims=None):
+    """Vazifa ma'lumotlarini (nomi, tavsifi, muddatlari) tahrirlash huquqi:
+       rahbarlar va rol berish oynasida "Vazifani tahrirlash" huquqi
+       berilgan xodim. Yuklash/tasdiqlash/o'chirish bunga kirmaydi —
+       ular rahbarda qoladi.
+    """
+    claims = claims if claims is not None else get_jwt()
+    return is_any_admin(claims.get('role', '')) or has_permission('task.edit', claims)
 
 
 def _scoped_tasks(role, dept_id, div_id, user_id):
@@ -388,11 +398,25 @@ def update_task(task_id):
         events.task_status_changed(task, new_status,
                                    reason=(data.get('return_reason') or '').strip())
 
-    if is_any_admin(claims.get('role', '')):
-        if 'name' in data:
-            task.name = data['name']
+    # Vazifa ma'lumotlarini tahrirlash — rahbarlar va "Vazifani tahrirlash"
+    # huquqi berilgan xodim. Muddatlar ham shu yerda o'zgaradi.
+    if can_edit_task(claims):
+        changed = []
+        if 'name' in data and data['name'].strip():
+            task.name = data['name'].strip()
+            changed.append('nomi')
         if 'description' in data:
             task.description = data['description']
+            changed.append('tavsifi')
+        if 'start_date' in data:
+            task.start_date = parse_datetime(data['start_date']) if data['start_date'] else None
+            changed.append('boshlash sanasi')
+        if 'deadline' in data:
+            task.deadline = parse_datetime(data['deadline']) if data['deadline'] else None
+            changed.append('muddati')
+        if changed:
+            log_audit('update', 'task', task.id, entity_label=task.name,
+                      details=', '.join(changed))
 
     db.session.commit()
     return jsonify(task.to_dict())
