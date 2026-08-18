@@ -278,6 +278,17 @@ def create_app():
                 permissions JSON DEFAULT '[]',
                 updated_at TIMESTAMP DEFAULT NOW()
             )""",
+            # Rol ↔ qo'shimcha huquq matritsasi. Bo'sh jadval = hech bir rolga
+            # qo'shimcha huquq berilmagan, ya'ni avvalgi xatti-harakat.
+            """CREATE TABLE IF NOT EXISTS role_permissions (
+                id SERIAL PRIMARY KEY,
+                role VARCHAR(30) NOT NULL,
+                permission VARCHAR(50) NOT NULL,
+                allowed BOOLEAN NOT NULL DEFAULT TRUE,
+                updated_at TIMESTAMP DEFAULT NOW(),
+                CONSTRAINT uq_role_permissions_role_perm UNIQUE (role, permission)
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_role_permissions_role ON role_permissions(role)",
         ]
         # Har bir migratsiya o'z tranzaksiyasida bajariladi — bittasi xato bersa
         # keyingilariga ta'sir qilmasin. Ilgari umumiy commit edi, bir SQL rollback

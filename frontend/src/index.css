@@ -79,6 +79,35 @@ a { color: var(--primary); text-decoration: none; }
   min-height: 100vh;
 }
 
+/* Menyuni ochish tugmasi — faqat tor ekranda ko'rinadi */
+.nav-toggle {
+  display: none;
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 120;
+  width: 42px;
+  height: 42px;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  line-height: 1;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-light);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  cursor: pointer;
+  box-shadow: var(--shadow);
+}
+
+.nav-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 99;
+  background: rgba(0, 0, 0, 0.5);
+}
+
 /* Sidebar */
 .sidebar {
   width: 220px;
@@ -229,6 +258,10 @@ a { color: var(--primary); text-decoration: none; }
 
 .main-content {
   flex: 1;
+  /* Flex elementining standart `min-width: auto` qiymati uni ichidagi keng
+     jadval bo'yicha cho'zib yuborardi — natijada `overflow-x: auto` bo'lgan
+     idish ichida emas, butun sahifa yonga siljirdi. */
+  min-width: 0;
   margin-left: 220px;
   padding: 24px 28px;
   min-height: 100vh;
@@ -1826,4 +1859,211 @@ code {
 @keyframes toast-out {
   from { opacity: 1; transform: translateX(0); }
   to   { opacity: 0; transform: translateX(24px); }
+}
+
+/* =====================================================================
+   /roles — rol, sahifa va huquqlar sahifasi
+   Keng ekranda matritsa jadval, tor ekranda kartochka ko'rinishida
+   chiziladi (ManageRoles.jsx dagi useIsNarrow hooki almashtiradi).
+   ===================================================================== */
+
+.roles-tabs {
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+}
+.roles-tabs .btn { flex: 1; min-width: 0; font-size: 13px; }
+
+/* Sarlavha + o'ng tarafdagi boshqaruv (segment tugmalari) */
+.roles-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.roles-head h1 { font-size: 24px; font-weight: 700; color: var(--text-white); }
+.roles-head__text { flex: 1 1 260px; min-width: 0; }
+.roles-head__sub { color: var(--text-muted); font-size: 14px; margin-top: 4px; }
+
+/* Segment almashtirgich: Sahifalar | Huquqlar */
+.seg {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.seg button {
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 14px;
+  border-radius: 7px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.seg button:hover { color: var(--text-primary); }
+.seg button[aria-pressed="true"] {
+  background: var(--primary);
+  color: #fff;
+  box-shadow: 0 2px 10px var(--primary-glow);
+}
+
+/* Qidiruv qatori */
+.roles-toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.roles-toolbar .form-input { flex: 1 1 240px; min-width: 0; max-width: 360px; }
+
+/* Xodim qatori (rol berish tabi) */
+.role-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  padding: 9px 11px;
+  margin-bottom: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-input);
+}
+.role-user__main { flex: 1 1 200px; min-width: 0; }
+.role-user__name {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  font-size: 14px; font-weight: 500; color: var(--text-primary);
+}
+.role-user__meta { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+.role-chip {
+  font-size: 10px; font-weight: 700; padding: 2px 7px;
+  border-radius: 4px; white-space: nowrap;
+}
+
+/* Guruh sarlavhalari (boshqarma / bo'lim) */
+.role-group { font-size: 15px; margin: 0 0 12px 0; display: flex; align-items: center; gap: 8px; }
+.role-group__count { font-size: 12px; color: var(--text-muted); font-weight: 400; }
+.role-subgroup { margin: 8px 0 0 16px; padding-left: 12px; border-left: 2px solid var(--border); }
+.role-subgroup__title {
+  padding: 6px 0; font-size: 12px; font-weight: 600; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+
+/* Rol tanlash kartochkalari (modal ichida) */
+.role-picker { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px; margin-top: 8px; }
+.role-option {
+  display: flex; align-items: flex-start; gap: 8px; cursor: pointer;
+  padding: 12px; border-radius: 8px; border: 2px solid var(--border);
+  transition: border-color .15s, background .15s;
+}
+.role-option--on { border-color: var(--primary); background: var(--primary-glow); }
+.role-option__title { font-weight: 600; font-size: 13px; color: var(--text-primary); }
+.role-option__desc { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+/* ── Matritsa: keng ekran uchun jadval ── */
+.matrix-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.matrix-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.matrix-table th, .matrix-table td { border-bottom: 1px solid var(--border); }
+.matrix-table thead th { border-bottom-width: 2px; }
+.matrix-table .col-role {
+  position: sticky; left: 0; z-index: 1;
+  text-align: left; padding: 8px 10px; min-width: 180px;
+  background: var(--bg-card);
+}
+.matrix-table tr.is-changed .col-role,
+.matrix-table tr.is-changed td { background: var(--primary-glow); }
+.matrix-table .col-head {
+  padding: 8px 6px; font-weight: 600; font-size: 11px;
+  min-width: 82px; vertical-align: bottom;
+}
+.matrix-table .col-cell { text-align: center; padding: 8px 6px; }
+.matrix-table .col-actions { min-width: 110px; padding: 8px 6px; white-space: nowrap; }
+.matrix-table input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
+.matrix-table input[type="checkbox"]:disabled { cursor: not-allowed; }
+
+/* ── Matritsa: tor ekran uchun kartochka ── */
+.matrix-cards { display: flex; flex-direction: column; gap: 12px; }
+.matrix-card { border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; }
+.matrix-card--changed { border-color: var(--primary); background: var(--primary-glow); }
+.matrix-card--user { margin-left: 10px; border-left-width: 3px; }
+.matrix-card__head {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  justify-content: space-between; margin-bottom: 10px;
+}
+.matrix-card__title { display: flex; align-items: center; gap: 7px; font-weight: 600; font-size: 14px; color: var(--text-primary); }
+.matrix-card__actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* Ruxsat katakchalari — ikkala ko'rinishda ham ishlatiladi */
+.access-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 6px; }
+.access-toggle {
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 10px; border: 1px solid var(--border); border-radius: 8px;
+  font-size: 12px; color: var(--text-secondary); cursor: pointer;
+  background: var(--bg-input);
+}
+.access-toggle--on { border-color: var(--primary); color: var(--text-primary); background: var(--primary-glow); }
+.access-toggle--locked { opacity: .65; cursor: not-allowed; }
+.access-toggle input { width: 15px; height: 15px; flex-shrink: 0; }
+.access-toggle__text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.access-toggle__badge {
+  font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 3px;
+  background: var(--info-bg); color: var(--info); white-space: nowrap;
+}
+
+/* Rol qatoridagi "N ta foydalanuvchi" tugmasi */
+.matrix-expand {
+  margin-top: 3px; padding: 0; border: none; background: none;
+  font: inherit; font-size: 11px; color: var(--primary);
+  cursor: pointer; text-decoration: underline;
+}
+.matrix-expand:disabled { color: var(--text-muted); cursor: default; text-decoration: none; }
+
+/* Saqlash paneli */
+.matrix-savebar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.matrix-savebar__status { flex: 1 1 200px; min-width: 0; font-size: 12px; color: var(--text-muted); }
+
+@media (max-width: 720px) {
+  .roles-tabs { flex-direction: column; }
+  .roles-head h1 { font-size: 20px; }
+  .roles-toolbar .form-input { max-width: none; }
+  .seg { width: 100%; }
+  .seg button { flex: 1; padding: 8px 10px; }
+  .role-subgroup { margin-left: 6px; padding-left: 8px; }
+  .role-user { padding: 8px; }
+  .role-user .btn { width: 100%; }
+  .matrix-card--user { margin-left: 0; }
+  .matrix-savebar .btn { flex: 1 1 140px; }
+}
+
+@media (max-width: 480px) {
+  .access-grid { grid-template-columns: 1fr; }
+  .role-picker { grid-template-columns: 1fr; }
+}
+
+
+/* =====================================================================
+   Tor ekran: yon menyu chetga yashirinadi, kontent butun enlikni oladi.
+   Bularsiz 220px lik doimiy menyu telefonda sahifaga ~150px joy qoldirardi.
+   ===================================================================== */
+@media (max-width: 900px) {
+  .sidebar {
+    width: 260px;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+  }
+  .sidebar--open {
+    transform: translateX(0);
+    box-shadow: 0 0 40px rgba(0, 0, 0, 0.45);
+  }
+  .nav-toggle { display: inline-flex; }
+  .nav-backdrop { display: block; }
+  .main-content {
+    margin-left: 0;
+    padding: 66px 14px 24px;
+  }
+  .page-header { flex-wrap: wrap; gap: 10px; }
 }

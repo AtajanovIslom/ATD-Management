@@ -108,12 +108,13 @@ def _check_no_vacation(user_ids):
 def _scoped_projects(role, dept_id, div_id, user_id):
     """Rol bo'yicha ko'rinadigan loyihalar (ro'yxat va statistika uchun umumiy).
        - Superadmin/direksiya: barcha loyihalar
+       - "Barcha loyihalarni ko'rish" huquqi berilgan xodim: barcha loyihalar
        - Boshqarma rahbari (admin): o'z boshqarmasi + superadmin yaratganlar
        - Bo'lim rahbari: o'zi yaratgan + biriktirilgan loyihalar
        - Oddiy xodim: faqat biriktirilgan loyihalar (o'ziga, guruhiga yoki
          bosqichda ijrochilikka biriktirilgan)
     """
-    if is_superadmin(role):
+    if is_superadmin(role) or has_permission('project.view_all'):
         return Project.query.order_by(Project.created_at.desc()).all()
     if role == 'admin' and dept_id:
         uid_set = dept_user_ids(dept_id); uid_set.add(user_id)
@@ -555,9 +556,12 @@ def change_project_status(project_id):
 @projects_bp.route('/<int:project_id>', methods=['DELETE'])
 @jwt_required()
 def delete_project(project_id):
-    # Loyihani o'chirish faqat boshqarma rahbari va yuqori rollarga.
-    # Bo'lim rahbari (department_admin) loyihani faqat tahrirlaydi, o'chira olmaydi.
-    if not is_admin_or_above(get_jwt().get('role', '')):
+    # Loyihani o'chirish — boshqarma rahbari va yuqori rollarga, hamda
+    # "Loyihani o'chirish" huquqi alohida berilgan xodimga (/roles sahifasida
+    # rol yoki xodim darajasida beriladi). Bo'lim rahbari bu huquqsiz faqat
+    # tahrirlaydi, o'chira olmaydi.
+    claims = get_jwt()
+    if not is_admin_or_above(claims.get('role', '')) and not has_permission('project.delete', claims):
         return jsonify({'error': "Loyihani o'chirish huquqingiz yo'q"}), 403
 
     project = Project.query.get_or_404(project_id)

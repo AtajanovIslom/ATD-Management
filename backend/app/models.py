@@ -760,6 +760,37 @@ class UserPage(db.Model):
         }
 
 
+class RolePermission(db.Model):
+    """Rol ↔ qo'shimcha huquq matritsasi (masalan "Loyihani o'chirish").
+
+    Ilgari qo'shimcha huquqlar faqat bitta xodimga berilardi
+    (`admin_permissions`). Bir roldagi hamma xodimga bir xil huquq kerak
+    bo'lgan holat ko'p uchragani uchun rol darajasi qo'shildi. Yozuv
+    bo'lmasa — o'sha rolga qo'shimcha huquq berilmagan, ya'ni bo'sh jadval
+    avvalgi xatti-harakatning aynan o'zi.
+    """
+    __tablename__ = 'role_permissions'
+
+    id = db.Column(db.Integer, primary_key=True)
+    role = db.Column(db.String(30), nullable=False, index=True)
+    permission = db.Column(db.String(50), nullable=False)
+    allowed = db.Column(db.Boolean, default=True, nullable=False)
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc),
+                           onupdate=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        db.UniqueConstraint('role', 'permission', name='uq_role_permissions_role_perm'),
+    )
+
+    def to_dict(self):
+        return {
+            'role': self.role,
+            'permission': self.permission,
+            'allowed': bool(self.allowed),
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
 class User(db.Model):
     __tablename__ = 'users'
 
@@ -806,16 +837,23 @@ class User(db.Model):
             'division_is_service_provider': bool(div.is_service_provider) if div else False,
             'department_id': self.department_id,
             'department_name': dept.name if dept else None,
-            # Roldan tashqari qo'shimcha berilgan huquqlar (masalan 'project.edit')
-            'permissions': self.extra_permissions(),
+            # Amaldagi qo'shimcha huquqlar (masalan 'project.edit') — rolga
+            # berilgani va xodimning shaxsiysi birgalikda. Frontend `can()`
+            # shu ro'yxatga qaraydi.
+            'permissions': self.effective_permissions(),
             'active_vacation': self._active_vacation_dict(),
             'created_at': self.created_at.isoformat() if self.created_at else None,
         }
 
     def extra_permissions(self):
-        """Rol berish oynasida qo'shimcha belgilangan huquqlar ro'yxati."""
+        """Aynan shu xodimga alohida berilgan huquqlar (roldan tashqari)."""
         ap = self.admin_permission
         return list(ap.permissions or []) if ap else []
+
+    def effective_permissions(self):
+        """Amaldagi huquqlar: roliga berilgani + shaxsiy berilgani."""
+        from app.utils import effective_permissions
+        return effective_permissions(self)
 
     def _active_vacation_dict(self):
         """Bugun amalda bo'lgan tatil (agar bor bo'lsa) — assignee ro'yxatida

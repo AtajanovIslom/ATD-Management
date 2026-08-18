@@ -76,6 +76,9 @@ export function AuthProvider({ children }) {
     return saved ? JSON.parse(saved) : null
   })
   const [pages, setPages] = useState(() => readCache('page_access', null))
+  // Qo'shimcha huquqlar (project.delete, project.view_all, ...) — sahifalar
+  // bilan birga har ochilishda serverdan yangilanadi
+  const [perms, setPerms] = useState(() => readCache('extra_perms', null))
 
   // Har ochilishda va foydalanuvchi almashganda ruxsatlar qayta so'raladi —
   // Bosh Administrator matritsani o'zgartirsa, xodim qayta login qilmasdan
@@ -89,6 +92,10 @@ export function AuthProvider({ children }) {
         const list = Array.isArray(res.data.pages) ? res.data.pages : []
         setPages(list)
         localStorage.setItem('page_access', JSON.stringify(list))
+        if (Array.isArray(res.data.permissions)) {
+          setPerms(res.data.permissions)
+          localStorage.setItem('extra_perms', JSON.stringify(res.data.permissions))
+        }
       })
       .catch(() => {
         // Server javob bermadi — keshdagi qiymat bo'lsa o'sha qoladi, aks holda
@@ -110,7 +117,9 @@ export function AuthProvider({ children }) {
     })
     // Oldingi foydalanuvchining ruxsatlari yangi hisobga o'tib ketmasin
     localStorage.removeItem('page_access')
+    localStorage.removeItem('extra_perms')
     setPages(null)
+    setPerms(null)
     setUser(res.data.user)
     return res.data.user
   }
@@ -119,10 +128,12 @@ export function AuthProvider({ children }) {
     localStorage.removeItem('token')
     localStorage.removeItem('user')
     localStorage.removeItem('page_access')
+    localStorage.removeItem('extra_perms')
     Object.keys(sessionStorage).forEach(k => {
       if (k.startsWith('reminder_notif_shown_')) sessionStorage.removeItem(k)
     })
     setPages(null)
+    setPerms(null)
     setUser(null)
   }
 
@@ -130,7 +141,9 @@ export function AuthProvider({ children }) {
     localStorage.setItem('token', token)
     localStorage.setItem('user', JSON.stringify(userData))
     localStorage.removeItem('page_access')
+    localStorage.removeItem('extra_perms')
     setPages(null)
+    setPerms(null)
     setUser(userData)
   }
 
@@ -150,8 +163,9 @@ export function AuthProvider({ children }) {
   const isDeptAdmin = isAdmin || role === 'department_admin'
   const isAnyAdmin = isDeptAdmin
 
-  // Rol berish oynasida alohida berilgan qo'shimcha huquqlar
-  const extraPerms = user?.permissions || []
+  // Qo'shimcha huquqlar — /roles sahifasida rol yoki xodim darajasida
+  // beriladi. Server javobi ustun, u kelmaguncha login paytidagi ro'yxat.
+  const extraPerms = Array.isArray(perms) ? perms : (user?.permissions || [])
 
   // Soddalashtirilgan huquq tekshiruvi
   const can = (permission) => {
@@ -161,7 +175,8 @@ export function AuthProvider({ children }) {
     if (extraPerms.includes(permission)) return true
 
     const adminPerms = [
-      'project.create', 'project.edit', 'task.create', 'task.edit',
+      'project.create', 'project.edit', 'project.delete',
+      'task.create', 'task.edit',
       'user.view', 'user.create', 'user.edit', 'user.delete',
       'dept.view', 'div.view', 'stats.view',
     ]

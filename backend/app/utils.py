@@ -231,6 +231,18 @@ PERMISSION_DEFS = [
                        "bosqich ijrosini qabul qilish va loyihani yakunlash",
     },
     {
+        'key': 'project.delete',
+        'label': "Loyihani o'chirish",
+        'description': "Loyihani butunlay o'chirish — bosqichlari, hisobotlari "
+                       "va biriktirilgan fayllari bilan birga",
+    },
+    {
+        'key': 'project.view_all',
+        'label': "Barcha loyihalarni ko'rish",
+        'description': "O'ziga biriktirilmagan bo'lsa ham tashkilotdagi barcha "
+                       "loyihalarni ro'yxatda va statistikada ko'rish",
+    },
+    {
         'key': 'task.edit',
         'label': 'Vazifani tahrirlash',
         'description': "Vazifa nomi, tavsifi va muddatlarini tahrirlash "
@@ -239,6 +251,84 @@ PERMISSION_DEFS = [
 ]
 
 PERMISSION_KEYS = tuple(p['key'] for p in PERMISSION_DEFS)
+
+
+# =========================================================================
+# ROL ↔ HUQUQ MATRITSASI
+#
+# Huquqlar ilgari faqat bitta xodimga berilardi (admin_permissions). Endi
+# ular rol darajasida ham beriladi: `role_permissions` jadvalidagi yozuvlar
+# o'sha roldagi barcha xodimlarga tegishli bo'ladi. Xodimning shaxsiy
+# huquqlari esa rol qiymati ustiga qo'shiladi (olib tashlamaydi).
+#
+# Standart holat — bo'sh jadval, ya'ni hech bir rolga qo'shimcha huquq
+# berilmagan (avvalgi xatti-harakat aynan saqlanadi).
+# =========================================================================
+
+DEFAULT_ROLE_PERMISSIONS = {role: [] for role in ROLES}
+
+
+def _sorted_permissions(keys):
+    order = {k: i for i, k in enumerate(PERMISSION_KEYS)}
+    return sorted({k for k in keys if k in PERMISSION_KEYS}, key=lambda k: order.get(k, 999))
+
+
+def role_permission_matrix():
+    """Barcha rollar uchun amaldagi huquqlar: {role: [permission_key, ...]}.
+
+    Jadval hali yaratilmagan yoki bo'sh bo'lsa — barcha rollar uchun bo'sh
+    ro'yxat qaytadi. To'liq kirish rollarida huquqlar doim to'liq.
+    """
+    matrix = {role: [] for role in ROLES}
+
+    try:
+        from app.models import RolePermission
+        rows = RolePermission.query.all()
+    except Exception:
+        # Jadval hali yaratilmagan bo'lsa — standart (bo'sh) qiymat bilan
+        # davom etamiz. rollback() shart: xato bergan tranzaksiya ochiq
+        # qolsa, shu so'rovdagi keyingi SQL lar ham rad etilardi.
+        try:
+            from app import db as _db
+            _db.session.rollback()
+        except Exception:
+            pass
+        rows = []
+
+    for r in rows:
+        if r.allowed and r.permission in PERMISSION_KEYS:
+            matrix.setdefault(r.role, []).append(r.permission)
+
+    for role in matrix:
+        matrix[role] = _sorted_permissions(matrix[role])
+
+    for role in FULL_ACCESS_ROLES:
+        matrix[role] = list(PERMISSION_KEYS)
+
+    return matrix
+
+
+def role_permissions(role):
+    """Bitta rolga berilgan qo'shimcha huquqlar"""
+    if role in FULL_ACCESS_ROLES:
+        return list(PERMISSION_KEYS)
+    return role_permission_matrix().get(role, [])
+
+
+def effective_permissions(user):
+    """Xodimning amaldagi qo'shimcha huquqlari: roldan olingani + shaxsiysi.
+
+    Sahifa ruxsatidan farqli o'laroq shaxsiy huquq roldagini almashtirmaydi,
+    ustiga qo'shiladi — rolga berilgan huquqni bitta xodimdan olib qo'yish
+    tartibi kerak bo'lmadi, kerak bo'lsa rol o'zgartiriladi.
+    """
+    if user is None:
+        return []
+    if user.role in FULL_ACCESS_ROLES:
+        return list(PERMISSION_KEYS)
+    return _sorted_permissions(
+        list(role_permissions(user.role)) + list(user.extra_permissions())
+    )
 
 
 def validate_password(password):
@@ -289,6 +379,9 @@ def has_permission(permission, claims=None):
     Qolganlar uchun huquq bazadan o'qiladi — JWT uzoq yashaydi (mobil ilovada
     15 kun), token ichidagi ro'yxatga tayansak endi berilgan huquq xodim
     qayta kirmaguncha ishlamay turardi.
+
+    Huquq ikki manbadan kelishi mumkin: rolga berilgani (role_permissions)
+    yoki xodimning shaxsiysi (admin_permissions).
     """
     from flask_jwt_extended import get_jwt, get_jwt_identity
     from app.models import User
@@ -300,8 +393,11 @@ def has_permission(permission, claims=None):
     try:
         user = User.query.get(int(get_jwt_identity()))
     except (TypeError, ValueError):
-        return False
-    return bool(user) and permission in user.extra_permissions()
+        user = None
+    if user is None:
+        # Foydalanuvchi topilmadi — faqat JWT dagi roldan berilgani qoladi
+        return permission in role_permissions(claims.get('role', 'user'))
+    return permission in effective_permissions(user)
 
 
 def dept_user_ids(department_id):

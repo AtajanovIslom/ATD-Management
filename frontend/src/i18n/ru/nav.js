@@ -17,5 +17,6 @@ export default {
   'nav.interactiveRequests': 'Интерактивные заявки',
   'nav.roles': 'Роли и права',
   'nav.auditLogs': 'Журнал аудита',
+  'nav.menu': 'Меню',
   'nav.logout': 'Выход',
 }

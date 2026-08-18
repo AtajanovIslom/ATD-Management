@@ -140,7 +140,7 @@ export default {
   'roles.desc.agent': "Faqat interaktiv arizalar oynasini ko'radi",
 
   'roles.tab.users': 'Foydalanuvchilarga rol berish',
-  'roles.tab.pages': 'Rol va sahifalar',
+  'roles.tab.pages': 'Sahifa va huquqlar',
 
   // ── Rol ↔ sahifa matritsasi ──
   'pages.title': "Rol bo'yicha sahifa ko'rinishi",
@@ -152,7 +152,7 @@ export default {
   'pages.reset': 'Standart holatga qaytarish',
   'pages.resetAll': 'Hammasini standart holatga qaytarish',
   'pages.resetConfirm': "Barcha rollar uchun sahifa ko'rinishi kodda yozilgan standart holatga qaytariladi. Davom etasizmi?",
-  'pages.unsaved': "{n} ta rolda saqlanmagan o'zgarish bor",
+  'pages.unsaved': "Saqlanmagan o'zgarish: {n} ta",
   'pages.saved': "Saqlandi — o'zgarish xodimlar sahifani yangilaganda kuchga kiradi",
   'pages.hint': "Belgini olib tashlasangiz, o'sha rol menyuda bu bandni ko'rmaydi",
   'pages.locked': "Bosh Administrator qatorini o'zgartirib bo'lmaydi",
@@ -163,6 +163,22 @@ export default {
   'pages.overrideHint': "Bu xodimga alohida ruxsat berilgan — roldagi umumiy qiymat unga ta'sir qilmaydi",
   'pages.resetUser': 'Shaxsiy sozlamani olib tashlash',
   'pages.toRole': 'rolga',
+  'pages.noUsers': "Bu rolda faol xodim yo'q",
+
+  // ── Rol ↔ huquq matritsasi (sahifalar bilan bitta oynada) ──
+  'pages.view.pages': 'Sahifalar',
+  'pages.view.perms': 'Huquqlar',
+  'pages.permTitle': "Rol bo'yicha qo'shimcha huquqlar",
+  'pages.permSubtitle': "Har bir rol qanday qo'shimcha amal bajara olishini belgilang. "
+    + "Standart holatda hech bir rolga qo'shimcha huquq berilmagan.",
+  'pages.permHint': "Belgi qo'ysangiz, o'sha roldagi barcha xodimlar bu huquqqa ega bo'ladi",
+  'pages.permExpandHint': "Xodimlar ro'yxatini ochish — huquqni faqat ayrimlariga berish mumkin",
+  'pages.permLocked': "Bu rolda barcha huquqlar doim ochiq",
+  'pages.fromRole': 'roldan',
+  'pages.fromRoleHint': "Bu huquq butun rolga berilgan — bitta xodimdan alohida olib bo'lmaydi",
+  'pages.permSaved': "Saqlandi — huquq xodimlar sahifani yangilaganda kuchga kiradi",
+  'pages.resetConfirmAll': "Barcha rollar uchun sahifa ko'rinishi va qo'shimcha huquqlar "
+    + "standart holatga qaytariladi, xodimlarning shaxsiy sozlamalari ham o'chadi. Davom etasizmi?",
 
   // Roldan tashqari beriladigan qo'shimcha huquqlar
   'roles.field.extraPermissions': "Qo'shimcha huquqlar",
@@ -170,6 +186,12 @@ export default {
   'perm.project.edit': 'Loyihani tahrirlash',
   'perm.project.edit.desc': "Loyiha ma'lumotlari va bosqichlarini tahrirlash, "
     + 'bosqich ijrosini qabul qilish va loyihani yakunlash',
+  'perm.project.delete': "Loyihani o'chirish",
+  'perm.project.delete.desc': "Loyihani butunlay o'chirish — bosqichlari, hisobotlari "
+    + 'va biriktirilgan fayllari bilan birga',
+  'perm.project.view_all': "Barcha loyihalarni ko'rish",
+  'perm.project.view_all.desc': "O'ziga biriktirilmagan bo'lsa ham tashkilotdagi barcha "
+    + "loyihalarni ro'yxatda va statistikada ko'rish",
   'perm.task.edit': 'Vazifani tahrirlash',
   'perm.task.edit.desc': "Vazifa nomi, tavsifi va muddatlarini tahrirlash "
     + "(yuklash, tasdiqlash va o'chirish rahbarda qoladi)",

@@ -2,12 +2,16 @@ from datetime import datetime, timezone
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt, get_jwt_identity
 from app import db
-from app.models import User, Division, RolePage, UserPage, AdminPermission
+from app.models import (
+    User, Division, RolePage, UserPage, AdminPermission, RolePermission,
+)
 from app.utils import (
     get_scope, is_superadmin, can_manage_roles, can_manage_page_access, log_audit,
     PAGES, PAGE_KEYS, LOCKED_ROLES, SERVICE_PROVIDER_PAGES,
     DEFAULT_ROLE_PAGES, role_page_matrix, allowed_pages, allowed_pages_for_user,
     user_page_override, PERMISSION_DEFS, PERMISSION_KEYS,
+    DEFAULT_ROLE_PERMISSIONS, FULL_ACCESS_ROLES, role_permission_matrix,
+    role_permissions, effective_permissions,
 )
 
 permissions_bp = Blueprint('permissions', __name__)
@@ -146,7 +150,15 @@ def my_pages():
     # Shaxsiy sozlama bo'lsa u ustun; bo'lmasa roldagi qiymat. JWT eskirgan
     # bo'lsa ham bazadagi rol ishlatiladi (user obyekti orqali).
     pages = allowed_pages_for_user(user) if user else allowed_pages(role)
-    return jsonify({'role': role, 'pages': pages, 'home': _home_path(pages)})
+    # Qo'shimcha huquqlar ham shu yerdan qaytadi: JWT uzoq yashaydi, yangi
+    # berilgan huquq xodim qayta kirmasdan, sahifa yangilanishida kuchga kirsin
+    perms = effective_permissions(user) if user else role_permissions(role)
+    return jsonify({
+        'role': role,
+        'pages': pages,
+        'permissions': perms,
+        'home': _home_path(pages),
+    })
 
 
 def _home_path(pages):
@@ -172,6 +184,8 @@ def get_page_access():
                 'value': r,
                 'label': ROLE_LABELS.get(r, r),
                 'locked': r in LOCKED_ROLES,
+                # Huquqlar to'liq kirish rollarida doim yoqiq — o'zgartirilmaydi
+                'perm_locked': r in FULL_ACCESS_ROLES,
                 'user_count': User.query.filter_by(role=r, is_active=True).count(),
             }
             for r in VALID_ROLES
@@ -180,23 +194,37 @@ def get_page_access():
         'matrix': matrix,
         'defaults': DEFAULT_ROLE_PAGES,
         'service_provider_pages': list(SERVICE_PROVIDER_PAGES),
+        # Rol ↔ qo'shimcha huquq matritsasi (loyihani tahrirlash/o'chirish,
+        # barcha loyihalarni ko'rish, ...) — sahifalar bilan bitta oynada
+        'permissions': PERMISSION_DEFS,
+        'permission_matrix': role_permission_matrix(),
+        'permission_defaults': DEFAULT_ROLE_PERMISSIONS,
     })
 
 
 @permissions_bp.route('/page-access', methods=['PUT'])
 @jwt_required()
 def set_page_access():
-    """Matritsani saqlash. Body: {"matrix": {"agent": ["interactive_requests"], ...}}
+    """Matritsani saqlash.
 
-    Faqat kelgan rollar yangilanadi — qolganlari tegilmaydi.
+    Body: {
+      "matrix": {"agent": ["interactive_requests"], ...},          # sahifalar
+      "permission_matrix": {"admin": ["project.delete"], ...}      # huquqlar
+    }
+
+    Ikkalasi ham ixtiyoriy, lekin kamida bittasi kelishi kerak. Faqat kelgan
+    rollar yangilanadi — qolganlari tegilmaydi.
     """
     role, _, _ = get_scope(get_jwt())
     if not can_manage_page_access(role):
         return jsonify({'error': "Ruxsat yo'q"}), 403
 
     data = request.get_json() or {}
-    matrix = data.get('matrix')
-    if not isinstance(matrix, dict) or not matrix:
+    matrix = data.get('matrix') or {}
+    perm_matrix = data.get('permission_matrix') or {}
+    if not isinstance(matrix, dict) or not isinstance(perm_matrix, dict):
+        return jsonify({'error': "matrix lug'at bo'lishi kerak"}), 400
+    if not matrix and not perm_matrix:
         return jsonify({'error': 'matrix majburiy'}), 400
 
     changed = []
@@ -227,9 +255,44 @@ def set_page_access():
     if changed:
         log_audit('update', 'role_pages', entity_label='Rol ↔ sahifa matritsasi',
                   details='; '.join(changed))
+
+    perm_changed = []
+    for target_role, perm_list in perm_matrix.items():
+        if target_role not in VALID_ROLES:
+            return jsonify({'error': f"Noma'lum rol: {target_role}"}), 400
+        if target_role in FULL_ACCESS_ROLES:
+            # Bu rollarda huquqlar doim to'liq — jim o'tkazamiz
+            continue
+        if not isinstance(perm_list, list):
+            return jsonify({'error': f"{target_role} uchun ro'yxat kutilgan"}), 400
+
+        wanted = {p for p in perm_list if p in PERMISSION_KEYS}
+        unknown = set(perm_list) - wanted
+        if unknown:
+            return jsonify({'error': f"Noma'lum huquq: {', '.join(sorted(unknown))}"}), 400
+
+        existing = {rp.permission: rp
+                    for rp in RolePermission.query.filter_by(role=target_role).all()}
+        for perm in PERMISSION_KEYS:
+            allow = perm in wanted
+            row = existing.get(perm)
+            if row is None:
+                db.session.add(RolePermission(role=target_role, permission=perm, allowed=allow))
+            elif bool(row.allowed) != allow:
+                row.allowed = allow
+        perm_changed.append(f"{target_role}=[{','.join(sorted(wanted))}]")
+
+    if perm_changed:
+        log_audit('update', 'role_permissions', entity_label='Rol ↔ huquq matritsasi',
+                  details='; '.join(perm_changed))
+
     db.session.commit()
 
-    return jsonify({'message': 'Saqlandi', 'matrix': role_page_matrix()})
+    return jsonify({
+        'message': 'Saqlandi',
+        'matrix': role_page_matrix(),
+        'permission_matrix': role_permission_matrix(),
+    })
 
 
 @permissions_bp.route('/page-access/users', methods=['GET'])
@@ -253,6 +316,7 @@ def page_access_users():
              .filter_by(role=target, is_active=True)
              .order_by(User.full_name).all())
 
+    from_role = role_permissions(target)
     return jsonify([
         {
             'id': u.id,
@@ -264,6 +328,11 @@ def page_access_users():
             # True — shaxsiy sozlama bor, roldagi qiymatdan ajralgan
             'has_override': user_page_override(u.id) is not None,
             'locked': u.role in LOCKED_ROLES,
+            # Huquqlar: shaxsiy berilgani va rolidan kelgani alohida —
+            # matritsada roldan kelgani o'chirib bo'lmaydigan qilib ko'rsatiladi
+            'permissions': u.extra_permissions(),
+            'role_permissions': list(from_role),
+            'perm_locked': u.role in FULL_ACCESS_ROLES,
         }
         for u in users
     ])
@@ -274,7 +343,13 @@ def page_access_users():
 def set_user_page_access():
     """Bitta xodimga shaxsiy ruxsat berish.
 
-    Body: {"user_id": 12, "pages": ["dashboard", "statistics"]}
+    Body: {
+      "user_id": 12,
+      "pages": ["dashboard", "statistics"],       # ixtiyoriy
+      "permissions": ["project.delete"]           # ixtiyoriy
+    }
+
+    Ikkalasi ham ixtiyoriy — yuborilmagani tegilmaydi.
     """
     role, _, _ = get_scope(get_jwt())
     if not can_manage_page_access(role):
@@ -283,37 +358,56 @@ def set_user_page_access():
     data = request.get_json() or {}
     user_id = data.get('user_id')
     page_list = data.get('pages')
+    perm_list = data.get('permissions')
 
-    if not user_id or not isinstance(page_list, list):
-        return jsonify({'error': 'user_id va pages majburiy'}), 400
+    if not user_id:
+        return jsonify({'error': 'user_id majburiy'}), 400
+    if page_list is None and perm_list is None:
+        return jsonify({'error': 'pages yoki permissions majburiy'}), 400
+    if page_list is not None and not isinstance(page_list, list):
+        return jsonify({'error': "pages ro'yxat bo'lishi kerak"}), 400
+    if perm_list is not None and not isinstance(perm_list, list):
+        return jsonify({'error': "permissions ro'yxat bo'lishi kerak"}), 400
 
     user = User.query.get_or_404(int(user_id))
     if user.role in LOCKED_ROLES:
         return jsonify({'error': "Bosh Administrator ruxsatini o'zgartirib bo'lmaydi"}), 400
 
-    wanted = {p for p in page_list if p in PAGE_KEYS}
-    unknown = set(page_list) - wanted
-    if unknown:
-        return jsonify({'error': f"Noma'lum sahifa: {', '.join(sorted(unknown))}"}), 400
+    if page_list is not None:
+        wanted = {p for p in page_list if p in PAGE_KEYS}
+        unknown = set(page_list) - wanted
+        if unknown:
+            return jsonify({'error': f"Noma'lum sahifa: {', '.join(sorted(unknown))}"}), 400
 
-    existing = {up.page: up for up in UserPage.query.filter_by(user_id=user.id).all()}
-    for page in PAGE_KEYS:
-        allow = page in wanted
-        row = existing.get(page)
-        if row is None:
-            db.session.add(UserPage(user_id=user.id, page=page, allowed=allow))
-        elif bool(row.allowed) != allow:
-            row.allowed = allow
+        existing = {up.page: up for up in UserPage.query.filter_by(user_id=user.id).all()}
+        for page in PAGE_KEYS:
+            allow = page in wanted
+            row = existing.get(page)
+            if row is None:
+                db.session.add(UserPage(user_id=user.id, page=page, allowed=allow))
+            elif bool(row.allowed) != allow:
+                row.allowed = allow
 
-    log_audit('update', 'user_pages', user.id, entity_label=user.full_name,
-              details=f"pages=[{','.join(sorted(wanted))}]")
+        log_audit('update', 'user_pages', user.id, entity_label=user.full_name,
+                  details=f"pages=[{','.join(sorted(wanted))}]")
+
+    if perm_list is not None:
+        unknown = set(perm_list) - set(PERMISSION_KEYS)
+        if unknown:
+            return jsonify({'error': f"Noma'lum huquq: {', '.join(sorted(unknown))}"}), 400
+        granted = _set_permissions(user, perm_list)
+        log_audit('update', 'user_permissions', user.id, entity_label=user.full_name,
+                  details=f"huquqlar=[{','.join(sorted(granted))}]")
+
     db.session.commit()
 
     return jsonify({
         'message': 'Saqlandi',
         'user_id': user.id,
         'pages': allowed_pages_for_user(user),
-        'has_override': True,
+        'has_override': user_page_override(user.id) is not None,
+        'permissions': user.extra_permissions(),
+        'role_permissions': role_permissions(user.role),
     })
 
 
@@ -332,8 +426,11 @@ def reset_user_page_access():
 
     user = User.query.get_or_404(int(user_id))
     UserPage.query.filter_by(user_id=user.id).delete(synchronize_session=False)
+    # Shaxsiy huquqlar ham olib tashlanadi — "rolga qaytarish" degani xodimda
+    # roldan tashqari hech narsa qolmasligi
+    _set_permissions(user, [])
     log_audit('reset', 'user_pages', user.id, entity_label=user.full_name,
-              details='rol qiymatiga qaytarildi')
+              details='rol qiymatiga qaytarildi (sahifalar va huquqlar)')
     db.session.commit()
 
     return jsonify({
@@ -341,6 +438,8 @@ def reset_user_page_access():
         'user_id': user.id,
         'pages': allowed_pages_for_user(user),
         'has_override': False,
+        'permissions': user.extra_permissions(),
+        'role_permissions': role_permissions(user.role),
     })
 
 
@@ -359,25 +458,37 @@ def reset_page_access():
     target = data.get('role')
 
     q = RolePage.query
+    perm_q = RolePermission.query
     users_q = UserPage.query
+    target_users = User.query.all()
     if target:
         if target not in VALID_ROLES:
             return jsonify({'error': f"Noma'lum rol: {target}"}), 400
         q = q.filter_by(role=target)
-        target_ids = [u.id for u in User.query.filter_by(role=target).all()]
+        perm_q = perm_q.filter_by(role=target)
+        target_users = User.query.filter_by(role=target).all()
+        target_ids = [u.id for u in target_users]
         users_q = users_q.filter(UserPage.user_id.in_(target_ids)) if target_ids else None
 
     q.delete(synchronize_session=False)
+    perm_q.delete(synchronize_session=False)
     # Xodimlarning shaxsiy sozlamalari ham olib tashlanadi — aks holda
     # "standart holatga qaytarildi" deb yozilsayu, ular kuchda qolib ketardi
     if users_q is not None:
         users_q.delete(synchronize_session=False)
+    for u in target_users:
+        if u.admin_permission is not None:
+            _set_permissions(u, [])
     log_audit('reset', 'role_pages',
               entity_label=target or 'barcha rollar',
-              details='standart qiymatlarga qaytarildi')
+              details='standart qiymatlarga qaytarildi (sahifalar va huquqlar)')
     db.session.commit()
 
-    return jsonify({'message': 'Standart holatga qaytarildi', 'matrix': role_page_matrix()})
+    return jsonify({
+        'message': 'Standart holatga qaytarildi',
+        'matrix': role_page_matrix(),
+        'permission_matrix': role_permission_matrix(),
+    })
 
 
 def _user_dict(u):

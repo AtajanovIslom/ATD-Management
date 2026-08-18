@@ -29,7 +29,7 @@ def _make_tokens(user):
                 'full_name': user.full_name,
                 'department_id': user.department_id,
                 'division_id': user.division_id,
-                'permissions': user.extra_permissions(),
+                'permissions': user.effective_permissions(),
             }
         ),
         'refresh_token': create_refresh_token(identity=identity),

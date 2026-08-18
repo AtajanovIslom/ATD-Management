@@ -156,6 +156,9 @@ export default function ProjectDetail() {
   // "Loyihani tahrirlash" huquqi berilgan xodim (backend ham shu qoidada).
   // Loyihani yakunlash ham shu huquq tarkibiga kiradi.
   const canManage = isAdmin || (isDeptAdmin && project?.created_by === user.id) || can('project.edit')
+  // O'chirish — boshqarma rahbari va yuqori rollar, hamda "Loyihani o'chirish"
+  // huquqi alohida berilgan xodim (/roles sahifasidan beriladi)
+  const canDelete = isAdmin || can('project.delete')
 
   /** Loyihani yakunlash / bekor qilish / nofaol qilish / qayta faollashtirish */
   const changeProjectStatus = async (status, reason = '') => {
@@ -361,14 +364,14 @@ export default function ProjectDetail() {
             </button>
           )}
           {/* Tahrirlash — loyihani boshqaruvchi rahbarga (bo'lim rahbari uchun:
-              o'zi yaratgan loyiha). O'chirish esa faqat boshqarma rahbari va
-              yuqori rollarga qoladi. */}
+              o'zi yaratgan loyiha). O'chirish — boshqarma rahbari, yuqori
+              rollar va "Loyihani o'chirish" huquqi berilganlarga. */}
           {canManage && (
             <button className="btn btn-outline btn-sm" onClick={() => editMode ? (setEditMode(false), setDeletedStageIds(new Set())) : openEditMode()}>
               {editMode ? t('btn.cancel') : t('btn.edit')}
             </button>
           )}
-          {isAdmin && (
+          {canDelete && (
             <button className="btn btn-danger btn-sm" onClick={handleDelete}>{t('btn.delete')}</button>
           )}
           <button className="btn btn-outline" onClick={() => navigate('/')}>← {t('btn.back')}</button>

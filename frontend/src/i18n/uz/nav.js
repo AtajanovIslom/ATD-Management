@@ -17,5 +17,6 @@ export default {
   'nav.interactiveRequests': 'Interaktiv arizalar',
   'nav.roles': 'Rol va huquqlar',
   'nav.auditLogs': 'Audit jurnali',
+  'nav.menu': 'Menyu',
   'nav.logout': 'Chiqish',
 }

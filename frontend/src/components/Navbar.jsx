@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { NavLink } from 'react-router-dom'
+import { NavLink, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 import { useI18n } from '../i18n'
@@ -17,7 +17,13 @@ export default function Navbar() {
   const { user, logout, isAdmin, canView } = useAuth()
   const { theme, toggleTheme } = useTheme()
   const { t } = useI18n()
+  const location = useLocation()
   const [interactiveCount, setInteractiveCount] = useState(0)
+  // Tor ekranda menyu chetga yashirinadi va shu tugma bilan ochiladi.
+  // Boshqa sahifaga o'tilganda o'zi yopiladi.
+  const [navOpen, setNavOpen] = useState(false)
+
+  useEffect(() => { setNavOpen(false) }, [location.pathname])
 
   useEffect(() => {
     let cancelled = false
@@ -45,7 +51,19 @@ export default function Navbar() {
   const roleLabel = (ROLE_ICONS[user.role] || '') + roleName
 
   return (
-    <aside className="sidebar">
+    <>
+      <button
+        type="button"
+        className="nav-toggle"
+        aria-label={t('nav.menu')}
+        aria-expanded={navOpen}
+        onClick={() => setNavOpen(o => !o)}
+      >
+        {navOpen ? '✕' : '☰'}
+      </button>
+      {navOpen && <div className="nav-backdrop" onClick={() => setNavOpen(false)} />}
+
+    <aside className={'sidebar' + (navOpen ? ' sidebar--open' : '')}>
       <div className="sidebar-header">
         <div className="brand">
           <img src="/logo.png" alt="ATD" className="brand-logo-img" />
@@ -114,5 +132,6 @@ export default function Navbar() {
         </button>
       </div>
     </aside>
+    </>
   )
 }
