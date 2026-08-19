@@ -5,6 +5,7 @@ import { useI18n } from '../i18n'
 import { statusLabel } from '../i18n/labels'
 import { statusClass } from '../components/ProjectCard'
 import api from '../api/axios'
+import FilePicker from '../components/FilePicker'
 
 const downloadFile = async (url, originalName, errorText) => {
   try {
@@ -486,17 +487,8 @@ export default function TaskDetail() {
             <label style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, display: 'block' }}>
               📎 {t('task.report.attachFile')}
             </label>
-            <input type="file" multiple className="form-input" style={{ fontSize: 12, padding: 6 }}
-              onChange={e => setReportFiles(Array.from(e.target.files))} />
-            {reportFiles.length > 0 && (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
-                {reportFiles.map((f, i) => (
-                  <span key={i} style={{ fontSize: 10, background: 'var(--bg-input)', padding: '2px 8px', borderRadius: 4, color: 'var(--text-secondary)' }}>
-                    📄 {f.name}
-                  </span>
-                ))}
-              </div>
-            )}
+            <FilePicker files={reportFiles} onChange={setReportFiles}
+              inputStyle={{ fontSize: 12, padding: 6 }} />
           </div>
           <button className="btn btn-primary" onClick={handleReport} disabled={!reportText.trim()}>
             {t('task.report.submit')}

@@ -289,6 +289,11 @@ def create_app():
                 CONSTRAINT uq_role_permissions_role_perm UNIQUE (role, permission)
             )""",
             "CREATE INDEX IF NOT EXISTS idx_role_permissions_role ON role_permissions(role)",
+            # "Loyihalar" va "Vazifalar" alohida sahifa emas — ular yana
+            # boshqaruv paneli ichidagi bo'limlar. Matritsadagi eski yozuvlar
+            # kod tomonidan e'tiborga olinmaydi, jadvalni ham tozalab qo'yamiz.
+            "DELETE FROM role_pages WHERE page IN ('projects', 'tasks')",
+            "DELETE FROM user_pages WHERE page IN ('projects', 'tasks')",
         ]
         # Har bir migratsiya o'z tranzaksiyasida bajariladi — bittasi xato bersa
         # keyingilariga ta'sir qilmasin. Ilgari umumiy commit edi, bir SQL rollback

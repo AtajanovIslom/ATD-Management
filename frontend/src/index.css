@@ -539,6 +539,49 @@ table tr:last-child td {
 }
 
 /* Holat oynalari (Faol / Tugallangan / Bekor qilingan / Nofaol) */
+/* Boshqaruv panelidagi "Loyihalar" / "Vazifalar" bo'limlari */
+.panel-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.panel-head h2 {
+  font-size: 16px;
+  margin: 0;
+  color: var(--text-white);
+}
+
+.panel-head__meta { font-size: 12px; color: var(--text-muted); }
+
+.panel-filters {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+/* Guruh sarlavhasi (boshqarma / guruh kesimida ochiladigan bo'lim) */
+.panel-group-toggle {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+}
+
 .status-tabs {
   display: flex;
   gap: 4px;
@@ -2066,4 +2109,63 @@ code {
     padding: 66px 14px 24px;
   }
   .page-header { flex-wrap: wrap; gap: 10px; }
+}
+
+/* =====================================================================
+   FilePicker — bir nechta fayl biriktirish
+   ===================================================================== */
+.file-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.file-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  padding: 4px 6px 4px 9px;
+  border: 1px solid var(--primary);
+  border-radius: 6px;
+  background: var(--primary-glow);
+  color: var(--text-primary);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.file-chip__size { color: var(--text-muted); font-size: 10px; flex-shrink: 0; }
+
+.file-chip__remove {
+  flex-shrink: 0;
+  padding: 0 3px;
+  border: none;
+  background: none;
+  color: var(--danger);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+.file-chip__remove:hover { color: #dc2626; }
+
+.file-picker__foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.file-picker__clear {
+  margin-left: auto;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: var(--danger);
+  cursor: pointer;
+  text-decoration: underline;
 }

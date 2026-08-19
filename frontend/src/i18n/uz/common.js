@@ -95,6 +95,12 @@ export default {
   // Tasdiqlash oynalari
   'confirm.delete': 'Rostdan ham o‘chirmoqchimisiz?',
 
+  // Fayl biriktirish
+  'file.selected': '{n} ta fayl tanlandi',
+  'file.appendHint': "yana bosib qo'shsangiz, avvalgilari saqlanadi",
+  'file.clearAll': 'Hammasini olib tashlash',
+  'file.remove': 'Olib tashlash',
+
   // Til va tema
   'theme.light': "Yorug' rejim",
   'theme.dark': "Qorong'i rejim",

@@ -43,8 +43,6 @@ WORKER_ROLES = ('user', 'agent')
 
 PAGES = [
     {'key': 'dashboard',            'path': '/',                     'icon': '📊',   'label': 'Boshqaruv paneli'},
-    {'key': 'projects',             'path': '/projects',             'icon': '📁',   'label': 'Loyihalar'},
-    {'key': 'tasks',                'path': '/tasks',                'icon': '🗂️',  'label': 'Vazifalar'},
     {'key': 'reminders',            'path': '/reminders',            'icon': '🗓️',  'label': 'Eslatmalarim'},
     {'key': 'work_logs',            'path': '/work-logs',            'icon': '📓',   'label': 'Kunlik hisobotim'},
     {'key': 'department_work_logs', 'path': '/department-work-logs', 'icon': '👥',   'label': 'Xodimlar hisobotlari'},
@@ -66,32 +64,32 @@ PAGE_KEYS = tuple(p['key'] for p in PAGES)
 # Bularni o'zgartirmang: bu "hech kimning ko'rinishi o'zgarmasin" kafolati.
 DEFAULT_ROLE_PAGES = {
     'superadmin': [
-        'dashboard', 'projects', 'tasks', 'reminders', 'department_work_logs', 'statistics',
+        'dashboard', 'reminders', 'department_work_logs', 'statistics',
         'create_project', 'create_task', 'teams', 'departments', 'users',
         'interactive_services', 'interactive_requests', 'roles', 'audit_logs',
     ],
     'director': [
-        'dashboard', 'projects', 'tasks', 'reminders', 'department_work_logs', 'statistics',
+        'dashboard', 'reminders', 'department_work_logs', 'statistics',
         'create_project', 'create_task', 'teams', 'departments', 'users',
         'interactive_services', 'interactive_requests', 'roles', 'audit_logs',
     ],
     # Direktor o'rinbosari barchasini ko'radi, lekin rol bera olmaydi
     'deputy_director': [
-        'dashboard', 'projects', 'tasks', 'reminders', 'department_work_logs', 'statistics',
+        'dashboard', 'reminders', 'department_work_logs', 'statistics',
         'create_project', 'create_task', 'teams', 'departments', 'users',
         'interactive_services', 'interactive_requests', 'audit_logs',
     ],
     'admin': [
-        'dashboard', 'projects', 'tasks', 'reminders', 'department_work_logs', 'statistics',
+        'dashboard', 'reminders', 'department_work_logs', 'statistics',
         'create_project', 'create_task', 'teams', 'departments', 'users',
         'interactive_services', 'interactive_requests',
     ],
     'department_admin': [
-        'dashboard', 'projects', 'tasks', 'reminders', 'department_work_logs', 'statistics',
+        'dashboard', 'reminders', 'department_work_logs', 'statistics',
         'create_project', 'create_task', 'users',
     ],
     'user': [
-        'dashboard', 'projects', 'tasks', 'reminders', 'work_logs',
+        'dashboard', 'reminders', 'work_logs',
     ],
     # Agent — faqat interaktiv arizalar oynasi
     'agent': [
@@ -401,9 +399,31 @@ def has_permission(permission, claims=None):
 
 
 def dept_user_ids(department_id):
-    """Berilgan boshqarmadagi barcha xodimlar ID larini qaytaradi"""
-    from app.models import User
-    users = User.query.filter_by(department_id=department_id, is_active=True).all()
+    """Berilgan boshqarmadagi barcha xodimlar ID larini qaytaradi.
+
+    Xodim boshqarmaga ikki yo'l bilan tegishli bo'lishi mumkin: to'g'ridan-
+    to'g'ri (`users.department_id`) yoki o'z bo'limi orqali
+    (`divisions.department_id`). Ikkinchisi ham hisobga olinadi, chunki
+    xodim bo'limga biriktirilganda `department_id` ustuni to'ldirilmay
+    qolishi mumkin edi — o'shanda bo'lim rahbari va uning xodimlari
+    boshqarma rahbarining ko'rish doirasidan tushib qolardi.
+    """
+    from app import db
+    from app.models import User, Division
+
+    if not department_id:
+        return set()
+
+    div_ids = db.session.query(Division.id).filter(
+        Division.department_id == department_id
+    )
+    users = User.query.filter(
+        User.is_active.is_(True),
+        db.or_(
+            User.department_id == department_id,
+            User.division_id.in_(div_ids),
+        ),
+    ).all()
     return {u.id for u in users}
 
 

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../api/axios'
 import { useI18n } from '../i18n'
+import FilePicker from '../components/FilePicker'
 
 export default function CreateTask() {
   const navigate = useNavigate()
@@ -12,7 +13,7 @@ export default function CreateTask() {
     name: '', description: '', start_date: '', deadline: '',
     assign_type: 'team', team_id: '', assignee_id: '', assignee_ids: [],
   })
-  const [files, setFiles] = useState(null)
+  const [files, setFiles] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -77,7 +78,7 @@ export default function CreateTask() {
       if (teamId) fd.append('team_id', teamId)
       if (assigneeId) fd.append('assignee_id', assigneeId)
       fd.append('assignee_ids', JSON.stringify(assigneeIds))
-      if (files) {
+      if (files.length > 0) {
         for (const f of files) fd.append('files', f)
       }
 
@@ -211,7 +212,7 @@ export default function CreateTask() {
 
           <div className="form-group">
             <label>{t('task.attachFile')}</label>
-            <input type="file" className="form-input" multiple onChange={e => setFiles(e.target.files)} />
+            <FilePicker files={files} onChange={setFiles} />
           </div>
 
           <button type="submit" className="btn btn-primary btn-full" disabled={loading}>

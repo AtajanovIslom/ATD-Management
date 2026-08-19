@@ -78,8 +78,6 @@ export default function Navbar() {
           "Rol va sahifalar" bo'limida o'zgartiradi. */}
       <nav className="sidebar-nav">
         {canView('dashboard') && link('/', '📊', t('nav.dashboard'), true)}
-        {canView('projects') && link('/projects', '📁', t('nav.projects'))}
-        {canView('tasks') && link('/tasks', '🗂️', t('nav.tasks'))}
         {canView('reminders') && link('/reminders', '🗓️', t('nav.reminders'))}
         {canView('work_logs') && link('/work-logs', '📓', t('nav.workLogs'))}
         {canView('department_work_logs') && link('/department-work-logs', '👥', t('nav.departmentWorkLogs'))}

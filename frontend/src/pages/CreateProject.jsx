@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import api from '../api/axios'
 import { useAuth } from '../context/AuthContext'
 import { useI18n } from '../i18n'
+import FilePicker from '../components/FilePicker'
 
 export default function CreateProject() {
   const navigate = useNavigate()
@@ -16,7 +17,7 @@ export default function CreateProject() {
     name: '', description: '', start_date: '', deadline: '',
     stages: [{ name: '', start_date: '', deadline: '', assign_type: 'team', team_id: '', assignee_id: '', assignee_ids: [] }],
   })
-  const [files, setFiles] = useState(null)
+  const [files, setFiles] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -109,7 +110,7 @@ export default function CreateProject() {
         assignee_id: s.assign_type === 'team' && s.team_id && s.assignee_id ? parseInt(s.assignee_id) : null,
         assignee_ids: s.assign_type === 'individual' ? s.assignee_ids : [],
       }))))
-      if (files) {
+      if (files.length > 0) {
         for (const f of files) fd.append('files', f)
       }
 
@@ -292,7 +293,7 @@ export default function CreateProject() {
 
           <div className="form-group">
             <label>{t('project.attachFile')}</label>
-            <input type="file" className="form-input" multiple onChange={e => setFiles(e.target.files)} />
+            <FilePicker files={files} onChange={setFiles} />
           </div>
 
           <button type="submit" className="btn btn-primary btn-full" disabled={loading}>

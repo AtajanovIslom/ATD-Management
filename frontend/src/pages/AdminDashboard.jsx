@@ -1,30 +1,24 @@
 import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
 import api from '../api/axios'
 import { useAuth } from '../context/AuthContext'
 import { useI18n } from '../i18n'
 import { statusLabel } from '../i18n/labels'
-import ProjectCard, { statusClass } from '../components/ProjectCard'
-import TaskCard from '../components/TaskCard'
-
-// Boshqaruv panelida faqat eng yangi faol ishlar ko'rsatiladi —
-// to'liq ro'yxatlar "Loyihalar" va "Vazifalar" sahifalarida
-const PREVIEW_COUNT = 6
+import { statusClass } from '../components/ProjectCard'
+import ProjectsPanel from '../components/ProjectsPanel'
+import TasksPanel from '../components/TasksPanel'
 
 /**
  * Boshqaruv paneli.
  *
- * Faqat yangi (faol) loyihalar va faol vazifalar chiqadi — ikkalasi alohida
- * bo'limda, aralashmagan holda. Tugallangan, bekor qilingan va nofaol ishlar
- * o'z sahifalaridagi alohida oynalarda turadi.
+ * Loyihalar va vazifalar shu yerda, ikkita alohida bo'limda turadi — har
+ * biri o'z holat oynalari (Faol / Tugallangan / Bekor qilingan / Nofaol),
+ * qidiruvi va sahifalashi bilan. Ilgari bular alohida sahifalarga ajratilgan
+ * edi, endi hammasi yana bitta panelda.
  */
 export default function AdminDashboard() {
-  const { isDeptAdmin, isAdmin } = useAuth()
+  const { isAdmin } = useAuth()
   const { t, formatDate: fmtDate } = useI18n()
   const [projectCounts, setProjectCounts] = useState(null)
-  const [taskCounts, setTaskCounts] = useState(null)
-  const [projects, setProjects] = useState([])
-  const [tasks, setTasks] = useState([])
   const [byDeptGroups, setByDeptGroups] = useState([])
   const [expandedDept, setExpandedDept] = useState({})
   const [loading, setLoading] = useState(true)
@@ -34,16 +28,8 @@ export default function AdminDashboard() {
   const loadData = async () => {
     setLoading(true)
     try {
-      const [pCounts, tCounts, projRes, tasksRes] = await Promise.all([
-        api.get('/projects/counts'),
-        api.get('/tasks/counts'),
-        api.get(`/projects/browse?status=active&per_page=${PREVIEW_COUNT}`),
-        api.get(`/tasks/browse?status=active&per_page=${PREVIEW_COUNT}`),
-      ])
+      const pCounts = await api.get('/projects/counts')
       setProjectCounts(pCounts.data)
-      setTaskCounts(tCounts.data)
-      setProjects(projRes.data.projects || [])
-      setTasks(tasksRes.data.tasks || [])
       // Boshqarmalar kesimida vazifalar (faqat boshqarma rahbari va yuqori)
       if (isAdmin) {
         api.get('/tasks/by-departments').then(r => setByDeptGroups(r.data)).catch(() => {})
@@ -57,22 +43,6 @@ export default function AdminDashboard() {
 
   const formatDate = (iso) =>
     fmtDate(iso, { year: 'numeric', month: '2-digit', day: '2-digit' }) || '—'
-
-  const handleDeleteTask = async (e, task) => {
-    e.stopPropagation()  // kartochka klik'ini to'sish
-    if (!window.confirm(t('dash.deleteTask.confirm', { name: task.name }))) return
-    try {
-      await api.delete(`/tasks/${task.id}`)
-    } catch (err) {
-      // 404 — vazifani boshqa rahbar allaqachon o'chirgan. Ro'yxatni
-      // moslashtiramiz, chunki foydalanuvchi ko'zlagan natija baribir shu.
-      if (err.response?.status !== 404) {
-        alert(err.response?.data?.error || t('state.error'))
-        return
-      }
-    }
-    loadData()
-  }
 
   if (loading) return <div className="empty-state"><p>{t('state.loading')}</p></div>
 
@@ -114,67 +84,12 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* ── Faol loyihalar ── */}
-      <div className="card">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-          <h2 style={{ fontSize: 16, margin: 0 }}>🚀 {t('dash.activeProjects')}</h2>
-          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-            {t('dash.total', { n: projectCounts?.active ?? 0 })}
-          </span>
-          <Link to="/projects" className="btn btn-outline btn-sm" style={{ marginLeft: 'auto' }}>
-            {t('dash.seeAll')} →
-          </Link>
-        </div>
-
-        {projects.length === 0 ? (
-          <div className="empty-state"><p>{t('dash.noActiveProjects')}</p></div>
-        ) : (
-          <div className="project-grid">
-            {projects.map((p, i) => <ProjectCard key={p.id} project={p} index={i} />)}
-          </div>
-        )}
-      </div>
-
-      {/* ── Faol vazifalar (loyihalar bilan aralashmaydi) ── */}
-      <div className="card" style={{ marginTop: 16 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
-          <h2 style={{ fontSize: 16, margin: 0 }}>📝 {t('dash.activeTasks')}</h2>
-          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-            {t('dash.total', { n: taskCounts?.active ?? 0 })}
-          </span>
-          {taskCounts && (
-            <div style={{ display: 'flex', gap: 10, fontSize: 12, flexWrap: 'wrap' }}>
-              {taskCounts.review > 0 && (
-                <span style={{ color: 'var(--warning)' }}>{t('dash.count.review')}: <strong>{taskCounts.review}</strong></span>
-              )}
-              {taskCounts.returned > 0 && (
-                <span style={{ color: 'var(--text-muted)' }}>{t('dash.count.returned')}: <strong>{taskCounts.returned}</strong></span>
-              )}
-              {taskCounts.overdue > 0 && (
-                <span style={{ color: '#ef4444' }}>{t('dash.count.overdue')}: <strong>{taskCounts.overdue}</strong></span>
-              )}
-            </div>
-          )}
-          <Link to="/tasks" className="btn btn-outline btn-sm" style={{ marginLeft: 'auto' }}>
-            {t('dash.seeAll')} →
-          </Link>
-        </div>
-
-        {tasks.length === 0 ? (
-          <div className="empty-state"><p>{t('dash.noActiveTasks')}</p></div>
-        ) : (
-          <div className="project-grid">
-            {tasks.map((task, i) => (
-              <TaskCard key={task.id} task={task} index={i}
-                onDelete={isDeptAdmin ? handleDeleteTask : undefined} />
-            ))}
-          </div>
-        )}
-      </div>
+      <ProjectsPanel />
+      <TasksPanel />
 
       {/* Boshqarmalar kesimida faol vazifalar (faqat ko'rish uchun) */}
       {otherDepts.length > 0 && (
-        <div className="card" style={{ marginTop: 16 }}>
+        <div className="card">
           <div style={{ marginBottom: 12 }}>
             <h2 style={{ fontSize: 16, marginBottom: 4 }}>{t('dash.otherDepartments')}</h2>
             <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>
@@ -186,13 +101,8 @@ export default function AdminDashboard() {
               const open = expandedDept[g.department_id]
               return (
                 <div key={g.department_id} style={{ border: '1px solid var(--border)', borderRadius: 8 }}>
-                  <button type="button"
-                    onClick={() => setExpandedDept({ ...expandedDept, [g.department_id]: !open })}
-                    style={{
-                      width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                      background: 'transparent', border: 'none', padding: '10px 12px',
-                      cursor: 'pointer', color: 'var(--text-primary)', fontSize: 14, fontWeight: 600,
-                    }}>
+                  <button type="button" className="panel-group-toggle"
+                    onClick={() => setExpandedDept({ ...expandedDept, [g.department_id]: !open })}>
                     <span>🏢 {g.department_name}</span>
                     <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
                       {t('dash.groupCount', { n: g.tasks.length })} {open ? '▲' : '▼'}

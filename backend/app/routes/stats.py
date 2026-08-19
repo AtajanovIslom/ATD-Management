@@ -41,7 +41,8 @@ def employee_stats():
 
     q = User.query.filter_by(is_active=True).filter(User.role.in_(['user', 'department_admin']))
     if role == 'admin' and dept_id:
-        q = q.filter_by(department_id=dept_id)
+        # Bo'limi orqali boshqarmaga tegishli xodimlar ham kirsin
+        q = q.filter(User.id.in_(dept_user_ids(dept_id)))
     elif role == 'department_admin' and div_id:
         q = q.filter_by(division_id=div_id)
     users = q.order_by(User.full_name).all()

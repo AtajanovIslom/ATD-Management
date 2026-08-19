@@ -3,7 +3,7 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt, get_jwt_identity
 from werkzeug.security import generate_password_hash
 from app import db
-from app.models import User
+from app.models import User, Division
 from app.utils import validate_password, get_scope, is_admin_or_above, is_dept_admin_or_above, dept_user_ids, div_user_ids, log_audit
 
 users_bp = Blueprint('users', __name__)
@@ -93,6 +93,12 @@ def create_user():
         new_division_id = div_id
         new_role = 'user'
 
+    # Bo'lim tanlangan bo'lsa boshqarma ham o'sha bo'limdan olinadi —
+    # aks holda xodim boshqarma rahbarining ro'yxatlaridan tushib qolardi
+    if new_division_id and not new_department_id:
+        div = Division.query.get(new_division_id)
+        new_department_id = div.department_id if div else None
+
     if not all([full_name, tab_number]):
         return jsonify({'error': 'Ism va tabel raqami kiritilishi shart'}), 400
 
@@ -173,6 +179,12 @@ def update_user(user_id):
         user.plain_password = data['password']
     if 'division_id' in data:
         user.division_id = data['division_id'] or None
+        # Boshqarma bo'limdan kelib chiqadi (superadmin uni quyida qo'lda
+        # o'zgartira oladi) — ustun eskirib qolmasin
+        if user.division_id:
+            div = Division.query.get(user.division_id)
+            if div:
+                user.department_id = div.department_id
     if 'department_id' in data and role == 'superadmin':
         user.department_id = data['department_id'] or None
     if 'role' in data and role == 'superadmin':
