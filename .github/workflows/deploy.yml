@@ -19,7 +19,7 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - name: Kodni yangilash va qayta qurish
+      - name: Kodni yangilash
         env:
           # Repo Settings -> Variables -> DEPLOY_PATH orqali o'zgartirish mumkin
           DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
@@ -30,8 +30,8 @@ jobs:
           echo "==> Deploy papkasi: $DIR"
           cd "$DIR"
 
-          # .env va uploads git'da kuzatilmaydi, shuning uchun reset ularga tegmaydi.
-          # Ma'lumotlar bazasi va yuklangan fayllar Docker volume'da — saqlanadi.
+          # .env, certs va uploads git'da kuzatilmaydi, shuning uchun reset
+          # ularga tegmaydi. Baza va yuklangan fayllar Docker volume'da — saqlanadi.
           echo "==> Kod yangilanmoqda"
           git fetch --prune origin main
           git reset --hard origin/main
@@ -41,6 +41,75 @@ jobs:
             echo "XATO: .env fayli yo'q. Avval uni serverda yarating." >&2
             exit 1
           fi
+
+      # TLS sertifikat va maxfiy kalit git'da SAQLANMAYDI — ular repo'ning
+      # Settings -> Secrets and variables -> Actions bo'limida turadi va deploy
+      # paytida shu yerda faylga yoziladi. GitHub secret qiymatlarini log'da
+      # avtomatik yashiradi.
+      #   TLS_FULLCHAIN   = sertifikat + Sectigo oraliq zanjiri (ochiq ma'lumot)
+      #   TLS_PRIVATE_KEY = maxfiy kalit
+      - name: TLS sertifikatlarni joylash
+        env:
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+          TLS_FULLCHAIN: ${{ secrets.TLS_FULLCHAIN }}
+          TLS_PRIVATE_KEY: ${{ secrets.TLS_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          DIR="${DEPLOY_PATH:-$HOME/HISOBOT}"
+          cd "$DIR"
+
+          if [ -z "${TLS_FULLCHAIN:-}" ] || [ -z "${TLS_PRIVATE_KEY:-}" ]; then
+            echo "==> TLS secret'lari o'rnatilmagan — serverdagi mavjud certs/ ishlatiladi"
+            exit 0
+          fi
+
+          mkdir -p certs
+          umask 077
+
+          # Windows'dan nusxa olinganda CR belgilari qo'shilishi mumkin — tozalaymiz.
+          printf '%s\n' "$TLS_FULLCHAIN"   | tr -d '\r' > certs/fullchain.crt.new
+          printf '%s\n' "$TLS_PRIVATE_KEY" | tr -d '\r' > certs/privkey.key.new
+
+          # Yaroqsiz secret bilan ishlab turgan saytni buzib qo'ymaymiz:
+          # avval tekshiramiz, keyingina o'rniga qo'yamiz.
+          if ! openssl x509 -in certs/fullchain.crt.new -noout -checkend 0 >/dev/null 2>&1; then
+            rm -f certs/fullchain.crt.new certs/privkey.key.new
+            echo "XATO: TLS_FULLCHAIN secret'i yaroqsiz yoki muddati o'tgan." >&2
+            exit 1
+          fi
+
+          crt_pub=$(openssl x509 -in certs/fullchain.crt.new -noout -pubkey | openssl sha256)
+          key_pub=$(openssl pkey -in certs/privkey.key.new -pubout | openssl sha256)
+          if [ "$crt_pub" != "$key_pub" ]; then
+            rm -f certs/fullchain.crt.new certs/privkey.key.new
+            echo "XATO: TLS_PRIVATE_KEY sertifikatga mos kelmaydi." >&2
+            exit 1
+          fi
+
+          mv certs/fullchain.crt.new certs/fullchain.crt
+          mv certs/privkey.key.new  certs/privkey.key
+          chmod 644 certs/fullchain.crt
+          chmod 600 certs/privkey.key
+          echo "==> Sertifikat joylandi, $(openssl x509 -in certs/fullchain.crt -noout -enddate)"
+
+      - name: Qurish va ishga tushirish
+        env:
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+        run: |
+          set -euo pipefail
+          DIR="${DEPLOY_PATH:-$HOME/HISOBOT}"
+          cd "$DIR"
+
+          # TLS sertifikatlarsiz nginx umuman ishga tushmaydi va sayt o'chib
+          # qoladi. Shuning uchun konteynerlarga tegmasdan oldin tekshiramiz.
+          for f in certs/fullchain.crt certs/privkey.key; do
+            if [ ! -f "$f" ]; then
+              echo "XATO: $f topilmadi." >&2
+              echo "      TLS_FULLCHAIN va TLS_PRIVATE_KEY secret'larini qo'shing," >&2
+              echo "      yoki fayllarni qo'lda $DIR/certs/ ga joylang." >&2
+              exit 1
+            fi
+          done
 
           echo "==> Konteynerlar quriladi va ishga tushiriladi"
           docker compose up -d --build --remove-orphans
@@ -56,15 +125,17 @@ jobs:
           DIR="${DEPLOY_PATH:-$HOME/HISOBOT}"
           cd "$DIR"
 
-          # Backend ko'tarilishini kutamiz (migratsiya biroz vaqt oladi)
+          # Backend ko'tarilishini kutamiz (migratsiya biroz vaqt oladi).
+          # -k kerak: sertifikat *.uzbeksteel.uz uchun, biz esa localhost'ga murojaat qilamiz.
           for i in $(seq 1 30); do
-            code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost/ || echo 000)
-            if [ "$code" = "200" ]; then
-              echo "Sayt ishlayapti (HTTP $code)"
+            http=$(curl -s -o /dev/null -w '%{http_code}' http://localhost/ || echo 000)
+            https=$(curl -sk -o /dev/null -w '%{http_code}' https://localhost/ || echo 000)
+            if [ "$http" = "200" ] && [ "$https" = "200" ]; then
+              echo "Sayt ishlayapti (HTTP $http, HTTPS $https)"
               docker compose ps
               exit 0
             fi
-            echo "  kutilmoqda... ($i/30, HTTP $code)"
+            echo "  kutilmoqda... ($i/30, HTTP $http, HTTPS $https)"
             sleep 5
           done
 

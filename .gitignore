@@ -22,6 +22,14 @@ backend/.env
 backend/secrets/
 *firebase-adminsdk*.json
 
+# TLS sertifikatlar — hech qachon git'ga tushmasin
+certs/
+*.key
+*.pem
+*.crt
+*.ca-bundle
+*.pfx
+
 # Uploads — foydalanuvchi yuklagan fayllar (Docker'da volume'da saqlanadi)
 backend/app/uploads/
 backend/uploads/
