@@ -66,21 +66,70 @@ jobs:
           mkdir -p certs
           umask 077
 
-          # Windows'dan nusxa olinganda CR belgilari qo'shilishi mumkin — tozalaymiz.
-          printf '%s\n' "$TLS_FULLCHAIN"   | tr -d '\r' > certs/fullchain.crt.new
-          printf '%s\n' "$TLS_PRIVATE_KEY" | tr -d '\r' > certs/privkey.key.new
+          # Secret'ni PEM holiga keltiramiz: CR belgilari, qator boshi va
+          # oxiridagi bo'shliqlar, hamda bo'sh qatorlar olib tashlanadi.
+          # Windows'dan nusxalanganda shular qo'shilib qolib, OpenSSL faylni
+          # umuman o'qiy olmay qolishi mumkin.
+          tozala() {
+            tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e '/^$/d'
+          }
 
-          # Yaroqsiz secret bilan ishlab turgan saytni buzib qo'ymaymiz:
-          # avval tekshiramiz, keyingina o'rniga qo'yamiz.
-          if ! openssl x509 -in certs/fullchain.crt.new -noout -checkend 0 >/dev/null 2>&1; then
+          printf '%s\n' "$TLS_FULLCHAIN"   | tozala > certs/fullchain.crt.new
+          printf '%s\n' "$TLS_PRIVATE_KEY" | tozala > certs/privkey.key.new
+
+          # Shakl tekshiruvi. Maxfiy mazmun log'ga chiqmaydi — faqat tuzilishi:
+          # qatorlar soni va eng uzun qator uzunligi.
+          shakl_tekshir() {
+            fayl="$1"; nom="$2"; naqsh="$3"
+            qator=$(wc -l < "$fayl")
+            uzun=$(awk '{ if (length($0) > m) m = length($0) } END { print m+0 }' "$fayl")
+            echo "    $nom: $qator qator, eng uzun qator $uzun belgi"
+
+            if ! head -1 "$fayl" | grep -q -- "$naqsh"; then
+              echo "XATO: $nom PEM sarlavhasi bilan boshlanmayapti ($naqsh...)." >&2
+              return 1
+            fi
+            if [ "$uzun" -gt 100 ]; then
+              echo "XATO: $nom qatorlarga bo'linmagan — nusxalashda satr" >&2
+              echo "      uzilishlari yo'qolgan (eng uzun qator $uzun belgi)." >&2
+              return 1
+            fi
+            return 0
+          }
+
+          echo "==> Secret'lar tekshirilmoqda"
+          ok=1
+          shakl_tekshir certs/fullchain.crt.new TLS_FULLCHAIN   "-----BEGIN CERTIFICATE-----" || ok=0
+          shakl_tekshir certs/privkey.key.new   TLS_PRIVATE_KEY "-----BEGIN"                  || ok=0
+          if [ "$ok" -eq 0 ]; then
             rm -f certs/fullchain.crt.new certs/privkey.key.new
-            echo "XATO: TLS_FULLCHAIN secret'i yaroqsiz yoki muddati o'tgan." >&2
+            echo "" >&2
+            echo "Secret'ni qayta joylang. PowerShell'da faylni butunligicha oling:" >&2
+            echo "  Get-Content E:\\DOCs\\cert\\fullchain.crt -Raw | Set-Clipboard" >&2
+            echo "  Get-Content E:\\DOCs\\cert\\STAR_uzbeksteel_uz.key -Raw | Set-Clipboard" >&2
+            echo "GitHub'dagi Secret maydonini avval to'liq tozalab, keyin Ctrl+V qiling." >&2
             exit 1
           fi
 
-          crt_pub=$(openssl x509 -in certs/fullchain.crt.new -noout -pubkey | openssl sha256)
-          key_pub=$(openssl pkey -in certs/privkey.key.new -pubout | openssl sha256)
-          if [ "$crt_pub" != "$key_pub" ]; then
+          # Yaroqsiz secret bilan ishlab turgan saytni buzib qo'ymaymiz:
+          # avval tekshiramiz, keyingina o'rniga qo'yamiz.
+          if ! openssl x509 -in certs/fullchain.crt.new -noout -checkend 0; then
+            rm -f certs/fullchain.crt.new certs/privkey.key.new
+            echo "XATO: TLS_FULLCHAIN yaroqsiz yoki muddati o'tgan." >&2
+            exit 1
+          fi
+
+          if ! openssl pkey -in certs/privkey.key.new -pubout >/dev/null; then
+            rm -f certs/fullchain.crt.new certs/privkey.key.new
+            echo "XATO: TLS_PRIVATE_KEY ni OpenSSL o'qiy olmadi (yuqoridagi xabarga qarang)." >&2
+            exit 1
+          fi
+
+          # Taqqoslashda oraliq o'zgaruvchi ishlatmaymiz: $(...) satr oxiridagi
+          # belgilarni kesib, hash'ni bekordan-bekorga farqli qilib qo'yadi.
+          crt_sum=$(openssl x509 -in certs/fullchain.crt.new -noout -pubkey | openssl sha256)
+          key_sum=$(openssl pkey -in certs/privkey.key.new -pubout | openssl sha256)
+          if [ "$crt_sum" != "$key_sum" ]; then
             rm -f certs/fullchain.crt.new certs/privkey.key.new
             echo "XATO: TLS_PRIVATE_KEY sertifikatga mos kelmaydi." >&2
             exit 1
