@@ -86,7 +86,13 @@ jobs:
             echo "    $nom: $qator qator, eng uzun qator $uzun belgi"
 
             if ! head -1 "$fayl" | grep -q -- "$naqsh"; then
-              echo "XATO: $nom PEM sarlavhasi bilan boshlanmayapti ($naqsh...)." >&2
+              echo "XATO: $nom kutilgan PEM sarlavhasi bilan boshlanmayapti." >&2
+              # Eng ko'p uchraydigan chalkashlik: ikkala secret'ga ham bitta
+              # fayl joylanib qolishi.
+              if [ "$nom" = "TLS_PRIVATE_KEY" ] && head -1 "$fayl" | grep -q -- "CERTIFICATE"; then
+                echo "      Bu secret ichida SERTIFIKAT bor, maxfiy kalit emas." >&2
+                echo "      fullchain.crt o'rniga STAR_uzbeksteel_uz.key joylang." >&2
+              fi
               return 1
             fi
             if [ "$uzun" -gt 100 ]; then
@@ -99,8 +105,8 @@ jobs:
 
           echo "==> Secret'lar tekshirilmoqda"
           ok=1
-          shakl_tekshir certs/fullchain.crt.new TLS_FULLCHAIN   "-----BEGIN CERTIFICATE-----" || ok=0
-          shakl_tekshir certs/privkey.key.new   TLS_PRIVATE_KEY "-----BEGIN"                  || ok=0
+          shakl_tekshir certs/fullchain.crt.new TLS_FULLCHAIN   "^-----BEGIN CERTIFICATE-----$"        || ok=0
+          shakl_tekshir certs/privkey.key.new   TLS_PRIVATE_KEY "^-----BEGIN [A-Z ]*PRIVATE KEY-----$" || ok=0
           if [ "$ok" -eq 0 ]; then
             rm -f certs/fullchain.crt.new certs/privkey.key.new
             echo "" >&2
