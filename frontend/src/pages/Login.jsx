@@ -65,9 +65,6 @@ export default function Login() {
         <p style={{ marginTop: 16, textAlign: 'center' }}>
           {t('auth.noAccount')} <Link to="/signup">{t('auth.signup.link')}</Link>
         </p>
-        <p style={{ marginTop: 8, textAlign: 'center', fontSize: 13, opacity: 0.7 }}>
-          <Link to="/privacy-policy">Privacy Policy</Link>
-        </p>
       </div>
     </div>
   )

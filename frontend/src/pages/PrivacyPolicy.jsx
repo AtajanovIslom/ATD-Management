@@ -15,7 +15,7 @@ const CONTENT = {
     title: 'Maxfiylik siyosati',
     updated: 'Oxirgi yangilanish: 2026-yil 24-avgust',
     intro: [
-      '"ATD Boshqaruv" (ATD Management) — "Uzbeksteel" korxonasining ATD ' +
+      '"ATD Boshqaruv" (ATD Management) — "UZMETKOMBINAT" korxonasining ATD ' +
         "direksiyasi ichki xodimlari uchun mo'ljallangan korporativ vazifa, " +
         "loyiha va hisobot boshqaruv tizimi. Ilova ommaviy foydalanuvchilar " +
         "uchun emas — undan faqat korxona tomonidan ro'yxatga olingan " +
@@ -29,9 +29,9 @@ const CONTENT = {
         h: "1. Qanday ma'lumotlar to'planadi",
         p: [
           "Hisob va xodim ma'lumotlari: to'liq ism, lavozim, boshqarma/bo'lim, " +
-            "tabel raqami, login, telefon va elektron pochta (agar kiritilgan " +
-            "bo'lsa). Bu ma'lumotlarni administrator kiritadi yoki xodim " +
-            "ro'yxatdan o'tish havolasi orqali o'zi to'ldiradi.",
+            "tabel raqami, login va telefon raqami. Bu ma'lumotlarni " +
+            "administrator kiritadi yoki xodim ro'yxatdan o'tish havolasi " +
+            "orqali o'zi to'ldiradi.",
           "Ish faoliyati ma'lumotlari: loyihalar, vazifalar, ish jurnali " +
             "yozuvlari, interaktiv xizmat arizalari va ularga biriktirilgan " +
             "fayllar (rasm, hujjat va h.k.).",
@@ -107,7 +107,7 @@ const CONTENT = {
     intro: [
       '"ATD Management" is an internal corporate task, project and ' +
         'reporting management system used by staff of the ATD directorate ' +
-        'at "Uzbeksteel". The application is not available to the general ' +
+        'at "UZMETKOMBINAT". The application is not available to the general ' +
         'public — it is used only by employees registered by the company, ' +
         'through an account (login) issued to them.',
       'This page explains what information the app (web and mobile ' +
@@ -118,9 +118,9 @@ const CONTENT = {
         h: '1. Information we collect',
         p: [
           'Account and employee data: full name, job title, department/' +
-            'division, employee (tab) number, login, phone number and ' +
-            'email (if provided). This data is entered by an administrator ' +
-            'or by the employee themselves via a registration link.',
+            'division, employee (tab) number, login and phone number. This ' +
+            'data is entered by an administrator or by the employee ' +
+            'themselves via a registration link.',
           'Work activity data: projects, tasks, work log entries, ' +
             'interactive service requests and files attached to them ' +
             '(images, documents, etc.).',
@@ -190,7 +190,7 @@ const CONTENT = {
   },
 }
 
-const CONTACT_EMAIL = 'sherzodbek4758@gmail.com'
+const CONTACT_EMAIL = 'Info@uzbeksteel.uz'
 
 export default function PrivacyPolicy() {
   const [lang, setLang] = useState('uz')
