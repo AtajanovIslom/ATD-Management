@@ -21,6 +21,7 @@ import AuditLogs from './pages/AuditLogs'
 import Reminders from './pages/Reminders'
 import WorkLogs from './pages/WorkLogs'
 import DepartmentWorkLogs from './pages/DepartmentWorkLogs'
+import PrivacyPolicy from './pages/PrivacyPolicy'
 import ReminderNotification from './components/ReminderNotification'
 import TaskNotifier from './components/TaskNotifier'
 import Navbar from './components/Navbar'
@@ -35,6 +36,10 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<SignUp />} />
         <Route path="/register/:token" element={<Register />} />
+        {/* Play Market / App Store review'i va foydalanuvchilar login
+            bo'lmasdan ko'ra olishi kerak — shuning uchun autentifikatsiya
+            talab qilmaydigan yagona sahifa */}
+        <Route path="/privacy-policy" element={<PrivacyPolicy />} />
         <Route path="*" element={<Navigate to="/login" />} />
       </Routes>
     )
@@ -71,6 +76,7 @@ export default function App() {
       <main className="main-content">
         <Routes>
           <Route path="/register/:token" element={<Register />} />
+          <Route path="/privacy-policy" element={<PrivacyPolicy />} />
 
           {/* Qaysi rol qaysi sahifani ko'rishi — rol ↔ sahifa matritsasidan
               (backend: utils.DEFAULT_ROLE_PAGES + role_pages jadvali).
