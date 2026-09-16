@@ -79,11 +79,18 @@ export default function ManageTeams() {
     }
   }
 
-  // Foydalanuvchi bu guruhni tahrirlay oladimi?
+  // Foydalanuvchi bu guruhni tahrirlay/o'chira oladimi? (backend bilan bir xil
+  // qoida: boshqarma rahbari — o'z boshqarmasi guruhlari, bo'lim rahbari —
+  // o'z bo'limi guruhlari, bo'limi belgilanmagan eskilar uchun o'zi yaratgani)
   const canEditTeam = (team) => {
     if (isSuperAdmin) return true
     if (user?.role === 'admin') {
       return !team.department_id || team.department_id === user.department_id
+    }
+    if (user?.role === 'department_admin') {
+      return team.division_id
+        ? team.division_id === user.division_id
+        : team.created_by === user.id
     }
     return false
   }
@@ -107,13 +114,13 @@ export default function ManageTeams() {
         <button className="btn btn-primary" onClick={openAdd}>{t('teams.add')}</button>
       </div>
 
-      {user?.role === 'admin' && (
+      {(user?.role === 'admin' || user?.role === 'department_admin') && (
         <div className="alert" style={{
           background: 'rgba(99,102,241,0.08)', color: 'var(--text)',
           padding: 10, borderRadius: 6, marginBottom: 12, fontSize: 13,
           border: '1px solid var(--border)',
         }}>
-          ℹ️ {t('teams.adminHint')}
+          ℹ️ {t(user.role === 'admin' ? 'teams.adminHint' : 'teams.deptAdminHint')}
         </div>
       )}
 

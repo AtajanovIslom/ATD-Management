@@ -442,18 +442,7 @@ def create_project():
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     for f in files:
         if f.filename:
-            ext = f.filename.rsplit('.', 1)[-1].lower() if '.' in f.filename else ''
-            if ext not in ALLOWED_EXTENSIONS:
-                continue
-            safe_name = f'{uuid.uuid4().hex}.{ext}'
-            f.save(os.path.join(UPLOAD_DIR, safe_name))
-            attachment = ProjectAttachment(
-                project_id=project.id,
-                filename=safe_name,
-                original_name=f.filename,
-                file_size=os.path.getsize(os.path.join(UPLOAD_DIR, safe_name)),
-            )
-            db.session.add(attachment)
+            _save_project_file(project, f)
 
     log_audit('create', 'project', project.id, entity_label=project.name,
               details=f"{len(stages_data)} ta bosqich")
@@ -824,6 +813,80 @@ def create_report(project_id):
 
     db.session.commit()
     return jsonify(report.to_dict()), 201
+
+
+def _save_project_file(project, f):
+    """Bitta faylni diskka yozib, ProjectAttachment yozuvini qaytaradi.
+    Ruxsat etilmagan kengaytma bo'lsa None."""
+    ext = f.filename.rsplit('.', 1)[-1].lower() if '.' in f.filename else ''
+    if ext not in ALLOWED_EXTENSIONS:
+        return None
+    safe_name = f'{uuid.uuid4().hex}.{ext}'
+    path = os.path.join(UPLOAD_DIR, safe_name)
+    f.save(path)
+    att = ProjectAttachment(
+        project_id=project.id,
+        filename=safe_name,
+        original_name=f.filename,
+        file_size=os.path.getsize(path),
+    )
+    db.session.add(att)
+    return att
+
+
+@projects_bp.route('/<int:project_id>/attachments', methods=['POST'])
+@jwt_required()
+def add_attachments(project_id):
+    """Loyiha yaratilgandan keyin ham fayl biriktirish.
+
+    Ilgari fayl faqat yaratish paytida qo'shilardi — tahrirlashda loyihaga
+    hujjat qo'shib bo'lmasdi.
+    """
+    project = Project.query.get_or_404(project_id)
+    if not can_manage_project(project):
+        return jsonify({'error': "Ruxsat yo'q"}), 403
+
+    files = request.files.getlist('files')
+    if not files:
+        return jsonify({'error': 'Fayl tanlanmagan'}), 400
+
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    saved = []
+    skipped = []
+    for f in files:
+        if not f.filename:
+            continue
+        att = _save_project_file(project, f)
+        (saved if att else skipped).append(f.filename)
+
+    if not saved:
+        return jsonify({
+            'error': "Fayl turi ruxsat etilmagan: " + ', '.join(sorted(ALLOWED_EXTENSIONS))
+        }), 400
+
+    log_audit('create', 'project_attachment', project.id, entity_label=project.name,
+              details=f"{len(saved)} ta fayl: " + ', '.join(saved))
+    db.session.commit()
+    return jsonify(project.to_dict()), 201
+
+
+@projects_bp.route('/<int:project_id>/attachments/<int:att_id>', methods=['DELETE'])
+@jwt_required()
+def delete_attachment(project_id, att_id):
+    project = Project.query.get_or_404(project_id)
+    if not can_manage_project(project):
+        return jsonify({'error': "Ruxsat yo'q"}), 403
+
+    att = ProjectAttachment.query.filter_by(id=att_id, project_id=project_id).first_or_404()
+    filepath = os.path.join(UPLOAD_DIR, att.filename)
+    if os.path.exists(filepath):
+        os.remove(filepath)
+
+    log_audit('delete', 'project_attachment', project.id, entity_label=project.name,
+              details=att.original_name)
+    db.session.delete(att)
+    db.session.commit()
+    return jsonify(project.to_dict())
 
 
 @projects_bp.route('/files/<filename>', methods=['GET'])

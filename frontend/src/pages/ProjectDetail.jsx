@@ -5,7 +5,7 @@ import { useI18n } from '../i18n'
 import { statusLabel } from '../i18n/labels'
 import { statusClass } from '../components/ProjectCard'
 import api from '../api/axios'
-import FilePicker from '../components/FilePicker'
+import FilePicker, { formatFileSize } from '../components/FilePicker'
 
 const downloadFile = async (url, originalName) => {
   try {
@@ -48,7 +48,7 @@ function DonutChart({ percent, label }) {
 
 export default function ProjectDetail() {
   const { id } = useParams()
-  const { user, isAdmin, isDeptAdmin, can } = useAuth()
+  const { user, isAdmin, can } = useAuth()
   const { t, formatDate: fmtDate } = useI18n()
   const navigate = useNavigate()
   const [project, setProject] = useState(null)
@@ -65,6 +65,9 @@ export default function ProjectDetail() {
   const [deletedStageIds, setDeletedStageIds] = useState(new Set())
   const [teams, setTeams] = useState([])
   const [users, setUsers] = useState([])
+  // Tahrirlashda loyihaga qo'shiladigan yangi fayllar (saqlashda yuboriladi)
+  const [newFiles, setNewFiles] = useState([])
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => { loadProject() }, [id])
 
@@ -156,7 +159,14 @@ export default function ProjectDetail() {
   // bo'lim rahbari — faqat o'zi yaratgan loyiha, hamda rol berish oynasida
   // "Loyihani tahrirlash" huquqi berilgan xodim (backend ham shu qoidada).
   // Loyihani yakunlash ham shu huquq tarkibiga kiradi.
-  const canManage = isAdmin || (isDeptAdmin && project?.created_by === user.id) || can('project.edit')
+  // Diqqat: `can('project.edit')` bo'lim rahbariga rol bo'yicha doim `true`
+  // qaytaradi — shuning uchun avval rol bo'yicha aniq qoida tekshiriladi,
+  // aks holda u o'zi yaratmagan loyihada ham tugmani ko'rib, 403 olardi.
+  const canManage = isAdmin
+    ? true
+    : user?.role === 'department_admin'
+      ? project?.created_by === user.id
+      : can('project.edit')
   // O'chirish — boshqarma rahbari va yuqori rollar, hamda "Loyihani o'chirish"
   // huquqi alohida berilgan xodim (/roles sahifasidan beriladi)
   const canDelete = isAdmin || can('project.delete')
@@ -232,10 +242,24 @@ export default function ProjectDetail() {
       assignee_ids: s.assignees?.map(a => a.id) || [],
     })))
     setDeletedStageIds(new Set())
+    setNewFiles([])
     setEditMode(true)
   }
 
+  /** Tahrirlashda biriktirilgan faylni o'chirish (darhol serverga yuboriladi) */
+  const handleDeleteAttachment = async (att) => {
+    if (!window.confirm(t('project.file.delete.confirm', { name: att.original_name }))) return
+    try {
+      const res = await api.delete(`/projects/${id}/attachments/${att.id}`)
+      setProject(res.data)
+    } catch (err) {
+      alert(err.response?.data?.error || t('state.error'))
+    }
+  }
+
   const handleEditSave = async () => {
+    if (saving) return
+    setSaving(true)
     try {
       // Holat alohida endpoint orqali o'zgaradi (yakunlash/bekor qilish
       // tugmalari) — bu yerda yuborilmaydi
@@ -272,11 +296,22 @@ export default function ProjectDetail() {
         })
       }
 
+      if (newFiles.length > 0) {
+        const fd = new FormData()
+        newFiles.forEach(f => fd.append('files', f))
+        await api.post(`/projects/${id}/attachments`, fd, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        })
+      }
+
       setEditMode(false)
       setDeletedStageIds(new Set())
+      setNewFiles([])
       loadProject()
     } catch (err) {
       alert(err.response?.data?.error || t('state.error'))
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -554,7 +589,35 @@ export default function ProjectDetail() {
             </div>
           </div>
 
-          <button className="btn btn-primary" onClick={handleEditSave}>{t('btn.save')}</button>
+          {/* Fayllar — loyiha yaratilgandan keyin ham qo'shish va o'chirish */}
+          <div className="form-group">
+            <label>{t('project.edit.files')}</label>
+            {project.attachments?.length > 0 ? (
+              <div className="file-chips" style={{ marginBottom: 8 }}>
+                {project.attachments.map(f => (
+                  <span key={f.id} className="file-chip">
+                    📎 {f.original_name}
+                    <span className="file-chip__size">({formatFileSize(f.file_size)})</span>
+                    <button type="button" className="file-chip__remove"
+                      onClick={() => handleDeleteAttachment(f)} title={t('file.remove')}
+                      aria-label={t('file.remove')}>×</button>
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>
+                {t('project.edit.noFiles')}
+              </p>
+            )}
+            <label style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, display: 'block' }}>
+              {t('project.edit.addFiles')}
+            </label>
+            <FilePicker files={newFiles} onChange={setNewFiles} />
+          </div>
+
+          <button className="btn btn-primary" onClick={handleEditSave} disabled={saving}>
+            {saving ? t('btn.saving') : t('btn.save')}
+          </button>
         </div>
       )}
 

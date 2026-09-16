@@ -76,6 +76,7 @@ def create_app():
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS department_id INTEGER REFERENCES departments(id)",
             "ALTER TABLE teams ADD COLUMN IF NOT EXISTS created_by INTEGER REFERENCES users(id)",
             "ALTER TABLE teams ADD COLUMN IF NOT EXISTS department_id INTEGER REFERENCES departments(id)",
+            "ALTER TABLE teams ADD COLUMN IF NOT EXISTS division_id INTEGER REFERENCES divisions(id)",
             "ALTER TABLE divisions ADD COLUMN IF NOT EXISTS is_service_provider BOOLEAN DEFAULT FALSE",
             "ALTER TABLE divisions ADD COLUMN IF NOT EXISTS service_api_key VARCHAR(64)",
             "CREATE TABLE IF NOT EXISTS service_departments (id SERIAL PRIMARY KEY, name TEXT NOT NULL, created_at TIMESTAMP DEFAULT NOW())",

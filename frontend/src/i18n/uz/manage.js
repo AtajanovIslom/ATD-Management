@@ -68,6 +68,7 @@ export default {
   'teams.title': 'Guruhlar boshqaruvi',
   'teams.add': '+ Guruh yaratish',
   'teams.adminHint': "Siz faqat o'z boshqarmangiz xodimlaridan guruh tuza olasiz. Barcha tuzilgan guruhlarni ko'rasiz va loyihaga biriktirasiz.",
+  'teams.deptAdminHint': "Siz faqat o'z bo'limingiz xodimlaridan guruh tuza olasiz. O'zingiz tuzgan guruhlarni tahrirlaysiz va o'chirasiz, qolgan guruhlarni esa faqat ko'rasiz.",
   'teams.empty': 'Hali guruh yaratilmagan',
   'teams.noMembers': "A'zolar yo'q",
   'teams.memberCount': "{n} ta a'zo",

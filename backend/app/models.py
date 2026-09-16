@@ -882,10 +882,15 @@ class Team(db.Model):
     name = db.Column(db.String(255), nullable=False)
     created_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     department_id = db.Column(db.Integer, db.ForeignKey('departments.id'), nullable=True)
+    # Bo'lim rahbari tuzgan guruh o'z bo'limiga bog'lanadi — shu ustun orqali u
+    # guruhini keyinchalik tahrirlay va o'chira oladi (boshqa bo'limnikiga
+    # tegmasdan). Eski yozuvlarda NULL bo'ladi, o'shanda `created_by` ishlaydi.
+    division_id = db.Column(db.Integer, db.ForeignKey('divisions.id'), nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     creator = db.relationship('User', foreign_keys=[created_by], lazy=True)
     department = db.relationship('Department', foreign_keys=[department_id], lazy=True)
+    division = db.relationship('Division', foreign_keys=[division_id], lazy=True)
     members = db.relationship('User', secondary=team_members, backref='teams', lazy=True)
 
     def to_dict(self):
@@ -896,6 +901,8 @@ class Team(db.Model):
             'creator_name': self.creator.full_name if self.creator else None,
             'department_id': self.department_id,
             'department_name': self.department.name if self.department else None,
+            'division_id': self.division_id,
+            'division_name': self.division.name if self.division else None,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'members': [{'id': m.id, 'full_name': m.full_name, 'position': m.position or '', 'department': m.department, 'department_id': m.department_id, 'division_id': m.division_id} for m in self.members],
         }
