@@ -51,8 +51,11 @@ def can_manage_project(project):
     role = claims.get('role', '')
     if is_admin_or_above(role):
         return True
-    if role == 'department_admin' and project is not None:
-        return project.created_by == int(get_jwt_identity())
+    # Yaratuvchi o'zi yaratgan loyihani doim boshqara oladi — bo'lim rahbari
+    # ham, "Loyiha yaratish" sahifasi ochilgan oddiy xodim ham. Aks holda
+    # xodim loyihasini yaratardiyu, unga bosqich qo'sha/tahrirlay olmasdi.
+    if project is not None and project.created_by == int(get_jwt_identity()):
+        return True
     return has_permission('project.edit', claims)
 
 
