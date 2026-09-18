@@ -8,6 +8,7 @@ from app.models import Project, ProjectStage, ProjectAttachment, DailyReport, Re
 from app.utils import (
     get_scope, is_any_admin, is_admin_or_above, is_superadmin,
     dept_user_ids, div_user_ids, log_audit, has_permission, FULL_ACCESS_ROLES,
+    allowed_pages_for_user,
 )
 from app.services import events
 
@@ -24,8 +25,18 @@ projects_bp = Blueprint('projects', __name__)
 
 def can_create_project():
     """Loyiha yaratish huquqi — boshqarma rahbari, yuqori rollar va bo'lim
-       rahbari (o'z bo'limi doirasida)."""
-    return is_any_admin(get_jwt().get('role', ''))
+       rahbari (o'z bo'limi doirasida), hamda "Loyiha yaratish" sahifasi
+       ochib berilgan har qanday xodim (rol yoki xodim darajasida).
+
+    Ilgari faqat rol tekshirilardi: /roles sahifasidan xodimga "Loyiha
+       yaratish" sahifasi ochilsa ham backend saqlashni 403 bilan rad etardi."""
+    if is_any_admin(get_jwt().get('role', '')):
+        return True
+    try:
+        user = User.query.get(int(get_jwt_identity()))
+    except (TypeError, ValueError):
+        user = None
+    return user is not None and 'create_project' in allowed_pages_for_user(user)
 
 
 def can_manage_project(project):
@@ -132,10 +143,10 @@ def _scoped_projects(role, dept_id, div_id, user_id):
     conds = [
         Project.stages.any(ProjectStage.assignee_id == user_id),
         Project.stages.any(ProjectStage.assignees.any(User.id == user_id)),
-    ]
-    if role == 'department_admin':
         # O'zi yaratgan loyiha bosqichlarida ijrochi bo'lmasa ham ko'rinsin
-        conds.append(Project.created_by == user_id)
+        # (bo'lim rahbari, hamda "Loyiha yaratish" huquqi berilgan oddiy xodim)
+        Project.created_by == user_id,
+    ]
     if team_ids:
         conds.append(Project.teams.any(Team.id.in_(team_ids)))
     return Project.query.filter(db.or_(*conds)).order_by(Project.created_at.desc()).all()
