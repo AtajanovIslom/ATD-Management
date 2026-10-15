@@ -19,8 +19,7 @@ import InteractiveServicesAdmin from './pages/InteractiveServicesAdmin'
 import InteractiveRequests from './pages/InteractiveRequests'
 import AuditLogs from './pages/AuditLogs'
 import Reminders from './pages/Reminders'
-import WorkLogs from './pages/WorkLogs'
-import DepartmentWorkLogs from './pages/DepartmentWorkLogs'
+import EmployeeReports from './pages/EmployeeReports'
 import PrivacyPolicy from './pages/PrivacyPolicy'
 import ReminderNotification from './components/ReminderNotification'
 import TaskNotifier from './components/TaskNotifier'
@@ -86,13 +85,18 @@ export default function App() {
             <Route path="/" element={isDeptAdmin ? <AdminDashboard /> : <UserDashboard />} />
           )}
           {canView('reminders') && <Route path="/reminders" element={<Reminders />} />}
-          {canView('work_logs') && <Route path="/work-logs" element={<WorkLogs />} />}
+          {/* Ikkalasi ham bitta sahifa: xodimga — o'z hisoboti, rahbarga —
+              bo'ysunuvchilari hisobotlari (kim kimni ko'rishini backend hal qiladi) */}
+          {canView('work_logs') && <Route path="/work-logs" element={<EmployeeReports />} />}
           {canView('department_work_logs') && (
-            <Route path="/department-work-logs" element={<DepartmentWorkLogs />} />
+            <Route path="/department-work-logs" element={<EmployeeReports />} />
           )}
           {canView('statistics') && <Route path="/statistics" element={<Statistics />} />}
           {canView('create_project') && <Route path="/create-project" element={<CreateProject />} />}
-          {canView('create_task') && <Route path="/create-task" element={<CreateTask />} />}
+          {/* Oddiy xodim matritsadan qat'i nazar o'zi uchun vazifa yarata oladi */}
+          {(canView('create_task') || (!isDeptAdmin && user.role !== 'agent')) && (
+            <Route path="/create-task" element={<CreateTask />} />
+          )}
           {canView('teams') && <Route path="/teams" element={<ManageTeams />} />}
           {canView('departments') && <Route path="/departments" element={<ManageDepartments />} />}
           {canView('users') && <Route path="/users" element={<ManageUsers />} />}

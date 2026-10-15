@@ -6,6 +6,7 @@ import { statusLabel } from '../i18n/labels'
 import { statusClass } from '../components/ProjectCard'
 import api from '../api/axios'
 import FilePicker from '../components/FilePicker'
+import { toDateInput } from '../utils/dates'
 
 const downloadFile = async (url, originalName, errorText) => {
   try {
@@ -24,17 +25,8 @@ const downloadFile = async (url, originalName, errorText) => {
 export default function TaskDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { user, isDeptAdmin, isAdmin: isDeptOrHigher, can } = useAuth()
+  const { user, isDeptAdmin } = useAuth()
   const { t, formatDate: fmtDate } = useI18n()
-  // isAdmin = barcha rahbarlar (bo'lim rahbari, boshqarma rahbari, superadmin)
-  const isAdmin = isDeptAdmin
-  // Tahrirlash (nomi, tavsifi, muddatlari) — rahbarlar va rol berish oynasida
-  // "Vazifani tahrirlash" huquqi berilgan xodim. Yuklash/tasdiqlash/o'chirish
-  // esa faqat rahbarda qoladi.
-  const canEdit = isAdmin || can('task.edit')
-  // Boshqarma rahbari va yuqori (bo'lim rahbari kirmaydi) — tugallanган vazifani
-  // qayta yuklash huquqi shu darajaga ega
-  const canReturnCompleted = isDeptOrHigher  // useAuth'dagi isAdmin: admin+superadmin
 
   const [task, setTask] = useState(null)
   const [reports, setReports] = useState([])
@@ -49,22 +41,33 @@ export default function TaskDetail() {
   const [editForm, setEditForm] = useState({ name: '', description: '', start_date: '', deadline: '' })
   const [editBusy, setEditBusy] = useState(false)
 
-  useEffect(() => { loadData() }, [id])
-
-  const loadData = async () => {
-    try {
-      const [taskRes, reportsRes] = await Promise.all([
-        api.get(`/tasks/${id}`),
-        api.get(`/tasks/${id}/reports`),
-      ])
+  // Boshqa vazifaga o'tilganda (masalan bildirishnoma orqali) eski vazifa
+  // ekranda qolib, tugmalar esa yangisiga ishlamasligi uchun holat tozalanadi
+  // va kech kelgan eski javob e'tiborsiz qoldiriladi
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    setTask(null)
+    setReports([])
+    Promise.all([
+      api.get(`/tasks/${id}`),
+      api.get(`/tasks/${id}/reports`),
+    ]).then(([taskRes, reportsRes]) => {
+      if (cancelled) return
       setTask(taskRes.data)
       setReports(reportsRes.data)
-    } catch (err) {
-      console.error(err)
-    } finally {
-      setLoading(false)
-    }
-  }
+    }).catch(err => {
+      if (!cancelled) console.error(err)
+    }).finally(() => {
+      if (!cancelled) setLoading(false)
+    })
+    return () => { cancelled = true }
+  }, [id])
+
+  // Barcha tugmalar backend aniq shu vazifa uchun hisoblagan huquqlardan
+  // (ierarxiya: ko'lamidagi rahbar boshqaradi, xodim o'z vazifasini tahrirlaydi)
+  const perms = task?.perms || {}
+  const isAdmin = !!perms.manage
 
   const formatDate = (iso) => fmtDate(iso, {
     year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
@@ -125,8 +128,8 @@ export default function TaskDetail() {
       name: task?.name || '',
       description: task?.description || '',
       // <input type="date"> faqat YYYY-MM-DD qabul qiladi
-      start_date: task?.start_date ? task.start_date.split('T')[0] : '',
-      deadline: task?.deadline ? task.deadline.split('T')[0] : '',
+      start_date: toDateInput(task?.start_date),
+      deadline: toDateInput(task?.deadline),
     })
     setEditModal(true)
   }
@@ -193,14 +196,7 @@ export default function TaskDetail() {
 
   // Ijrochi bo'lgan har kim (rahbarlar ham) hisobot topshira oladi —
   // ijrochi ekanligi rol emas, biriktirish bilan aniqlanadi.
-  const canUserReport = (() => {
-    if (!task) return false
-    if (task.status === 'completed' || task.status === 'cancelled') return false
-    if (task.assignee_id === user.id) return true
-    if (task.assignees?.some(a => a.id === user.id)) return true
-    if (!task.assignee_id && !task.assignees?.length && task.team_members?.some(m => m.id === user.id)) return true
-    return false
-  })()
+  const canUserReport = !!perms.report
 
   if (loading) return <div className="empty-state"><p>{t('state.loading')}</p></div>
   if (!task) return <div className="empty-state"><p>{t('task.notFound')}</p></div>
@@ -217,17 +213,17 @@ export default function TaskDetail() {
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           {/* Xodimga yuklash — rahbarlarga. Yakunlangan va tekshiruvdagi vazifani
               yuklab bo'lmaydi (backend ham buni qaytaradi) */}
-          {isAdmin && task.status !== 'completed' && task.status !== 'review' && (
+          {perms.reassign && (
             <button className="btn btn-primary btn-sm" onClick={openAssign}>
               👤 {t('task.assignToWorker')}
             </button>
           )}
-          {canEdit && (
+          {perms.edit && (
             <button className="btn btn-outline btn-sm" onClick={openEdit}>
               ✏️ {t('btn.edit')}
             </button>
           )}
-          {isAdmin && (
+          {perms.delete && (
             <button className="btn btn-danger btn-sm" onClick={handleDelete}>{t('btn.delete')}</button>
           )}
           <button className="btn btn-outline btn-sm" onClick={() => navigate(-1)}>← {t('btn.back')}</button>
@@ -334,7 +330,7 @@ export default function TaskDetail() {
               {statusText(task.status)}
             </span>
             <div style={{ display: 'flex', gap: 6 }}>
-              {isAdmin && task.status === 'review' && (
+              {perms.approve && (
                 <>
                   <button className="btn btn-success btn-sm" onClick={() => handleStatusChange('completed')}>
                     ✓ {t('task.accept')}
@@ -346,7 +342,7 @@ export default function TaskDetail() {
               )}
               {/* Boshqarma rahbari va yuqori — tugallangan vazifani qayta yuklashi mumkin
                   (ishda kamchilik topilsa). Bo'lim rahbari bunga huquqi yo'q. */}
-              {canReturnCompleted && task.status === 'completed' && (
+              {perms.return_completed && (
                 <button className="btn btn-warning btn-sm"
                   onClick={() => {
                     if (window.confirm(t('task.returnCompleted.confirm'))) {
@@ -357,13 +353,13 @@ export default function TaskDetail() {
                 </button>
               )}
               {/* Bekor qilish — rahbarga. Tugallangan vazifa bekor qilinmaydi. */}
-              {isAdmin && task.status !== 'completed' && task.status !== 'cancelled' && (
+              {perms.cancel && (
                 <button className="btn btn-danger btn-sm" onClick={handleCancelTask}>
                   🚫 {t('task.cancelTask')}
                 </button>
               )}
               {/* Bekor qilinganini qayta ishga qaytarish */}
-              {isAdmin && task.status === 'cancelled' && (
+              {perms.reopen && (
                 <button className="btn btn-outline btn-sm" onClick={() => handleStatusChange('active')}>
                   ▶ {t('task.reopen')}
                 </button>
@@ -496,7 +492,7 @@ export default function TaskDetail() {
         </div>
       )}
 
-      {!canUserReport && !isAdmin && (
+      {!canUserReport && !isAdmin && !isDeptAdmin && (
         <div className="card" style={{ marginBottom: 16, textAlign: 'center', padding: 20 }}>
           <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>
             {t('task.report.noRight')}

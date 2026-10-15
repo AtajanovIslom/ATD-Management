@@ -89,6 +89,15 @@ def set_role():
     if user.role == 'superadmin':
         return jsonify({'error': "Bosh admin rolini o'zgartirib bo'lmaydi"}), 400
 
+    # Direktor Bosh Administrator yoki direktor tayinlay olmaydi va o'ziga
+    # teng/yuqori xodimning rolini o'zgartirmaydi (ilgari direktor o'zini
+    # yoki istalgan odamni superadmin qila olardi)
+    if role != 'superadmin':
+        if new_role in ('superadmin', 'director'):
+            return jsonify({'error': "Bu rolni faqat Bosh Administrator beradi"}), 403
+        if user.role in ('superadmin', 'director'):
+            return jsonify({'error': "Bu xodimning rolini faqat Bosh Administrator o'zgartiradi"}), 403
+
     user.role = new_role
     granted = None
     if permissions is not None:

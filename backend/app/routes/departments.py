@@ -66,6 +66,19 @@ def delete_department(dept_id):
         return jsonify({'error': "Ruxsat yo'q"}), 403
     dept = Department.query.get_or_404(dept_id)
     log_audit('delete', 'department', dept.id, entity_label=dept.name)
+    # Boshqarma va uning bo'limlariga ishora qiluvchi xodim/guruhlar
+    # bo'shatiladi — aks holda tashqi kalit xatosi (500) chiqardi
+    from app.models import User, Team, Division
+    div_ids = [d.id for d in Division.query.filter_by(department_id=dept.id).all()]
+    if div_ids:
+        User.query.filter(User.division_id.in_(div_ids)).update(
+            {'division_id': None}, synchronize_session=False)
+        Team.query.filter(Team.division_id.in_(div_ids)).update(
+            {'division_id': None}, synchronize_session=False)
+    User.query.filter_by(department_id=dept.id).update(
+        {'department_id': None}, synchronize_session=False)
+    Team.query.filter_by(department_id=dept.id).update(
+        {'department_id': None}, synchronize_session=False)
     db.session.delete(dept)
     db.session.commit()
     return jsonify({'message': "Boshqarma o'chirildi"})

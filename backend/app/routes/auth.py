@@ -41,7 +41,7 @@ def _make_tokens(user):
 
 @auth_bp.route('/signup', methods=['POST'])
 def signup():
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     full_name = data.get('full_name', '').strip()
     department = data.get('department', '').strip()
     position = data.get('position', '').strip()
@@ -83,7 +83,7 @@ def signup():
 
 @auth_bp.route('/login', methods=['POST'])
 def login():
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     login = data.get('login', '').strip()
     password = data.get('password', '')
 
@@ -97,12 +97,12 @@ def login():
     # Login audit — user_id/user_name'ni qo'lda kiritamiz (JWT hali yo'q)
     from app import db as _db
     from app.models import AuditLog
-    from flask import request as _req
+    from app.utils import client_ip
     _db.session.add(AuditLog(
         user_id=user.id, user_name=user.full_name, user_role=user.role,
         action='login', entity_type='user', entity_id=user.id,
         entity_label=user.full_name,
-        ip_address=(_req.headers.get('X-Forwarded-For', _req.remote_addr) or '')[:50],
+        ip_address=client_ip(),
     ))
     _db.session.commit()
 
@@ -156,7 +156,7 @@ def complete_registration(token):
     if not user:
         return jsonify({'error': 'Havola yaroqsiz yoki muddati o\'tgan'}), 404
 
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     login = data.get('login', '').strip()
     password = data.get('password', '')
 

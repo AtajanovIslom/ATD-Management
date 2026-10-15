@@ -13,6 +13,7 @@ export default {
 
   // ── AdminDashboard ──
   'dash.title': 'Панель управления',
+  'dash.addSelfTask': '+ Задача для себя',
   'dash.stat.totalProjects': 'Всего проектов',
   'dash.stat.active': 'Активные',
   'dash.stat.completed': 'Завершённые',

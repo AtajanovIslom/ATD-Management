@@ -16,6 +16,25 @@ def create_app():
     jwt.init_app(app)
     CORS(app)
 
+    # Rol/bo'lim token ichidan emas, bazadan olinadi; bloklangan xodimning
+    # tokeni darhol ishlamay qoladi (utils.sync_claims_from_db).
+    @jwt.token_verification_loader
+    def _verify_claims(_jwt_header, jwt_data):
+        from app.utils import sync_claims_from_db
+        return sync_claims_from_db(jwt_data)
+
+    @jwt.token_verification_failed_loader
+    def _claims_failed(_jwt_header, _jwt_data):
+        # 401 — frontend shu kod bo'yicha sessiyani tozalab login'ga qaytaradi
+        from flask import jsonify
+        return jsonify({'error': "Sessiya yaroqsiz — qayta kiring"}), 401
+
+    @app.errorhandler(413)
+    def _too_large(_e):
+        from flask import jsonify
+        limit_mb = app.config['MAX_CONTENT_LENGTH'] // (1024 * 1024)
+        return jsonify({'error': f"Fayl hajmi juda katta (ko'pi bilan {limit_mb} MB)"}), 413
+
     from app.routes.auth import auth_bp
     from app.routes.users import users_bp
     from app.routes.teams import teams_bp
@@ -32,6 +51,7 @@ def create_app():
     from app.routes.work_logs import work_logs_bp
     from app.routes.vacations import vacations_bp
     from app.routes.notifications import notifications_bp
+    from app.routes.employee_reports import employee_reports_bp
 
     # Import qilinishi shart: push navbatini commit'ga ulaydigan SQLAlchemy
     # hodisa tinglovchilari shu modulda ro'yxatdan o'tadi.
@@ -56,6 +76,7 @@ def create_app():
     app.register_blueprint(work_logs_bp, url_prefix='/api/work-logs')
     app.register_blueprint(vacations_bp, url_prefix='/api/vacations')
     app.register_blueprint(notifications_bp, url_prefix='/api/notifications')
+    app.register_blueprint(employee_reports_bp, url_prefix='/api/employee-reports')
 
     with app.app_context():
         from app.models import User
@@ -322,16 +343,12 @@ def create_app():
                 plain_password='atajanov123', role='superadmin',
             ))
             db.session.commit()
-            print("Boshlang'ich superadminlar yaratildi: admin2/admin123, admin/atajanov123")
-        else:
-            # Mavjud adminlarni superadmin ga o'tkazamiz (bir martalik migration)
-            try:
-                db.session.execute(db.text(
-                    "UPDATE users SET role='superadmin' WHERE login IN ('admin', 'admin2') AND role='admin'"
-                ))
-                db.session.commit()
-            except Exception:
-                db.session.rollback()
+            # Parollar log'ga yozilmaydi — ular faqat birinchi ishga tushirish
+            # uchun, kirgandan keyin darhol almashtirilishi kerak
+            print("Boshlang'ich superadminlar yaratildi: admin, admin2 — parollarni almashtiring")
+        # Ilgari bu yerda har restartda `admin`/`admin2` loginlari qaytadan
+        # superadmin qilinardi — Bosh Administrator ularning rolini atayin
+        # pasaytirsa ham keyingi deploy'da tiklanib qolardi. Olib tashlandi.
 
         # Gunicorn `--preload` bilan ishga tushadi: create_app() master
         # process'da bajariladi va shu yergacha ochilgan PostgreSQL ulanishlari

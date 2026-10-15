@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { useI18n } from '../i18n'
 import ProjectsPanel from '../components/ProjectsPanel'
 import TasksPanel from '../components/TasksPanel'
@@ -14,6 +15,8 @@ export default function UserDashboard() {
     <div>
       <div className="page-header">
         <h1>{t('dash.title')}</h1>
+        {/* Xodim faqat o'zi uchun vazifa yaratadi — rahbar emas, o'zi rejalashtirgan ish */}
+        <Link to="/create-task" className="btn btn-primary">{t('dash.addSelfTask')}</Link>
       </div>
 
       <ProjectsPanel title={t('dash.myProjects')} />

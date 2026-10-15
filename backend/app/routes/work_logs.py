@@ -17,7 +17,7 @@ from flask import Blueprint, request, jsonify, send_file
 from flask_jwt_extended import jwt_required, get_jwt, get_jwt_identity
 from app import db
 from app.models import WorkLog, User, Task
-from app.utils import get_scope, is_admin_or_above, is_any_admin, log_audit
+from app.utils import get_scope, is_admin_or_above, is_any_admin, log_audit, scope_user_ids, in_scope
 
 work_logs_bp = Blueprint('work_logs', __name__)
 
@@ -142,6 +142,12 @@ def update(log_id):
     if 'interactive_request_id' in data:
         w.interactive_request_id = int(data['interactive_request_id']) if data['interactive_request_id'] else None
 
+    # Tahrirlangan hisobot qayta ko'rib chiqiladi — tasdiqlangan matn
+    # o'zgarib, "tasdiqlangan" belgisi bilan qolib ketmasin
+    if w.status in ('approved', 'returned'):
+        w.status = 'pending'
+        w.approved_by = None
+        w.approved_at = None
     log_audit('update', 'work_log', w.id, entity_label=w.content[:60])
     db.session.commit()
     return jsonify(w.to_dict())
@@ -156,15 +162,10 @@ def _can_manage_log(w, actor_id, role, dept_id, div_id):
     """
     if w.user_id == actor_id:
         return True
-    if not w.user:
+    if not w.user or not is_any_admin(role):
         return False
-    if role in ('superadmin', 'director', 'deputy_director'):
-        return True
-    if role == 'admin' and dept_id and w.user.department_id == dept_id:
-        return True
-    if role == 'department_admin' and div_id and w.user.division_id == div_id:
-        return True
-    return False
+    # Bo'limi orqali boshqarmaga tegishli xodimlar ham hisobga olinadi
+    return in_scope(w.user_id, scope_user_ids(role, dept_id, div_id, actor_id))
 
 
 @work_logs_bp.route('/<int:log_id>', methods=['DELETE'])
@@ -445,15 +446,12 @@ def _department_scope_user_ids(role, dept_id, div_id, self_id):
     """Boshqarma rahbari o'z boshqarmasidagi xodimlar hisobotlarini ko'radi.
        To'liq huquqli rollar — barcha xodimlarni.
     """
-    if role in ('superadmin', 'director', 'deputy_director'):
-        return None  # hammasi
-    if role == 'admin' and dept_id:
-        users = User.query.filter_by(department_id=dept_id).all()
-        return {u.id for u in users}
-    if role == 'department_admin' and div_id:
-        users = User.query.filter_by(division_id=div_id).all()
-        return {u.id for u in users}
-    return set()
+    if not is_any_admin(role):
+        return set()
+    # None — hammasi. Bo'limi orqali boshqarmaga tegishli xodimlar ham kiradi
+    # (ilgari faqat `users.department_id` bo'yicha olinardi va ba'zi xodimlar
+    # boshqarma rahbaridan yashirin qolardi)
+    return scope_user_ids(role, dept_id, div_id, self_id)
 
 
 def _department_query(role, dept_id, div_id, self_id):

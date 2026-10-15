@@ -2,6 +2,8 @@
 export default {
   // ── CreateTask ──
   'task.create.title': 'Yangi vazifa yaratish',
+  'task.create.selfTitle': "O'zim uchun vazifa",
+  'task.create.selfHint': "Vazifa sizga biriktiriladi. Bajarib, hisobot topshirsangiz u rahbaringizga tekshiruvga boradi va \"Mening hisobotlarim\" jadvaliga o'zi qo'shiladi.",
   'task.field.name': 'Vazifa nomi *',
   'task.field.name.placeholder': 'Vazifa nomini kiriting',
   'task.field.description': 'Vazifa tavsifi',

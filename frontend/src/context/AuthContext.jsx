@@ -57,7 +57,10 @@ const legacyPages = (user) => {
   const isProvider = !!user?.division_is_service_provider
 
   const allow = new Set(['dashboard', 'reminders'])
-  if (!isDept) allow.add('work_logs')
+  if (!isDept) {
+    allow.add('work_logs')
+    allow.add('create_task')
+  }
   if (isDept) {
     ;['department_work_logs', 'statistics', 'create_project', 'create_task', 'users']
       .forEach(k => allow.add(k))
@@ -71,10 +74,8 @@ const legacyPages = (user) => {
 }
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(() => {
-    const saved = localStorage.getItem('user')
-    return saved ? JSON.parse(saved) : null
-  })
+  // Buzilgan qiymat bo'lsa oq ekran o'rniga login sahifasi chiqsin
+  const [user, setUser] = useState(() => readCache('user', null))
   const [pages, setPages] = useState(() => readCache('page_access', null))
   // Qo'shimcha huquqlar (project.delete, project.view_all, ...) — sahifalar
   // bilan birga har ochilishda serverdan yangilanadi
@@ -106,6 +107,20 @@ export function AuthProvider({ children }) {
       })
     return () => { cancelled = true }
   }, [user?.id, user?.role])
+
+  // Boshqa tabda chiqib ketilsa yoki boshqa hisob bilan kirilsa, bu tab eski
+  // foydalanuvchi menyusi va ruxsatlari bilan qolmasin — sahifa qayta
+  // yuklanadi va yangi sessiya holati o'qiladi
+  useEffect(() => {
+    const onStorage = (e) => {
+      if (e.key === 'token' || e.key === null) {
+        const current = localStorage.getItem('token')
+        if (e.newValue !== e.oldValue || !current) window.location.reload()
+      }
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+  }, [])
 
   const login = async (loginName, password) => {
     const res = await api.post('/auth/login', { login: loginName, password })

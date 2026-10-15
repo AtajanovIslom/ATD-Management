@@ -255,7 +255,14 @@ def list_requests():
 @interactive_req_bp.route('/<int:req_id>', methods=['GET'])
 @jwt_required()
 def get_request(req_id):
-    r = InteractiveRequest.query.get_or_404(req_id)
+    # Ro'yxatdagi ko'rinish qoidasi bilan bir xil — ilgari ID bo'yicha har
+    # kim istalgan arizani (telefon raqami va izohlari bilan) ocha olardi
+    role, dept_id, div_id = get_scope(get_jwt())
+    q = _list_scope_filter(InteractiveRequest.query, role, dept_id, div_id,
+                           int(get_jwt_identity()))
+    r = q.filter(InteractiveRequest.id == req_id).first()
+    if r is None:
+        return jsonify({'error': 'Ariza topilmadi'}), 404
     d = r.to_dict()
     d['history'] = [h.to_public() for h in r.history]
     return jsonify(d)

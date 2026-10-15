@@ -7,8 +7,8 @@ from app import db
 from app.models import Project, ProjectStage, ProjectAttachment, DailyReport, ReportAttachment, Team, User, SubStage
 from app.utils import (
     get_scope, is_any_admin, is_admin_or_above, is_superadmin,
-    dept_user_ids, div_user_ids, log_audit, has_permission, FULL_ACCESS_ROLES,
-    allowed_pages_for_user,
+    log_audit, has_permission, FULL_ACCESS_ROLES,
+    allowed_pages_for_user, scope_user_ids,
 )
 from app.services import events
 
@@ -21,6 +21,8 @@ def parse_datetime(s):
 
 
 projects_bp = Blueprint('projects', __name__)
+
+STAGE_STATUSES = ('pending', 'in_progress', 'review', 'completed')
 
 
 def can_create_project():
@@ -39,32 +41,78 @@ def can_create_project():
     return user is not None and 'create_project' in allowed_pages_for_user(user)
 
 
+def _my_scope():
+    role, dept_id, div_id = get_scope(get_jwt())
+    me = int(get_jwt_identity())
+    return role, me, scope_user_ids(role, dept_id, div_id, me)
+
+
 def can_manage_project(project):
     """Mavjud loyihani boshqarish (tahrirlash, bosqich qo'shish/o'chirish,
        ijroni tekshirish, yakunlash) huquqi:
-       - boshqarma rahbari va yuqori: barcha loyihalar
-       - bo'lim rahbari: faqat o'zi yaratgan loyiha
+       - superadmin/direksiya: barcha loyihalar
+       - boshqarma rahbari: o'z boshqarmasi xodimlari yaratgan loyihalar
+       - bo'lim rahbari: o'z bo'limi xodimlari yaratgan loyihalar
+       - yaratuvchining o'zi
        - "Loyihani tahrirlash" huquqi berilgan xodim: o'ziga ko'rinadigan loyiha
          (rol berish oynasidagi qo'shimcha huquq)
+
+    Ilgari boshqarma rahbari tashkilotdagi BARCHA loyihalarni tahrirlay va
+    o'chira olardi.
     """
+    if project is None:
+        return False
     claims = get_jwt()
-    role = claims.get('role', '')
-    if is_admin_or_above(role):
+    role, me, scope = _my_scope()
+    if role in FULL_ACCESS_ROLES:
         return True
     # Yaratuvchi o'zi yaratgan loyihani doim boshqara oladi — bo'lim rahbari
     # ham, "Loyiha yaratish" sahifasi ochilgan oddiy xodim ham. Aks holda
     # xodim loyihasini yaratardiyu, unga bosqich qo'sha/tahrirlay olmasdi.
-    if project is not None and project.created_by == int(get_jwt_identity()):
+    if project.created_by == me:
         return True
-    return has_permission('project.edit', claims)
+    if is_any_admin(role) and project.created_by in scope:
+        return True
+    return has_permission('project.edit', claims) and can_view_project(project)
+
+
+def can_view_project(project):
+    if project is None:
+        return False
+    role, dept_id, div_id = get_scope(get_jwt())
+    return _scoped_projects_query(role, dept_id, div_id, int(get_jwt_identity())) \
+        .filter(Project.id == project.id).first() is not None
+
+
+def _get_visible_project(project_id):
+    """Loyiha topilmasa yoki ko'rish huquqi bo'lmasa None."""
+    project = Project.query.get(project_id)
+    return project if can_view_project(project) else None
+
+
+def _sees_all_reports(project):
+    """Boshqa ijrochilarning hisobotlari faqat loyihani boshqaradigan
+    rahbarga ko'rinadi — oddiy xodim faqat o'z hisobotini ko'radi."""
+    role, me, _scope = _my_scope()
+    if role in FULL_ACCESS_ROLES or project.created_by == me:
+        return True
+    return is_any_admin(role) and can_manage_project(project)
+
+
+def _stage_of(project_id, stage_id):
+    """Bosqich aynan shu loyihaniki bo'lishi shart (ilgari boshqa loyihaning
+    bosqichini o'z loyihasi URL'i orqali o'chirish mumkin edi)."""
+    return ProjectStage.query.filter_by(id=stage_id, project_id=project_id).first()
 
 
 def _check_division_scope(user_ids, team_ids=()):
-    """Bo'lim rahbari bosqichga faqat o'z bo'limi xodimlarini (va o'zini)
-       biriktira oladi. Boshqa rollarga bu cheklov tegishli emas.
+    """Rahbar bosqichga faqat o'z ko'lamidagi xodimlarni (va o'zini)
+       biriktira oladi: bo'lim rahbari — o'z bo'limi, boshqarma rahbari —
+       o'z boshqarmasi. Superadmin/direksiya va "Loyiha yaratish" sahifasi
+       ochilgan oddiy xodimga bu cheklov tegishli emas.
        Muammo bo'lsa tayyor xato javobini qaytaradi (aks holda None)."""
-    role, _dept_id, div_id = get_scope(get_jwt())
-    if role != 'department_admin':
+    role, dept_id, div_id = get_scope(get_jwt())
+    if role not in ('admin', 'department_admin'):
         return None
 
     me = int(get_jwt_identity())
@@ -72,22 +120,23 @@ def _check_division_scope(user_ids, team_ids=()):
     tids = {int(x) for x in team_ids if x}
     if not ids and not tids:
         return None
-    if not div_id:
+    if role == 'department_admin' and not div_id:
         return jsonify({'error': "Sizga bo'lim biriktirilmagan"}), 400
+    if role == 'admin' and not dept_id:
+        return jsonify({'error': "Sizga boshqarma biriktirilmagan"}), 400
 
+    scope = scope_user_ids(role, dept_id, div_id, me)
+    unit = "bo'lim" if role == 'department_admin' else 'boshqarma'
     if ids:
-        outsiders = User.query.filter(
-            User.id.in_(ids),
-            db.or_(User.division_id != div_id, User.division_id.is_(None)),
-        ).all()
+        outsiders = User.query.filter(User.id.in_(ids - scope)).all()
         if outsiders:
             names = ', '.join(u.full_name for u in outsiders)
-            return jsonify({'error': f"Faqat o'z bo'limingiz xodimlariga biriktira olasiz: {names}"}), 400
+            return jsonify({'error': f"Faqat o'z {unit}ngiz xodimlariga biriktira olasiz: {names}"}), 400
 
     for tid in tids:
         team = Team.query.get(tid)
-        if team and any(m.division_id != div_id for m in team.members):
-            return jsonify({'error': f"'{team.name}' guruhida boshqa bo'lim xodimlari bor — uni tanlay olmaysiz"}), 400
+        if team and any(m.id not in scope for m in team.members):
+            return jsonify({'error': f"'{team.name}' guruhida boshqa {unit} xodimlari bor — uni tanlay olmaysiz"}), 400
     return None
 
 
@@ -119,28 +168,22 @@ def _check_no_vacation(user_ids):
     return None
 
 
-def _scoped_projects(role, dept_id, div_id, user_id):
-    """Rol bo'yicha ko'rinadigan loyihalar (ro'yxat va statistika uchun umumiy).
+def _scoped_projects_query(role, dept_id, div_id, user_id):
+    """Rol bo'yicha ko'rinadigan loyihalar so'rovi.
        - Superadmin/direksiya: barcha loyihalar
        - "Barcha loyihalarni ko'rish" huquqi berilgan xodim: barcha loyihalar
-       - Boshqarma rahbari (admin): o'z boshqarmasi + superadmin yaratganlar
-       - Bo'lim rahbari: o'zi yaratgan + biriktirilgan loyihalar
+       - Boshqarma rahbari: o'z boshqarmasi xodimlari yaratgan yoki ishtirok
+         etayotgan loyihalar
+       - Bo'lim rahbari: o'z bo'limi xodimlari yaratgan yoki ishtirok
+         etayotgan loyihalar
        - Oddiy xodim: faqat biriktirilgan loyihalar (o'ziga, guruhiga yoki
-         bosqichda ijrochilikka biriktirilgan)
+         bosqichda ijrochilikka biriktirilgan) va o'zi yaratganlari
+
+    Ilgari boshqarma rahbari superadmin yaratgan barcha loyihalarni ham
+    ko'rardi, bo'lim rahbari esa o'z bo'limi loyihalarini ko'rmasdi.
     """
     if is_superadmin(role) or has_permission('project.view_all'):
-        return Project.query.order_by(Project.created_at.desc()).all()
-    if role == 'admin' and dept_id:
-        uid_set = dept_user_ids(dept_id); uid_set.add(user_id)
-        return Project.query.filter(
-            db.or_(
-                Project.created_by.in_(uid_set),
-                Project.stages.any(ProjectStage.assignee_id.in_(uid_set)),
-                Project.stages.any(ProjectStage.assignees.any(User.id.in_(uid_set))),
-                Project.creator.has(User.role.in_(FULL_ACCESS_ROLES)),
-            )
-        ).order_by(Project.created_at.desc()).all()
-    # Bo'lim rahbari va oddiy xodim — biriktirilgan loyihalar
+        return Project.query
     user = User.query.get(user_id)
     team_ids = [t.id for t in user.teams] if user else []
     conds = [
@@ -152,7 +195,20 @@ def _scoped_projects(role, dept_id, div_id, user_id):
     ]
     if team_ids:
         conds.append(Project.teams.any(Team.id.in_(team_ids)))
-    return Project.query.filter(db.or_(*conds)).order_by(Project.created_at.desc()).all()
+    if role in ('admin', 'department_admin'):
+        scope = scope_user_ids(role, dept_id, div_id, user_id)
+        conds += [
+            Project.created_by.in_(scope),
+            Project.stages.any(ProjectStage.assignee_id.in_(scope)),
+            Project.stages.any(ProjectStage.assignees.any(User.id.in_(scope))),
+        ]
+    return Project.query.filter(db.or_(*conds))
+
+
+def _scoped_projects(role, dept_id, div_id, user_id):
+    """Ro'yxat va statistika uchun — yangi loyihalar birinchi."""
+    return _scoped_projects_query(role, dept_id, div_id, user_id) \
+        .order_by(Project.created_at.desc()).all()
 
 
 @projects_bp.route('', methods=['GET'])
@@ -308,8 +364,15 @@ def project_counts():
 @projects_bp.route('/<int:project_id>', methods=['GET'])
 @jwt_required()
 def get_project(project_id):
-    project = Project.query.get_or_404(project_id)
+    project = _get_visible_project(project_id)
+    if project is None:
+        return jsonify({'error': 'Loyiha topilmadi'}), 404
     data = project.to_dict()
+    data['perms'] = {
+        'manage': can_manage_project(project),
+        'delete': _can_delete_project(project),
+        'see_all_reports': _sees_all_reports(project),
+    }
 
     team_stats = []
     teams_in_project = {}
@@ -373,9 +436,9 @@ def create_project():
         stages_data = json.loads(request.form.get('stages', '[]'))
         files = request.files.getlist('files')
     else:
-        data = request.get_json()
-        name = data.get('name', '').strip()
-        description = data.get('description', '').strip()
+        data = request.get_json(silent=True) or {}
+        name = (data.get('name') or '').strip()
+        description = (data.get('description') or '').strip()
         start_date = data.get('start_date')
         deadline = data.get('deadline')
         stages_data = data.get('stages', [])
@@ -471,12 +534,12 @@ def update_project(project_id):
     if not can_manage_project(project):
         return jsonify({'error': 'Ruxsat yo\'q'}), 403
 
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
 
-    if 'name' in data:
+    if 'name' in data and (data['name'] or '').strip():
         project.name = data['name'].strip()
     if 'description' in data:
-        project.description = data['description'].strip()
+        project.description = (data['description'] or '').strip()
     if 'status' in data and data['status'] != project.status:
         err = _apply_project_status(project, data['status'], data.get('cancel_reason', ''))
         if err:
@@ -556,6 +619,16 @@ def change_project_status(project_id):
     return jsonify(project.to_dict())
 
 
+def _can_delete_project(project):
+    """Boshqarma rahbari va yuqori yoki "Loyihani o'chirish" huquqi berilgan
+    xodim — faqat o'zi boshqara oladigan loyihani."""
+    claims = get_jwt()
+    role = claims.get('role', '')
+    if not is_admin_or_above(role) and not has_permission('project.delete', claims):
+        return False
+    return can_manage_project(project)
+
+
 @projects_bp.route('/<int:project_id>', methods=['DELETE'])
 @jwt_required()
 def delete_project(project_id):
@@ -563,11 +636,10 @@ def delete_project(project_id):
     # "Loyihani o'chirish" huquqi alohida berilgan xodimga (/roles sahifasida
     # rol yoki xodim darajasida beriladi). Bo'lim rahbari bu huquqsiz faqat
     # tahrirlaydi, o'chira olmaydi.
-    claims = get_jwt()
-    if not is_admin_or_above(claims.get('role', '')) and not has_permission('project.delete', claims):
+    project = Project.query.get_or_404(project_id)
+    if not _can_delete_project(project):
         return jsonify({'error': "Loyihani o'chirish huquqingiz yo'q"}), 403
 
-    project = Project.query.get_or_404(project_id)
     log_audit('delete', 'project', project.id, entity_label=project.name)
     # Bosqichlar kaskad bilan o'chadi — ularga ishora qiluvchi bildirishnomalar
     # esa o'z-o'zidan ketmaydi (tashqi kalit yo'q), qo'lda tozalaymiz.
@@ -585,17 +657,21 @@ def delete_project(project_id):
 @jwt_required()
 def update_stage(project_id, stage_id):
     user_id = int(get_jwt_identity())
-    stage = ProjectStage.query.get_or_404(stage_id)
+    stage = _stage_of(project_id, stage_id)
+    if stage is None:
+        return jsonify({'error': 'Bosqich topilmadi'}), 404
     # Bosqich tahrirlash (nomi/muddati/ijrochilari) va ijroni qabul qilish —
     # loyihani boshqarish huquqi bo'lganlarga (bo'lim rahbari uchun: o'zi
     # yaratgan loyiha). Status yuborish (review) esa ijrochi tomonidan.
     is_admin = can_manage_project(stage.project)
 
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
 
     if 'status' in data:
         new_status = data['status']
         now = datetime.now(timezone.utc)
+        if new_status not in STAGE_STATUSES:
+            return jsonify({'error': "Noto'g'ri holat"}), 400
 
         if not is_admin:
             if new_status == 'review':
@@ -617,6 +693,8 @@ def update_stage(project_id, stage_id):
 
         if new_status == 'in_progress' and not stage.started_at:
             stage.started_at = now
+        if new_status != 'completed':
+            stage.completed_at = None
         if new_status == 'completed':
             stage.completed_at = now
             next_stage = ProjectStage.query.filter_by(
@@ -651,7 +729,7 @@ def update_stage(project_id, stage_id):
             if vac_err:
                 return vac_err
 
-        if 'name' in data:
+        if 'name' in data and (data['name'] or '').strip():
             stage.name = data['name'].strip()
         if 'start_date' in data:
             stage.start_date = parse_datetime(data['start_date']) if data['start_date'] else None
@@ -659,6 +737,12 @@ def update_stage(project_id, stage_id):
             stage.deadline = parse_datetime(data['deadline']) if data['deadline'] else None
         if 'team_id' in data:
             stage.team_id = data['team_id'] or None
+            # Yangi guruh loyiha ro'yxatida ham bo'lsin — aks holda uning
+            # a'zolari loyihani ko'rmay qolardi
+            if stage.team_id:
+                team = Team.query.get(stage.team_id)
+                if team and team not in stage.project.teams:
+                    stage.project.teams.append(team)
         # Faqat yangi qo'shilganlarga xabar ketsin — ilgari ham biriktirilgan
         # xodim har tahrirda takroriy bildirishnoma olmasligi kerak
         before_ids = set(_stage_assignee_ids(stage))
@@ -676,8 +760,7 @@ def update_stage(project_id, stage_id):
 
     db.session.commit()
 
-    project = Project.query.get(project_id)
-    return jsonify(project.to_dict())
+    return jsonify(stage.project.to_dict())
 
 
 @projects_bp.route('/<int:project_id>/stages', methods=['POST'])
@@ -687,8 +770,8 @@ def add_stage(project_id):
     if not can_manage_project(project):
         return jsonify({'error': 'Ruxsat yo\'q'}), 403
 
-    data = request.get_json()
-    name = data.get('name', '').strip()
+    data = request.get_json(silent=True) or {}
+    name = (data.get('name') or '').strip()
     if not name:
         return jsonify({'error': 'Bosqich nomi kiritilishi shart'}), 400
 
@@ -708,11 +791,15 @@ def add_stage(project_id):
             return vac_err
 
     max_order = max((s.order for s in project.stages), default=0)
+    # Oldingi bosqichlarning barchasi tugagan bo'lsa yangi bosqich darhol
+    # ishga tushadi — aks holda "kutilmoqda"da qotib qolardi
+    starts_now = all(s.status == 'completed' for s in project.stages)
     stage = ProjectStage(
         project_id=project_id,
         name=name,
         order=max_order + 1,
-        status='pending',
+        status='in_progress' if starts_now else 'pending',
+        started_at=datetime.now(timezone.utc) if starts_now else None,
         start_date=parse_datetime(data['start_date']) if data.get('start_date') else None,
         deadline=parse_datetime(data['deadline']) if data.get('deadline') else None,
         team_id=data.get('team_id') or None,
@@ -747,7 +834,10 @@ def delete_stage(project_id, stage_id):
     if len(project.stages) <= 1:
         return jsonify({'error': 'Kamida bitta bosqich bo\'lishi kerak'}), 400
 
-    stage = ProjectStage.query.get_or_404(stage_id)
+    stage = _stage_of(project_id, stage_id)
+    if stage is None:
+        return jsonify({'error': 'Bosqich topilmadi'}), 404
+    was_active = stage.status in ('in_progress', 'review')
     log_audit('delete', 'project_stage', stage.id, entity_label=stage.name,
               details=f"loyiha: {project.name}")
     events.stages_deleted(stage.id)
@@ -757,6 +847,13 @@ def delete_stage(project_id, stage_id):
     remaining = ProjectStage.query.filter_by(project_id=project_id).order_by(ProjectStage.order).all()
     for i, s in enumerate(remaining):
         s.order = i + 1
+    # Jarayondagi bosqich o'chirilsa keyingisi ishga tushadi — aks holda
+    # loyiha "kutilmoqda" bosqichlar bilan qotib qolardi
+    if was_active and not any(s.status in ('in_progress', 'review') for s in remaining):
+        nxt = next((s for s in remaining if s.status == 'pending'), None)
+        if nxt:
+            nxt.status = 'in_progress'
+            nxt.started_at = datetime.now(timezone.utc)
 
     db.session.commit()
     return jsonify(project.to_dict())
@@ -765,8 +862,13 @@ def delete_stage(project_id, stage_id):
 @projects_bp.route('/<int:project_id>/reports', methods=['GET'])
 @jwt_required()
 def get_reports(project_id):
-    reports = DailyReport.query.filter_by(project_id=project_id)\
-        .order_by(DailyReport.created_at.desc()).all()
+    project = _get_visible_project(project_id)
+    if project is None:
+        return jsonify({'error': 'Loyiha topilmadi'}), 404
+    q = DailyReport.query.filter_by(project_id=project_id)
+    if not _sees_all_reports(project):
+        q = q.filter_by(user_id=int(get_jwt_identity()))
+    reports = q.order_by(DailyReport.created_at.desc()).all()
     return jsonify([r.to_dict() for r in reports])
 
 
@@ -776,8 +878,13 @@ def create_report(project_id):
     user_id = int(get_jwt_identity())
     claims = get_jwt()
 
-    content = request.form.get('content', '').strip() if request.content_type and 'multipart' in request.content_type else request.get_json().get('content', '').strip() if request.is_json else ''
-    stage_id = request.form.get('stage_id') if request.content_type and 'multipart' in request.content_type else request.get_json().get('stage_id') if request.is_json else None
+    if request.content_type and 'multipart' in request.content_type:
+        content = (request.form.get('content') or '').strip()
+        stage_id = request.form.get('stage_id')
+    else:
+        body = request.get_json(silent=True) or {}
+        content = (body.get('content') or '').strip()
+        stage_id = body.get('stage_id')
 
     if not content:
         return jsonify({'error': 'Hisobot matni kiritilishi shart'}), 400
@@ -797,11 +904,23 @@ def create_report(project_id):
     if not can_report:
         return jsonify({'error': 'Sizda hisobot topshirish huquqi yo\'q'}), 403
 
+    try:
+        stage_id = int(stage_id) if stage_id else None
+    except (TypeError, ValueError):
+        stage_id = None
+    # Bosqich shu loyihaniki bo'lishi shart; ko'rsatilmasa — xodimning
+    # jarayondagi bosqichi (hisobot "Xodim hisobotlari"da bosqich nomi bilan chiqsin)
+    if stage_id and not _stage_of(project_id, stage_id):
+        return jsonify({'error': 'Bosqich topilmadi'}), 404
+    if not stage_id:
+        mine = [s for s in assignee_stages + stages_no_assignee if s.status in ('in_progress', 'review')]
+        stage_id = mine[0].id if mine else None
+
     report = DailyReport(
         project_id=project_id,
         user_id=user_id,
         content=content,
-        stage_id=stage_id if stage_id else None,
+        stage_id=stage_id,
     )
     db.session.add(report)
     db.session.flush()
@@ -816,12 +935,13 @@ def create_report(project_id):
             if ext not in ALLOWED_EXTENSIONS:
                 continue
             saved_name = f"{uuid.uuid4().hex}.{ext}"
-            f.save(os.path.join(report_upload_dir, saved_name))
+            path = os.path.join(report_upload_dir, saved_name)
+            f.save(path)
             attachment = ReportAttachment(
                 report_id=report.id,
                 filename=saved_name,
                 original_name=f.filename,
-                file_size=f.content_length or 0,
+                file_size=os.path.getsize(path),
             )
             db.session.add(attachment)
 
@@ -906,14 +1026,34 @@ def delete_attachment(project_id, att_id):
 @projects_bp.route('/files/<filename>', methods=['GET'])
 @jwt_required()
 def download_file(filename):
-    return send_from_directory(UPLOAD_DIR, filename, as_attachment=True)
+    """Loyiha fayli — faqat loyihani ko'ra oladiganlarga."""
+    att = ProjectAttachment.query.filter_by(filename=filename).first()
+    if att is None or not can_view_project(Project.query.get(att.project_id)):
+        return jsonify({'error': 'Fayl topilmadi'}), 404
+    return send_from_directory(UPLOAD_DIR, filename, as_attachment=True,
+                               download_name=att.original_name)
 
 
 @projects_bp.route('/report-files/<filename>', methods=['GET'])
 @jwt_required()
 def download_report_file(filename):
+    """Hisobotga biriktirilgan fayl (loyiha va vazifa hisobotlari uchun umumiy
+    yo'l). Hisobotni ko'ra oladigan foydalanuvchiga beriladi."""
+    from app.routes.tasks import can_view_task_report_file
+    att = ReportAttachment.query.filter_by(filename=filename).first()
+    allowed = False
+    if att is not None and att.task_report_id:
+        allowed = can_view_task_report_file(att)
+    elif att is not None and att.report_id:
+        report = DailyReport.query.get(att.report_id)
+        project = Project.query.get(report.project_id) if report else None
+        allowed = can_view_project(project) and (
+            report.user_id == int(get_jwt_identity()) or _sees_all_reports(project))
+    if not allowed:
+        return jsonify({'error': 'Fayl topilmadi'}), 404
     report_upload_dir = os.path.join(UPLOAD_DIR, 'reports')
-    return send_from_directory(report_upload_dir, filename, as_attachment=True)
+    return send_from_directory(report_upload_dir, filename, as_attachment=True,
+                               download_name=att.original_name)
 
 
 @projects_bp.route('/stats', methods=['GET'])
@@ -1045,10 +1185,23 @@ def get_full_stats():
     })
 
 
+def _can_work_on_stage(stage, user_id):
+    """Ichki etaplar: loyihani boshqaruvchi rahbar yoki shu bosqich ijrochisi."""
+    if can_manage_project(stage.project):
+        return True
+    user = User.query.get(user_id)
+    user_team_ids = {t.id for t in user.teams} if user else set()
+    stage_assignee_ids = {a.id for a in stage.assignees}
+    return (stage.assignee_id == user_id) or (user_id in stage_assignee_ids) or \
+        (not stage.assignee_id and not stage_assignee_ids and stage.team_id in user_team_ids)
+
+
 @projects_bp.route('/<int:project_id>/stages/<int:stage_id>/substages', methods=['GET'])
 @jwt_required()
 def get_substages(project_id, stage_id):
-    stage = ProjectStage.query.get_or_404(stage_id)
+    stage = _stage_of(project_id, stage_id)
+    if stage is None or not can_view_project(stage.project):
+        return jsonify({'error': 'Bosqich topilmadi'}), 404
     return jsonify([ss.to_dict() for ss in sorted(stage.sub_stages, key=lambda x: x.order)])
 
 
@@ -1056,22 +1209,14 @@ def get_substages(project_id, stage_id):
 @jwt_required()
 def create_substage(project_id, stage_id):
     user_id = int(get_jwt_identity())
-    stage = ProjectStage.query.get_or_404(stage_id)
-    # Loyihani boshqaruvchi rahbar (bo'lim rahbari uchun: o'zi yaratgan loyiha)
-    # bypass qiladi, qolganlar faqat o'z bosqichi ichida
-    is_admin = can_manage_project(stage.project)
+    stage = _stage_of(project_id, stage_id)
+    if stage is None:
+        return jsonify({'error': 'Bosqich topilmadi'}), 404
+    if not _can_work_on_stage(stage, user_id):
+        return jsonify({'error': 'Sizda ichki etap yaratish huquqi yo\'q'}), 403
 
-    if not is_admin:
-        user = User.query.get(user_id)
-        user_team_ids = {t.id for t in user.teams} if user else set()
-        stage_assignee_ids = {a.id for a in stage.assignees}
-        can_manage = (stage.assignee_id == user_id) or (user_id in stage_assignee_ids) or \
-                     (not stage.assignee_id and not stage_assignee_ids and stage.team_id in user_team_ids)
-        if not can_manage:
-            return jsonify({'error': 'Sizda ichki etap yaratish huquqi yo\'q'}), 403
-
-    data = request.get_json()
-    name = data.get('name', '').strip()
+    data = request.get_json(silent=True) or {}
+    name = (data.get('name') or '').strip()
     if not name:
         return jsonify({'error': 'Ichki etap nomi kiritilishi shart'}), 400
 
@@ -1086,33 +1231,26 @@ def create_substage(project_id, stage_id):
     db.session.add(sub)
     db.session.commit()
 
-    project = Project.query.get(project_id)
-    return jsonify(project.to_dict()), 201
+    return jsonify(stage.project.to_dict()), 201
 
 
 @projects_bp.route('/<int:project_id>/stages/<int:stage_id>/substages/<int:sub_id>', methods=['PUT'])
 @jwt_required()
 def update_substage(project_id, stage_id, sub_id):
     user_id = int(get_jwt_identity())
-    sub = SubStage.query.get_or_404(sub_id)
-    stage = ProjectStage.query.get_or_404(stage_id)
-    # Loyihani boshqaruvchi rahbar (bo'lim rahbari uchun: o'zi yaratgan loyiha)
-    # bypass qiladi, qolganlar faqat o'z bosqichi ichida
-    is_admin = can_manage_project(stage.project)
+    stage = _stage_of(project_id, stage_id)
+    sub = SubStage.query.filter_by(id=sub_id, stage_id=stage_id).first() if stage else None
+    if sub is None:
+        return jsonify({'error': 'Ichki etap topilmadi'}), 404
+    if not _can_work_on_stage(stage, user_id):
+        return jsonify({'error': 'Ruxsat yo\'q'}), 403
 
-    if not is_admin:
-        user = User.query.get(user_id)
-        user_team_ids = {t.id for t in user.teams} if user else set()
-        stage_assignee_ids = {a.id for a in stage.assignees}
-        can_manage = (stage.assignee_id == user_id) or (user_id in stage_assignee_ids) or \
-                     (not stage.assignee_id and not stage_assignee_ids and stage.team_id in user_team_ids)
-        if not can_manage:
-            return jsonify({'error': 'Ruxsat yo\'q'}), 403
-
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     if 'status' in data:
         now = datetime.now(timezone.utc)
         new_status = data['status']
+        if new_status not in ('pending', 'in_progress', 'completed'):
+            return jsonify({'error': "Noto'g'ri holat"}), 400
         if new_status == 'completed':
             sub.completed_at = now
             next_sub = SubStage.query.filter_by(stage_id=stage_id, order=sub.order + 1).first()
@@ -1121,32 +1259,23 @@ def update_substage(project_id, stage_id, sub_id):
         elif new_status == 'in_progress':
             sub.completed_at = None
         sub.status = new_status
-    if 'name' in data:
+    if 'name' in data and (data['name'] or '').strip():
         sub.name = data['name'].strip()
 
     db.session.commit()
-    project = Project.query.get(project_id)
-    return jsonify(project.to_dict())
+    return jsonify(stage.project.to_dict())
 
 
 @projects_bp.route('/<int:project_id>/stages/<int:stage_id>/substages/<int:sub_id>', methods=['DELETE'])
 @jwt_required()
 def delete_substage(project_id, stage_id, sub_id):
     user_id = int(get_jwt_identity())
-    sub = SubStage.query.get_or_404(sub_id)
-    stage = ProjectStage.query.get_or_404(stage_id)
-    # Loyihani boshqaruvchi rahbar (bo'lim rahbari uchun: o'zi yaratgan loyiha)
-    # bypass qiladi, qolganlar faqat o'z bosqichi ichida
-    is_admin = can_manage_project(stage.project)
-
-    if not is_admin:
-        user = User.query.get(user_id)
-        user_team_ids = {t.id for t in user.teams} if user else set()
-        stage_assignee_ids = {a.id for a in stage.assignees}
-        can_manage = (stage.assignee_id == user_id) or (user_id in stage_assignee_ids) or \
-                     (not stage.assignee_id and not stage_assignee_ids and stage.team_id in user_team_ids)
-        if not can_manage:
-            return jsonify({'error': 'Ruxsat yo\'q'}), 403
+    stage = _stage_of(project_id, stage_id)
+    sub = SubStage.query.filter_by(id=sub_id, stage_id=stage_id).first() if stage else None
+    if sub is None:
+        return jsonify({'error': 'Ichki etap topilmadi'}), 404
+    if not _can_work_on_stage(stage, user_id):
+        return jsonify({'error': 'Ruxsat yo\'q'}), 403
 
     db.session.delete(sub)
     remaining = SubStage.query.filter_by(stage_id=stage_id).order_by(SubStage.order).all()
@@ -1154,5 +1283,4 @@ def delete_substage(project_id, stage_id, sub_id):
         ss.order = i + 1
     db.session.commit()
 
-    project = Project.query.get(project_id)
-    return jsonify(project.to_dict())
+    return jsonify(stage.project.to_dict())

@@ -2,6 +2,8 @@
 export default {
   // ── CreateTask ──
   'task.create.title': 'Создание новой задачи',
+  'task.create.selfTitle': 'Задача для себя',
+  'task.create.selfHint': 'Задача будет назначена вам. Когда вы сдадите отчёт, она уйдёт руководителю на проверку и сама попадёт в таблицу «Мои отчёты».',
   'task.field.name': 'Название задачи *',
   'task.field.name.placeholder': 'Введите название задачи',
   'task.field.description': 'Описание задачи',

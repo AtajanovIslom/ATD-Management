@@ -18,7 +18,10 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt, get_jwt_identity
 from app import db
 from app.models import Vacation, User
-from app.utils import get_scope, is_any_admin, is_admin_or_above, log_audit
+from app.utils import (
+    get_scope, is_any_admin, is_admin_or_above, log_audit,
+    scope_user_ids, in_scope, role_rank,
+)
 
 vacations_bp = Blueprint('vacations', __name__)
 
@@ -40,13 +43,13 @@ def _can_manage_user(actor_id, actor_role, actor_dept, actor_div, target_user):
         return False
     if target_user.id == actor_id:
         return False  # o'ziga o'zi bermaydi
-    if actor_role in ('superadmin', 'director', 'deputy_director'):
-        return True
-    if actor_role == 'admin' and actor_dept and target_user.department_id == actor_dept:
-        return True
-    if actor_role == 'department_admin' and actor_div and target_user.division_id == actor_div:
-        return True
-    return False
+    if not is_any_admin(actor_role):
+        return False
+    # Faqat o'zidan past lavozimdagi va o'z ko'lamidagi xodimga (bo'limi
+    # orqali boshqarmaga tegishli xodimlar ham kiradi)
+    if actor_role != 'superadmin' and role_rank(target_user.role) >= role_rank(actor_role):
+        return False
+    return in_scope(target_user.id, scope_user_ids(actor_role, actor_dept, actor_div, actor_id))
 
 
 @vacations_bp.route('', methods=['GET'])
@@ -59,12 +62,10 @@ def list_vacations():
     q = Vacation.query
     if not is_any_admin(role):
         q = q.filter_by(user_id=actor_id)
-    elif role == 'admin' and dept_id:
-        user_ids = {u.id for u in User.query.filter_by(department_id=dept_id).all()}
-        q = q.filter(Vacation.user_id.in_(user_ids)) if user_ids else q.filter(db.false())
-    elif role == 'department_admin' and div_id:
-        user_ids = {u.id for u in User.query.filter_by(division_id=div_id).all()}
-        q = q.filter(Vacation.user_id.in_(user_ids)) if user_ids else q.filter(db.false())
+    else:
+        scope = scope_user_ids(role, dept_id, div_id, actor_id)
+        if scope is not None:
+            q = q.filter(Vacation.user_id.in_(scope))
 
     # Ixtiyoriy filtrlar
     uid = request.args.get('user_id', type=int)

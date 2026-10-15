@@ -4,7 +4,7 @@ export default {
   'nav.projects': 'Проекты',
   'nav.tasks': 'Задачи',
   'nav.reminders': 'Мои напоминания',
-  'nav.workLogs': 'Мой ежедневный отчёт',
+  'nav.workLogs': 'Мои отчёты',
   'nav.departmentWorkLogs': 'Отчёты сотрудников',
   'nav.statistics': 'Статистика',
   'nav.createProject': 'Создать проект',

@@ -814,22 +814,29 @@ class User(db.Model):
 
     managed_department = db.relationship('Department', foreign_keys=[department_id], lazy=True)
 
-    def to_dict(self):
+    def to_dict(self, with_secrets=False):
+        """Xodim ma'lumotlari.
+
+        Parol va ro'yxatdan o'tish tokeni standart holatda QAYTARILMAYDI —
+        ilgari ular har javobda bor edi va `/users/workers` orqali oddiy
+        xodim ham barchaning parolini ko'ra olardi. `with_secrets=True`
+        faqat xodimni boshqarish huquqi tekshirilgan joyda beriladi
+        (routes/users.py).
+        """
         div = self.division
         dept = self.managed_department
-        return {
+        data = {
             'id': self.id,
             'full_name': self.full_name,
             'department': self.department,
             'position': self.position or '',
             'tab_number': self.tab_number,
             'login': self.login,
-            'plain_password': self.plain_password or '',
             'role': self.role,
             'email': self.email or '',
             'phone': self.phone or '',
             'is_active': self.is_active,
-            'registration_token': self.registration_token,
+            'has_registration': bool(self.registration_token),
             'division_id': self.division_id,
             'division_name': div.name if div else None,
             # Xodimning bo'linmasi interaktiv xizmat ko'rsatadimi (interaktiv arizalar
@@ -843,6 +850,27 @@ class User(db.Model):
             'permissions': self.effective_permissions(),
             'active_vacation': self._active_vacation_dict(),
             'created_at': self.created_at.isoformat() if self.created_at else None,
+        }
+        if with_secrets:
+            data['plain_password'] = self.plain_password or ''
+            data['registration_token'] = self.registration_token
+        return data
+
+    def to_brief(self):
+        """Ro'yxatlar uchun yengil ko'rinish (tanlash oynalari, guruh a'zolari)."""
+        div = self.division
+        dept = self.managed_department
+        return {
+            'id': self.id,
+            'full_name': self.full_name,
+            'position': self.position or '',
+            'department': self.department or '',
+            'role': self.role,
+            'division_id': self.division_id,
+            'division_name': div.name if div else None,
+            'department_id': self.department_id,
+            'department_name': dept.name if dept else None,
+            'is_active': self.is_active,
         }
 
     def extra_permissions(self):

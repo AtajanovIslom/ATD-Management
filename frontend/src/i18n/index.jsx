@@ -15,6 +15,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
 import uz from './uz'
 import ru from './ru'
+import { parseServerDate } from '../utils/dates'
 
 const DICTS = { uz, ru }
 const DEFAULT_LANG = 'uz'
@@ -59,9 +60,13 @@ export function I18nProvider({ children }) {
 
   /** Sanani tanlangan til qoidasi bo'yicha formatlaydi. */
   const formatDate = useCallback((iso, opts = { day: '2-digit', month: '2-digit', year: 'numeric' }) => {
-    if (!iso) return ''
-    const d = iso instanceof Date ? iso : new Date(iso)
-    if (Number.isNaN(d.getTime())) return ''
+    // Faqat sana ("2026-10-15") — kalendar kuni, mintaqaga bog'liq emas
+    if (typeof iso === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(iso)) {
+      const [y, m, day] = iso.split('-').map(Number)
+      return new Date(y, m - 1, day).toLocaleDateString(LOCALES[lang], opts)
+    }
+    const d = parseServerDate(iso)
+    if (!d) return ''
     return d.toLocaleDateString(LOCALES[lang], opts)
   }, [lang])
 
@@ -69,9 +74,8 @@ export function I18nProvider({ children }) {
   const formatDateTime = useCallback((iso, opts = {
     day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
   }) => {
-    if (!iso) return ''
-    const d = iso instanceof Date ? iso : new Date(iso)
-    if (Number.isNaN(d.getTime())) return ''
+    const d = parseServerDate(iso)
+    if (!d) return ''
     return d.toLocaleString(LOCALES[lang], opts)
   }, [lang])
 

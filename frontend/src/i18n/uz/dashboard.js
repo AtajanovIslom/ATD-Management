@@ -13,6 +13,7 @@ export default {
 
   // ── AdminDashboard ──
   'dash.title': 'Boshqaruv paneli',
+  'dash.addSelfTask': "+ O'zim uchun vazifa",
   'dash.stat.totalProjects': 'Jami loyihalar',
   'dash.stat.active': 'Faol',
   'dash.stat.completed': 'Tugallangan',

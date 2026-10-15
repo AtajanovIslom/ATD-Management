@@ -33,7 +33,14 @@ INTERACTIVE_REJECTED = 'interactive_rejected'
 # =========================================================================
 
 def _fmt_deadline(dt):
-    return dt.strftime('%d.%m.%Y %H:%M') if dt else ''
+    # Bazada naive UTC saqlanadi — xabar matnida mahalliy vaqt ko'rinsin
+    # (aks holda "23:59" muddat "18:59" bo'lib chiqardi)
+    if not dt:
+        return ''
+    from datetime import timezone
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone().strftime('%d.%m.%Y %H:%M')
 
 
 def _with_deadline(text, deadline):
@@ -111,8 +118,14 @@ def task_status_changed(task, status, actor=None, reason=''):
     returned  → ijrochilarga (kamchilik bor, qayta ishlansin)
     """
     if status == 'review':
+        recipients = task.created_by
+        # Xodim o'zi uchun yaratgan vazifa — tekshiruv xabari o'ziga emas,
+        # bevosita rahbariga (bo'lim, u bo'lmasa boshqarma rahbari) ketadi
+        if task.created_by in _task_worker_ids(task):
+            from app.utils import supervisor_ids
+            recipients = supervisor_ids(task.creator) or task.created_by
         return notify(
-            task.created_by,
+            recipients,
             event=TASK_REVIEW,
             title='Vazifa tekshiruvga tushdi',
             body=task.name,

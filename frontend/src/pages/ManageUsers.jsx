@@ -439,25 +439,34 @@ function UserTable({ t, users, showPasswords, copiedId, togglePassword, copyLink
               <>
                 <td><code>{u.login}</code></td>
                 <td>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                    <code>{showPasswords[u.id] ? (u.plain_password || '***') : '••••••'}</code>
-                    <button className="btn btn-outline btn-sm" style={{ padding: '2px 6px', fontSize: 11 }}
-                      onClick={() => togglePassword(u.id)}>
-                      {showPasswords[u.id] ? t('users.hidePassword') : t('users.showPassword')}
-                    </button>
-                  </span>
+                  {/* Parol faqat shu xodimni boshqara oladigan rahbarga keladi */}
+                  {'plain_password' in u ? (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      <code>{showPasswords[u.id] ? (u.plain_password || '***') : '••••••'}</code>
+                      <button className="btn btn-outline btn-sm" style={{ padding: '2px 6px', fontSize: 11 }}
+                        onClick={() => togglePassword(u.id)}>
+                        {showPasswords[u.id] ? t('users.hidePassword') : t('users.showPassword')}
+                      </button>
+                    </span>
+                  ) : <code>••••••</code>}
                 </td>
               </>
             ) : (
               <td colSpan={2}>
                 <span className="badge" style={{ marginRight: 6 }}>{t('users.notRegistered')}</span>
-                <button className="btn btn-outline btn-sm" style={{ padding: '2px 6px', fontSize: 11 }}
-                  onClick={() => copyLink(u)}>
-                  {copiedId === u.id ? t('users.copied') : t('users.copyLink')}
-                </button>
+                {u.registration_token && (
+                  <button className="btn btn-outline btn-sm" style={{ padding: '2px 6px', fontSize: 11 }}
+                    onClick={() => copyLink(u)}>
+                    {copiedId === u.id ? t('users.copied') : t('users.copyLink')}
+                  </button>
+                )}
               </td>
             )}
+            {/* Boshqarish tugmalari — faqat o'zidan past darajadagi, o'z
+                ko'lamidagi xodimga (backend shu belgini `plain_password`
+                maydoni bilan birga beradi) */}
             <td style={{ whiteSpace: 'nowrap' }}>
+              {'plain_password' in u && (<>
               {u.active_vacation ? (
                 <button className="btn btn-outline btn-sm" onClick={() => removeVacation(u)}
                   title={t('vac.cancelTitle')} style={{ marginRight: 4, color: '#f59e0b' }}>
@@ -475,6 +484,7 @@ function UserTable({ t, users, showPasswords, copiedId, togglePassword, copyLink
               <button className="btn btn-danger btn-sm" onClick={() => handleDelete(u)}>
                 {t('btn.delete')}
               </button>
+              </>)}
             </td>
           </tr>
         ))}

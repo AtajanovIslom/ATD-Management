@@ -7,7 +7,7 @@ import dashboard from './dashboard'
 import project from './project'
 import task from './task'
 import manage from './manage'
-import worklog from './worklog'
+import reports from './reports'
 import reminder from './reminder'
 import interactive from './interactive'
 
@@ -20,7 +20,7 @@ export default {
   ...project,
   ...task,
   ...manage,
-  ...worklog,
+  ...reports,
   ...reminder,
   ...interactive,
 }

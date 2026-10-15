@@ -6,6 +6,7 @@ import { statusLabel } from '../i18n/labels'
 import { statusClass } from '../components/ProjectCard'
 import api from '../api/axios'
 import FilePicker, { formatFileSize } from '../components/FilePicker'
+import { toDateInput } from '../utils/dates'
 
 const downloadFile = async (url, originalName) => {
   try {
@@ -48,10 +49,11 @@ function DonutChart({ percent, label }) {
 
 export default function ProjectDetail() {
   const { id } = useParams()
-  const { user, isAdmin, can } = useAuth()
+  const { user, isAdmin } = useAuth()
   const { t, formatDate: fmtDate } = useI18n()
   const navigate = useNavigate()
   const [project, setProject] = useState(null)
+  const [perms, setPerms] = useState(null)
   const [reports, setReports] = useState([])
   const [reportText, setReportText] = useState('')
   const [reportStage, setReportStage] = useState('')
@@ -91,13 +93,16 @@ export default function ProjectDetail() {
         api.get(`/projects/${id}/reports`),
       ])
       setProject(projRes.data)
+      // Huquqlar faqat GET javobida keladi (boshqa amallar loyihani
+      // perms'siz qaytaradi) — shuning uchun alohida saqlanadi
+      setPerms(projRes.data.perms || null)
       setReports(repRes.data)
       setEditForm({
         name: projRes.data.name,
         description: projRes.data.description,
         status: projRes.data.status,
-        start_date: projRes.data.start_date ? projRes.data.start_date.split('T')[0] : '',
-        deadline: projRes.data.deadline ? projRes.data.deadline.split('T')[0] : '',
+        start_date: toDateInput(projRes.data.start_date),
+        deadline: toDateInput(projRes.data.deadline),
       })
     } catch (err) {
       console.error(err)
@@ -155,21 +160,12 @@ export default function ProjectDetail() {
     setExpandedStages(prev => ({ ...prev, [stageId]: !prev[stageId] }))
   }
 
-  // Loyihani boshqarish huquqi: boshqarma rahbari va yuqori — barcha loyihalar,
-  // bo'lim rahbari — faqat o'zi yaratgan loyiha, hamda rol berish oynasida
-  // "Loyihani tahrirlash" huquqi berilgan xodim (backend ham shu qoidada).
-  // Loyihani yakunlash ham shu huquq tarkibiga kiradi.
-  // Diqqat: `can('project.edit')` bo'lim rahbariga rol bo'yicha doim `true`
-  // qaytaradi — shuning uchun avval rol bo'yicha aniq qoida tekshiriladi,
-  // aks holda u o'zi yaratmagan loyihada ham tugmani ko'rib, 403 olardi.
-  const canManage = isAdmin
-    ? true
-    : user?.role === 'department_admin'
-      ? project?.created_by === user.id
-      : can('project.edit')
-  // O'chirish — boshqarma rahbari va yuqori rollar, hamda "Loyihani o'chirish"
-  // huquqi alohida berilgan xodim (/roles sahifasidan beriladi)
-  const canDelete = isAdmin || can('project.delete')
+  // Loyihani boshqarish va o'chirish huquqini backend aniq loyiha uchun
+  // hisoblab beradi (ierarxiya: superadmin — hammasi, boshqarma rahbari —
+  // o'z boshqarmasi, bo'lim rahbari — o'z bo'limi, yaratuvchi — o'zi
+  // yaratgani). Rol bo'yicha taxmin qilinsa tugma ko'rinib, 403 qaytardi.
+  const canManage = !!perms?.manage
+  const canDelete = !!perms?.delete
 
   /** Loyihani yakunlash / bekor qilish / nofaol qilish / qayta faollashtirish */
   const changeProjectStatus = async (status, reason = '') => {
@@ -234,8 +230,8 @@ export default function ProjectDetail() {
     setEditStages(project.stages.map(s => ({
       id: s.id,
       name: s.name,
-      start_date: s.start_date ? s.start_date.split('T')[0] : '',
-      deadline: s.deadline ? s.deadline.split('T')[0] : '',
+      start_date: toDateInput(s.start_date),
+      deadline: toDateInput(s.deadline),
       assign_type: s.assignees?.length > 0 ? 'individual' : 'team',
       team_id: s.team_id ? String(s.team_id) : '',
       assignee_id: s.assignee_id ? String(s.assignee_id) : '',

@@ -2,11 +2,20 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../api/axios'
 import { useI18n } from '../i18n'
+import { useAuth } from '../context/AuthContext'
 import FilePicker from '../components/FilePicker'
 
+/**
+ * Vazifa yaratish.
+ *  - Rahbar: o'z ko'lamidagi guruh yoki xodim(lar)ga beradi.
+ *  - Oddiy xodim: faqat o'zi uchun (ijrochi tanlanmaydi — backend ham
+ *    ijrochini majburan o'zi qiladi).
+ */
 export default function CreateTask() {
   const navigate = useNavigate()
   const { t } = useI18n()
+  const { isDeptAdmin } = useAuth()
+  const selfOnly = !isDeptAdmin
   const [teams, setTeams] = useState([])
   const [users, setUsers] = useState([])
   const [form, setForm] = useState({
@@ -18,9 +27,10 @@ export default function CreateTask() {
   const [error, setError] = useState('')
 
   useEffect(() => {
+    if (selfOnly) return
     Promise.all([
       api.get('/teams'),
-      api.get('/users'),
+      api.get('/tasks/assignable-workers'),
     ]).then(([teamsRes, usersRes]) => {
       setTeams(teamsRes.data)
       // Individual xodim tanlashda ijrochi bo'la oladigan rollar:
@@ -30,7 +40,7 @@ export default function CreateTask() {
         (u.role === 'user' || u.role === 'department_admin') && u.is_active && !u.active_vacation
       ))
     }).catch(console.error)
-  }, [])
+  }, [selfOnly])
 
   const getTeamMembers = (teamId) => {
     if (!teamId) return []
@@ -64,7 +74,7 @@ export default function CreateTask() {
         ? parseInt(form.assignee_id) : null
       const assigneeIds = form.assign_type === 'individual' ? form.assignee_ids : []
 
-      if (form.assign_type === 'individual' && assigneeIds.length === 0) {
+      if (!selfOnly && form.assign_type === 'individual' && assigneeIds.length === 0) {
         setError(t('task.err.pickWorker'))
         setLoading(false)
         return
@@ -75,9 +85,11 @@ export default function CreateTask() {
       fd.append('description', form.description)
       if (form.start_date) fd.append('start_date', new Date(form.start_date + 'T00:00:00').toISOString())
       if (form.deadline) fd.append('deadline', new Date(form.deadline + 'T23:59:59').toISOString())
-      if (teamId) fd.append('team_id', teamId)
-      if (assigneeId) fd.append('assignee_id', assigneeId)
-      fd.append('assignee_ids', JSON.stringify(assigneeIds))
+      if (!selfOnly) {
+        if (teamId) fd.append('team_id', teamId)
+        if (assigneeId) fd.append('assignee_id', assigneeId)
+        fd.append('assignee_ids', JSON.stringify(assigneeIds))
+      }
       if (files.length > 0) {
         for (const f of files) fd.append('files', f)
       }
@@ -98,7 +110,14 @@ export default function CreateTask() {
   return (
     <div>
       <div className="page-header">
-        <h1>{t('task.create.title')}</h1>
+        <div>
+          <h1>{selfOnly ? t('task.create.selfTitle') : t('task.create.title')}</h1>
+          {selfOnly && (
+            <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>
+              {t('task.create.selfHint')}
+            </p>
+          )}
+        </div>
       </div>
 
       <div className="card">
@@ -131,6 +150,7 @@ export default function CreateTask() {
             </div>
           </div>
 
+          {!selfOnly && (
           <div className="form-group">
             <label>{t('task.field.assignee')}</label>
             <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
@@ -209,6 +229,7 @@ export default function CreateTask() {
               </div>
             )}
           </div>
+          )}
 
           <div className="form-group">
             <label>{t('task.attachFile')}</label>

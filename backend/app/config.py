@@ -23,6 +23,10 @@ class Config:
     # 15 kun umuman kirmasa — refresh token o'ladi va login sahifasi chiqadi.
     JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=15)
 
+    # nginx'dagi client_max_body_size bilan bir xil. Chegara oshsa backend
+    # tushunarli JSON xato (413) qaytaradi.
+    MAX_CONTENT_LENGTH = 50 * 1024 * 1024
+
     # --- Firebase Cloud Messaging (mobil ilova bildirishnomalari) ---
     # Credential ikki usulda beriladi (birinchi topilgani ishlatiladi):
     #   FIREBASE_CREDENTIALS_JSON — service account JSON matni (Docker/CI uchun)

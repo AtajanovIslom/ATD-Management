@@ -15,7 +15,15 @@ from app.utils import log_audit
 
 reminders_bp = Blueprint('reminders', __name__)
 
-UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'uploads', 'reminders')
+# Docker volume `/app/uploads` ga yoziladi (vazifa va loyiha fayllari bilan
+# bir joyda). Ilgari `/app/app/uploads/reminders` edi — u volume'da emas,
+# shuning uchun har deploy'da eslatma fayllari o'chib ketardi.
+UPLOAD_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    'uploads', 'reminders',
+)
+# Eski joy — ko'chirilmagan fayllar hali shu yerda bo'lishi mumkin
+LEGACY_UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'uploads', 'reminders')
 
 
 def _ensure_upload_dir():
@@ -211,8 +219,17 @@ def delete(rid):
 @reminders_bp.route('/files/<filename>', methods=['GET'])
 @jwt_required()
 def download_file(filename):
+    # Faqat eslatma egasiga — ilgari tizimga kirgan har kim boshqa xodimning
+    # eslatma faylini yuklab ola olardi
+    att = ReminderAttachment.query.filter_by(filename=filename).first()
+    if att is None or att.reminder is None or att.reminder.user_id != int(get_jwt_identity()):
+        return jsonify({'error': 'Fayl topilmadi'}), 404
     _ensure_upload_dir()
-    return send_from_directory(UPLOAD_DIR, filename, as_attachment=True)
+    folder = UPLOAD_DIR
+    if not os.path.exists(os.path.join(UPLOAD_DIR, filename)) and             os.path.exists(os.path.join(LEGACY_UPLOAD_DIR, filename)):
+        folder = LEGACY_UPLOAD_DIR
+    return send_from_directory(folder, filename, as_attachment=True,
+                               download_name=att.original_name)
 
 
 @reminders_bp.route('/upcoming', methods=['GET'])

@@ -44,8 +44,8 @@ WORKER_ROLES = ('user', 'agent')
 PAGES = [
     {'key': 'dashboard',            'path': '/',                     'icon': '📊',   'label': 'Boshqaruv paneli'},
     {'key': 'reminders',            'path': '/reminders',            'icon': '🗓️',  'label': 'Eslatmalarim'},
-    {'key': 'work_logs',            'path': '/work-logs',            'icon': '📓',   'label': 'Kunlik hisobotim'},
-    {'key': 'department_work_logs', 'path': '/department-work-logs', 'icon': '👥',   'label': 'Xodimlar hisobotlari'},
+    {'key': 'work_logs',            'path': '/work-logs',            'icon': '📓',   'label': 'Mening hisobotlarim'},
+    {'key': 'department_work_logs', 'path': '/department-work-logs', 'icon': '👥',   'label': 'Xodim hisobotlari'},
     {'key': 'statistics',           'path': '/statistics',           'icon': '📈',   'label': 'Statistika'},
     {'key': 'create_project',       'path': '/create-project',       'icon': '🚀',   'label': 'Loyiha yaratish'},
     {'key': 'create_task',          'path': '/create-task',          'icon': '📝',   'label': 'Vazifa yaratish'},
@@ -60,8 +60,9 @@ PAGES = [
 
 PAGE_KEYS = tuple(p['key'] for p in PAGES)
 
-# Standart matritsa — avvalgi qattiq yozilgan holatning aynan o'zi.
-# Bularni o'zgartirmang: bu "hech kimning ko'rinishi o'zgarmasin" kafolati.
+# Standart matritsa. Bosh Administrator /roles sahifasida rol uchun bir marta
+# saqlagan bo'lsa, o'sha rolga bu qiymatlar emas, bazadagi yozuvlar ishlaydi.
+# Xodimga "Vazifa yaratish" qo'shildi — u faqat o'zi uchun vazifa yaratadi.
 DEFAULT_ROLE_PAGES = {
     'superadmin': [
         'dashboard', 'reminders', 'department_work_logs', 'statistics',
@@ -89,7 +90,7 @@ DEFAULT_ROLE_PAGES = {
         'create_project', 'create_task', 'users',
     ],
     'user': [
-        'dashboard', 'reminders', 'work_logs',
+        'dashboard', 'reminders', 'work_logs', 'create_task',
     ],
     # Agent — faqat interaktiv arizalar oynasi
     'agent': [
@@ -434,6 +435,133 @@ def div_user_ids(division_id):
     return {u.id for u in users}
 
 
+# =========================================================================
+# IERARXIYA: KIM KIMNI KO'RADI VA BOSHQARADI
+#
+# Yagona qoida butun tizim uchun:
+#   superadmin/direksiya — hamma xodimlar
+#   boshqarma rahbari    — faqat o'z boshqarmasi xodimlari (+ o'zi)
+#   bo'lim rahbari       — faqat o'z bo'limi xodimlari (+ o'zi)
+#   oddiy xodim / agent  — faqat o'zi
+#
+# Ilgari har route o'z tekshiruvini yozardi va ba'zilari umuman yo'q edi
+# (masalan bo'lim rahbari boshqa boshqarma vazifasini o'chira olardi).
+# =========================================================================
+
+# Rol darajasi — rahbar faqat o'zidan PAST darajadagi xodimni boshqaradi
+ROLE_RANK = {
+    'superadmin': 100,
+    'director': 90,
+    'deputy_director': 80,
+    'admin': 60,
+    'department_admin': 40,
+    'user': 10,
+    'agent': 10,
+}
+
+
+def role_rank(role):
+    return ROLE_RANK.get(role or 'user', 0)
+
+
+def scope_user_ids(role, dept_id, div_id, self_id):
+    """Rahbar ko'ra oladigan xodimlar ID'lari.
+
+    None — cheklov yo'q (to'liq kirish rollari). Aks holda to'plam; u har
+    doim rahbarning o'zini ham o'z ichiga oladi. Boshqarmasi/bo'limi
+    biriktirilmagan rahbar faqat o'zini ko'radi (ilgari bunday boshqarma
+    rahbari butun tashkilotni ko'rardi).
+    """
+    if role in FULL_ACCESS_ROLES:
+        return None
+    ids = set()
+    if role == 'admin' and dept_id:
+        ids = dept_user_ids(dept_id)
+    elif role == 'department_admin' and div_id:
+        ids = div_user_ids(div_id)
+    if self_id:
+        ids.add(int(self_id))
+    return ids
+
+
+def current_scope_user_ids():
+    """Joriy so'rov egasi uchun scope_user_ids (JWT claim'lari bazadan
+    yangilangan — `sync_claims_from_db` ga qarang)."""
+    from flask_jwt_extended import get_jwt, get_jwt_identity
+    role, dept_id, div_id = get_scope(get_jwt())
+    return scope_user_ids(role, dept_id, div_id, int(get_jwt_identity()))
+
+
+def in_scope(user_id, scope):
+    """`scope_user_ids` natijasi bo'yicha tekshiruv (None = hammasi)."""
+    return scope is None or (user_id is not None and int(user_id) in scope)
+
+
+def can_manage_user(actor_role, actor_id, scope, target):
+    """Rahbar shu xodimni tahrirlay/o'chira oladimi.
+
+    Faqat o'z ko'lamidagi va o'zidan past darajadagi xodimni. Bosh
+    Administrator hammani boshqaradi. O'zini o'zi bu yo'l bilan boshqarmaydi
+    (rolini oshirib yoki o'zini o'chirib qo'ymasin).
+    """
+    if target is None:
+        return False
+    if actor_role == 'superadmin':
+        return True
+    if target.id == actor_id:
+        return False
+    if role_rank(target.role) >= role_rank(actor_role):
+        return False
+    return in_scope(target.id, scope)
+
+
+def supervisor_ids(user):
+    """Xodimning bevosita rahbarlari: bo'lim rahbari(lar)i, ular bo'lmasa
+    boshqarma rahbari(lar)i. O'z vazifasini tekshiruvga yuborgan xodim
+    haqida xabar shu odamlarga ketadi."""
+    from app.models import User
+    if user is None:
+        return []
+    if user.division_id and user.role != 'department_admin':
+        ids = [u.id for u in User.query.filter_by(
+            role='department_admin', division_id=user.division_id, is_active=True).all()]
+        if ids:
+            return ids
+    dept_id = user.department_id
+    if not dept_id and user.division:
+        dept_id = user.division.department_id
+    if dept_id:
+        return [u.id for u in User.query.filter_by(
+            role='admin', department_id=dept_id, is_active=True).all()]
+    return []
+
+
+def sync_claims_from_db(jwt_data):
+    """Token claim'larini har so'rovda bazadagi holat bilan almashtiradi.
+
+    Access token 12 soat yashaydi. Ilgari rol/bo'lim token ichidan olinardi:
+    rahbar lavozimidan olinsa yoki xodim bloklansa ham token muddati
+    tugaguncha eski huquqlari bilan ishlay olardi. Endi:
+      - xodim topilmasa yoki faol bo'lmasa — token rad etiladi (False);
+      - role/department_id/division_id/full_name bazadan yoziladi.
+    `get_jwt()` aynan shu lug'atni qaytaradi, shuning uchun barcha route'lar
+    o'zgartirishsiz yangilangan qiymatni ko'radi.
+    """
+    from app.models import User
+    try:
+        uid = int(jwt_data.get('sub'))
+    except (TypeError, ValueError):
+        return False
+    user = User.query.get(uid)
+    if user is None or not user.is_active:
+        return False
+    jwt_data['role'] = user.role
+    jwt_data['department_id'] = user.department_id
+    jwt_data['division_id'] = user.division_id
+    jwt_data['full_name'] = user.full_name
+    return True
+
+
 ISUP_EMPLOYEE_URL = "https://isup.uzbeksteel.uz/isup/hs/employee/getEmployee/{tab}"
 ISUP_AUTH = ('api', '@3395')
 ISUP_TIMEOUT = 8  # sekund
@@ -494,6 +622,18 @@ def fetch_employee_from_isup(tabel_num):
     }
 
 
+def client_ip():
+    """Mijoz IP manzili.
+
+    nginx haqiqiy manzilni `X-Real-IP` ga yozadi. `X-Forwarded-For` ning
+    birinchi qiymatini esa mijozning o'zi yuborishi mumkin — audit jurnaliga
+    soxta IP tushardi, shuning uchun undan foydalanilmaydi.
+    """
+    from flask import request
+    ip = request.headers.get('X-Real-IP') or request.remote_addr or ''
+    return ip[:50]
+
+
 def log_audit(action, entity_type, entity_id=None, entity_label='', details=''):
     """Audit log yozish. db.session.commit() chaqiruvchi tomonidan bajariladi.
 
@@ -504,7 +644,6 @@ def log_audit(action, entity_type, entity_id=None, entity_label='', details=''):
         entity_label: inson uchun tushunarli nom (masalan foydalanuvchi ismi)
         details: qo'shimcha izoh yoki JSON string
     """
-    from flask import request
     from flask_jwt_extended import get_jwt, get_jwt_identity, verify_jwt_in_request
     from app import db
     from app.models import AuditLog
@@ -526,7 +665,7 @@ def log_audit(action, entity_type, entity_id=None, entity_label='', details=''):
         pass
 
     try:
-        ip = (request.headers.get('X-Forwarded-For', request.remote_addr) or '')[:50]
+        ip = client_ip()
     except Exception:
         pass
 

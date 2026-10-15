@@ -22,6 +22,24 @@ const isoDate = (d) => {
   return `${y}-${m}-${day}`
 }
 
+// Fayl token bilan yuklanadi. Oddiy <a href> Authorization sarlavhasini
+// yubormaydi — ilgari havola bosilganda 401 sahifasi ochilardi.
+async function downloadAttachment(f, t) {
+  try {
+    const res = await api.get(f.download_url, { responseType: 'blob' })
+    const url = URL.createObjectURL(res.data)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = f.original_name
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  } catch {
+    alert(`${f.original_name}: ${t('task.file.downloadFailed')}`)
+  }
+}
+
 
 export default function Reminders() {
   const { t, formatDate } = useI18n()
@@ -349,7 +367,7 @@ function ReminderItem({ item, onEdit, onToggle, onDelete, t, formatDate }) {
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
             {item.files.map(f => (
               <a key={f.id} href={`${api.defaults.baseURL}${f.download_url}`}
-                target="_blank" rel="noopener noreferrer"
+                onClick={(e) => { e.preventDefault(); downloadAttachment(f, t) }}
                 style={{
                   display: 'inline-flex', alignItems: 'center', gap: 3,
                   background: 'var(--bg-input, #f1f5f9)', border: '1px solid var(--border)',

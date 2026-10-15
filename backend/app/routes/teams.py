@@ -2,7 +2,9 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt, get_jwt_identity
 from app import db
 from app.models import Team, User
-from app.utils import is_any_admin, get_scope, is_superadmin, dept_user_ids, log_audit
+from app.utils import (
+    is_any_admin, get_scope, is_superadmin, dept_user_ids, log_audit, scope_user_ids,
+)
 
 teams_bp = Blueprint('teams', __name__)
 
@@ -10,8 +12,33 @@ teams_bp = Blueprint('teams', __name__)
 @teams_bp.route('', methods=['GET'])
 @jwt_required()
 def get_teams():
-    """Barcha adminlar barcha guruhlarni ko'ra oladi"""
-    teams = Team.query.order_by(Team.name).all()
+    """Rol ko'lamidagi guruhlar.
+
+    - superadmin/direksiya: barcha guruhlar
+    - boshqarma rahbari: o'z boshqarmasi guruhlari va a'zolari boshqarmada
+      bo'lgan guruhlar
+    - bo'lim rahbari: o'z bo'limi guruhlari, o'zi tuzganlari va a'zolari
+      bo'limida bo'lgan guruhlar
+    - oddiy xodim: faqat o'zi a'zo bo'lgan guruhlar
+
+    Ilgari ro'yxat har kimga to'liq ochiq edi (barcha guruh va a'zolari).
+    """
+    role, dept_id, div_id = get_scope(get_jwt())
+    user_id = int(get_jwt_identity())
+    q = Team.query
+    if is_superadmin(role):
+        pass
+    elif role in ('admin', 'department_admin'):
+        scope = scope_user_ids(role, dept_id, div_id, user_id)
+        conds = [Team.created_by == user_id, Team.members.any(User.id.in_(scope))]
+        if role == 'admin' and dept_id:
+            conds.append(Team.department_id == dept_id)
+        if role == 'department_admin' and div_id:
+            conds.append(Team.division_id == div_id)
+        q = q.filter(db.or_(*conds))
+    else:
+        q = q.filter(Team.members.any(User.id == user_id))
+    teams = q.order_by(Team.name).all()
     return jsonify([t.to_dict() for t in teams])
 
 

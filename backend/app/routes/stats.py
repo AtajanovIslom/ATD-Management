@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify
-from flask_jwt_extended import jwt_required, get_jwt
+from flask_jwt_extended import jwt_required, get_jwt, get_jwt_identity
 from app.models import User, Task, TaskReport, ProjectStage, DailyReport
-from app.utils import get_scope, is_dept_admin_or_above, dept_user_ids, div_user_ids
+from app.utils import get_scope, is_dept_admin_or_above, scope_user_ids
 
 stats_bp = Blueprint('stats', __name__)
 
@@ -40,11 +40,11 @@ def employee_stats():
         return jsonify({'error': "Ruxsat yo'q"}), 403
 
     q = User.query.filter_by(is_active=True).filter(User.role.in_(['user', 'department_admin']))
-    if role == 'admin' and dept_id:
-        # Bo'limi orqali boshqarmaga tegishli xodimlar ham kirsin
-        q = q.filter(User.id.in_(dept_user_ids(dept_id)))
-    elif role == 'department_admin' and div_id:
-        q = q.filter_by(division_id=div_id)
+    # Bo'limi orqali boshqarmaga tegishli xodimlar ham kiradi; boshqarmasi
+    # biriktirilmagan rahbar butun tashkilotni ko'rmaydi
+    scope = scope_user_ids(role, dept_id, div_id, int(get_jwt_identity()))
+    if scope is not None:
+        q = q.filter(User.id.in_(scope))
     users = q.order_by(User.full_name).all()
     tasks = Task.query.all()
     stages = ProjectStage.query.all()
