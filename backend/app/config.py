@@ -27,6 +27,15 @@ class Config:
     # tushunarli JSON xato (413) qaytaradi.
     MAX_CONTENT_LENGTH = 50 * 1024 * 1024
 
+    # --- ISUP (kadrlar tizimi) — tabel raqami bo'yicha xodim ma'lumoti ---
+    # Login va parol faqat .env'da turadi, git'ga tushmaydi.
+    ISUP_EMPLOYEE_URL = os.getenv(
+        'ISUP_EMPLOYEE_URL',
+        'https://isup.uzbeksteel.uz/isup/hs/employee/getEmployee/{tab}',
+    )
+    ISUP_USER = os.getenv('ISUP_USER', '')
+    ISUP_PASSWORD = os.getenv('ISUP_PASSWORD', '')
+
     # --- Firebase Cloud Messaging (mobil ilova bildirishnomalari) ---
     # Credential ikki usulda beriladi (birinchi topilgani ishlatiladi):
     #   FIREBASE_CREDENTIALS_JSON — service account JSON matni (Docker/CI uchun)

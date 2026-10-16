@@ -562,8 +562,6 @@ def sync_claims_from_db(jwt_data):
     return True
 
 
-ISUP_EMPLOYEE_URL = "https://isup.uzbeksteel.uz/isup/hs/employee/getEmployee/{tab}"
-ISUP_AUTH = ('api', '@3395')
 ISUP_TIMEOUT = 8  # sekund
 
 
@@ -578,19 +576,31 @@ def fetch_employee_from_isup(tabel_num):
     import json
     import ssl
     import base64
+    from urllib.parse import quote
     from urllib.request import Request, urlopen
     from urllib.error import URLError, HTTPError
+    from flask import current_app
 
     tabel_num = (tabel_num or '').strip()
     if not tabel_num:
         return None
 
+    # Login/parol .env'dan (ISUP_USER / ISUP_PASSWORD) — kodda saqlanmaydi.
+    # Berilmagan bo'lsa ISUP so'rovi yuborilmaydi.
+    cfg = current_app.config
+    user, password = cfg.get('ISUP_USER'), cfg.get('ISUP_PASSWORD')
+    if not user or not password:
+        current_app.logger.warning("ISUP_USER/ISUP_PASSWORD o'rnatilmagan — ISUP so'rovi o'tkazib yuborildi")
+        return None
+
     # Basic auth header
-    creds = f"{ISUP_AUTH[0]}:{ISUP_AUTH[1]}".encode('utf-8')
+    creds = f"{user}:{password}".encode('utf-8')
     auth_header = 'Basic ' + base64.b64encode(creds).decode('ascii')
 
     req = Request(
-        ISUP_EMPLOYEE_URL.format(tab=tabel_num),
+        # Tabel raqami URL yo'liga xavfsiz qo'yiladi ("/", "?" bilan boshqa
+        # ISUP manziliga so'rov yuborib bo'lmasin)
+        cfg['ISUP_EMPLOYEE_URL'].format(tab=quote(tabel_num, safe='')),
         headers={'Authorization': auth_header, 'Accept': 'application/json'},
     )
     # ISUP self-signed sertifikatga ega bo'lishi mumkin

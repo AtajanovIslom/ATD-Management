@@ -25,6 +25,9 @@ services:
       FIREBASE_CREDENTIALS_PATH: /app/secrets/firebase-service-account.json
       PUSH_ENABLED: ${PUSH_ENABLED:-1}
       FCM_ANDROID_CHANNEL_ID: ${FCM_ANDROID_CHANNEL_ID:-atd_high_importance}
+      # ISUP (kadrlar tizimi) — qiymatlar faqat serverdagi .env'da
+      ISUP_USER: ${ISUP_USER:-}
+      ISUP_PASSWORD: ${ISUP_PASSWORD:-}
     volumes:
       - uploads:/app/uploads
       - ./backend/secrets:/app/secrets:ro
