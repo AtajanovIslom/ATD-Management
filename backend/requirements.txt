@@ -1,5 +1,10 @@
 flask==3.1.1
 flask-sqlalchemy==3.1.1
+# Bog'liq paketlar ham qat'iy: SQLAlchemy 2.1 "postgresql://" uchun standart
+# drayverni psycopg (v3) ga almashtirdi — pin'siz yangi build backend'ni
+# ishga tushirmay qo'ydi (ModuleNotFoundError: psycopg)
+sqlalchemy==2.0.36
+pyjwt==2.13.0
 flask-jwt-extended==4.7.1
 flask-cors==5.0.1
 psycopg2-binary==2.9.10
