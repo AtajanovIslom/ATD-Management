@@ -8,6 +8,7 @@ import project from './project'
 import task from './task'
 import manage from './manage'
 import reports from './reports'
+import profile from './profile'
 import reminder from './reminder'
 import interactive from './interactive'
 
@@ -21,6 +22,7 @@ export default {
   ...task,
   ...manage,
   ...reports,
+  ...profile,
   ...reminder,
   ...interactive,
 }

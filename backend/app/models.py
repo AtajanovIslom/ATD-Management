@@ -1455,3 +1455,59 @@ class ReportAttachment(db.Model):
             'file_size': self.file_size,
             'download_url': f'/projects/report-files/{self.filename}',
         }
+
+
+class TelegramLink(db.Model):
+    """Xodim akkauntining Telegram chatiga ulanishi.
+
+    Tashkilotda bitta umumiy bot bor (token .env'da). Xodim profil
+    sahifasidagi bir martalik havola orqali botga "Start" bosadi — shu
+    yerda uning chat_id'si yoziladi va bildirishnomalar botga ham boradi.
+    Bitta xodim — bitta chat, bitta chat — bitta xodim.
+    """
+    __tablename__ = 'telegram_links'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'),
+                        nullable=False, unique=True)
+    chat_id = db.Column(db.BigInteger, nullable=False, unique=True)
+    username = db.Column(db.String(255), default='')
+    first_name = db.Column(db.String(255), default='')
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+    linked_at = db.Column(db.DateTime, default=utc_naive_now)
+
+    user = db.relationship('User', foreign_keys=[user_id], lazy='joined')
+
+    def to_dict(self):
+        return {
+            'username': self.username or '',
+            'first_name': self.first_name or '',
+            'is_active': bool(self.is_active),
+            'linked_at': self.linked_at.isoformat() + 'Z' if self.linked_at else None,
+        }
+
+
+class TelegramLinkCode(db.Model):
+    """Ulash uchun bir martalik kod (t.me/<bot>?start=<code>), 15 daqiqa amal qiladi."""
+    __tablename__ = 'telegram_link_codes'
+
+    id = db.Column(db.Integer, primary_key=True)
+    code = db.Column(db.String(64), nullable=False, unique=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'),
+                        nullable=False, index=True)
+    expires_at = db.Column(db.DateTime, nullable=False)
+    used_at = db.Column(db.DateTime)
+
+
+class TelegramChatState(db.Model):
+    """Bot suhbatining kutilayotgan qadami (masalan "qaytarish sababini yozing").
+
+    Bazada turadi — gunicorn'ning 4 ta worker'idan istalgani keyingi xabarni
+    qabul qilishi mumkin, xotirada saqlansa holat yo'qolib qolardi.
+    """
+    __tablename__ = 'telegram_chat_states'
+
+    chat_id = db.Column(db.BigInteger, primary_key=True)
+    state = db.Column(db.String(50), nullable=False)
+    data = db.Column(db.JSON, default=dict)
+    updated_at = db.Column(db.DateTime, default=utc_naive_now, onupdate=utc_naive_now)

@@ -114,8 +114,9 @@ export default function Navbar() {
         <button className="theme-toggle-btn" onClick={toggleTheme} title={theme === 'dark' ? t('theme.light') : t('theme.dark')}>
           {theme === 'dark' ? `☀️ ${t('theme.light')}` : `🌙 ${t('theme.dark')}`}
         </button>
-        <div className="user-info">
-          <strong>{user.full_name}</strong>
+        <NavLink to="/profile" className="user-info" title={t('nav.profile')}
+          style={{ textDecoration: 'none', color: 'inherit' }}>
+          <strong>👤 {user.full_name}</strong>
           <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
             {roleLabel}
           </span>
@@ -124,7 +125,7 @@ export default function Navbar() {
               {user.department_name}
             </span>
           )}
-        </div>
+        </NavLink>
         <button className="btn btn-outline btn-full logout-btn" onClick={logout}>
           {t('nav.logout')}
         </button>

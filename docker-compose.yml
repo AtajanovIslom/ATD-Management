@@ -28,6 +28,10 @@ services:
       # ISUP (kadrlar tizimi) — qiymatlar faqat serverdagi .env'da
       ISUP_USER: ${ISUP_USER:-}
       ISUP_PASSWORD: ${ISUP_PASSWORD:-}
+      # Telegram bot — token BotFather'dan, faqat serverdagi .env'da
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-https://atd.uzbeksteel.uz}
     volumes:
       - uploads:/app/uploads
       - ./backend/secrets:/app/secrets:ro

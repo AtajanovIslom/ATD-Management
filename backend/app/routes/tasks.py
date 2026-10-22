@@ -42,17 +42,27 @@ def parse_datetime(s):
 # =========================================================================
 
 class _Actor:
-    """Joriy foydalanuvchi va uning ko'lami — bitta so'rov ichida bir marta."""
+    """Joriy foydalanuvchi va uning ko'lami — bitta so'rov ichida bir marta.
 
-    def __init__(self):
-        claims = get_jwt()
-        self.claims = claims
-        self.role, self.dept_id, self.div_id = get_scope(claims)
-        self.id = int(get_jwt_identity())
+    `user` berilsa JWT o'rniga shu xodim nomidan ishlaydi (Telegram bot:
+    u yerda token yo'q, xodim chat_id orqali aniqlanadi). Ruxsat qoidalari
+    sayt bilan bir xil bo'lib qoladi.
+    """
+
+    def __init__(self, user=None):
+        if user is not None:
+            self.claims = {'role': user.role}
+            self.role, self.dept_id, self.div_id = user.role, user.department_id, user.division_id
+            self.id = user.id
+        else:
+            claims = get_jwt()
+            self.claims = claims
+            self.role, self.dept_id, self.div_id = get_scope(claims)
+            self.id = int(get_jwt_identity())
         self.scope = scope_user_ids(self.role, self.dept_id, self.div_id, self.id)
         self.is_full = self.role in FULL_ACCESS_ROLES
         self.is_leader = is_any_admin(self.role)
-        self._user = None
+        self._user = user
 
     @property
     def user(self):
@@ -524,6 +534,83 @@ def get_task(task_id):
     return jsonify(_task_payload(task, actor))
 
 
+def apply_status_change(task, actor, new_status, data):
+    """Vazifa holatini o'zgartiradi (commit chaqiruvchida).
+
+    Sayt (PUT /tasks/<id>) va Telegram bot bir xil qoidadan foydalanadi.
+    Muvaffaqiyatda None, aks holda (xato matni, HTTP kodi).
+    """
+    if new_status not in TASK_STATUSES:
+        return ("Noto'g'ri holat", 400)
+
+    is_assignee = _is_assignee(task, actor)
+    manage = _can_manage(task, actor)
+
+    if new_status == 'review':
+        # Ijrochi (rahbar bo'lsa ham) "bajardim" deb yuboradi
+        if not is_assignee:
+            return ('Sizda bu vazifani bajarildi deb yuborish huquqi yo\'q', 403)
+        if task.status in ('cancelled', 'completed'):
+            return ("Bu holatdagi vazifa bo'yicha ish yuborib bo'lmaydi", 400)
+        if not TaskReport.query.filter_by(task_id=task.id).first():
+            return ('Avval hisobot topshiring', 400)
+        task.completed_at = None
+    elif new_status == 'cancelled':
+        # Vazifani faqat ko'lamidagi rahbar bekor qiladi
+        if not manage:
+            return ('Faqat rahbar vazifani bekor qiladi', 403)
+        if task.status == 'completed':
+            return ("Tugallangan vazifani bekor qilib bo'lmaydi", 400)
+        task.cancelled_at = datetime.now(timezone.utc)
+        task.cancel_reason = (data.get('cancel_reason') or '').strip()
+        task.completed_at = None
+        log_audit('cancel', 'task', task.id, entity_label=task.name,
+                  details=task.cancel_reason, actor=actor.user)
+    elif new_status in ('completed', 'returned'):
+        if not _can_approve(task, actor):
+            if manage:
+                return ("O'zingiz bajargan vazifani o'zingiz tasdiqlay olmaysiz", 403)
+            return ('Faqat rahbar tasdiqlaydi', 403)
+        # 'review' holatidan ko'lamidagi har qanday rahbar amal qiladi.
+        # Tugallangan vazifani qaytarish faqat boshqarma rahbari va yuqori rollarga
+        # ruxsat (bo'lim rahbari tasdiqlagan ishda kamchilik topsa qayta yuklaydi).
+        if task.status == 'review':
+            pass
+        elif task.status == 'completed' and new_status == 'returned':
+            if not is_admin_or_above(actor.role):
+                return ("Tugallangan vazifani qayta yuklash faqat boshqarma rahbari huquqi", 403)
+        else:
+            return ('Bu holatda amal qilib bo\'lmaydi', 400)
+        task.completed_at = datetime.now(timezone.utc) if new_status == 'completed' else None
+        log_audit('approve' if new_status == 'completed' else 'return', 'task',
+                  task.id, entity_label=task.name,
+                  details=(data.get('return_reason') or '').strip()[:200], actor=actor.user)
+    else:
+        # active / in_progress
+        if task.status == 'cancelled':
+            # Bekor qilingan vazifani ishga qaytarish — faqat rahbar
+            if not manage:
+                return ('Faqat rahbar vazifani qayta ochadi', 403)
+            log_audit('update', 'task', task.id, entity_label=task.name,
+                      details='bekor qilingan vazifa qayta ochildi', actor=actor.user)
+        elif task.status in ('completed', 'review') and not manage:
+            # Ijrochi tasdiqlangan yoki tekshiruvdagi vazifani o'zicha
+            # qayta ocha olmaydi (ilgari `completed_at` saqlanib qolardi)
+            return ("Bu holatdagi vazifani o'zgartira olmaysiz", 403)
+        elif not manage and not is_assignee:
+            return ('Ruxsat yo\'q', 403)
+        task.completed_at = None
+
+    if new_status != 'cancelled':
+        task.cancelled_at = None
+        task.cancel_reason = ''
+
+    task.status = new_status
+    events.task_status_changed(task, new_status, actor=actor.user,
+                               reason=(data.get('return_reason') or '').strip())
+    return None
+
+
 @tasks_bp.route('/<int:task_id>', methods=['PUT'])
 @jwt_required()
 def update_task(task_id):
@@ -535,74 +622,9 @@ def update_task(task_id):
 
     new_status = data.get('status')
     if new_status:
-        if new_status not in TASK_STATUSES:
-            return jsonify({'error': "Noto'g'ri holat"}), 400
-
-        is_assignee = _is_assignee(task, actor)
-        manage = _can_manage(task, actor)
-
-        if new_status == 'review':
-            # Ijrochi (rahbar bo'lsa ham) "bajardim" deb yuboradi
-            if not is_assignee:
-                return jsonify({'error': 'Sizda bu vazifani bajarildi deb yuborish huquqi yo\'q'}), 403
-            if task.status in ('cancelled', 'completed'):
-                return jsonify({'error': "Bu holatdagi vazifa bo'yicha ish yuborib bo'lmaydi"}), 400
-            if not TaskReport.query.filter_by(task_id=task.id).first():
-                return jsonify({'error': 'Avval hisobot topshiring'}), 400
-            task.completed_at = None
-        elif new_status == 'cancelled':
-            # Vazifani faqat ko'lamidagi rahbar bekor qiladi
-            if not manage:
-                return jsonify({'error': 'Faqat rahbar vazifani bekor qiladi'}), 403
-            if task.status == 'completed':
-                return jsonify({'error': "Tugallangan vazifani bekor qilib bo'lmaydi"}), 400
-            task.cancelled_at = datetime.now(timezone.utc)
-            task.cancel_reason = (data.get('cancel_reason') or '').strip()
-            task.completed_at = None
-            log_audit('cancel', 'task', task.id, entity_label=task.name,
-                      details=task.cancel_reason)
-        elif new_status in ('completed', 'returned'):
-            if not _can_approve(task, actor):
-                if manage:
-                    return jsonify({'error': "O'zingiz bajargan vazifani o'zingiz tasdiqlay olmaysiz"}), 403
-                return jsonify({'error': 'Faqat rahbar tasdiqlaydi'}), 403
-            # 'review' holatidan ko'lamidagi har qanday rahbar amal qiladi.
-            # Tugallangan vazifani qaytarish faqat boshqarma rahbari va yuqori rollarga
-            # ruxsat (bo'lim rahbari tasdiqlagan ishda kamchilik topsa qayta yuklaydi).
-            if task.status == 'review':
-                pass
-            elif task.status == 'completed' and new_status == 'returned':
-                if not is_admin_or_above(actor.role):
-                    return jsonify({'error': "Tugallangan vazifani qayta yuklash faqat boshqarma rahbari huquqi"}), 403
-            else:
-                return jsonify({'error': 'Bu holatda amal qilib bo\'lmaydi'}), 400
-            task.completed_at = datetime.now(timezone.utc) if new_status == 'completed' else None
-            log_audit('approve' if new_status == 'completed' else 'return', 'task',
-                      task.id, entity_label=task.name,
-                      details=(data.get('return_reason') or '').strip()[:200])
-        else:
-            # active / in_progress
-            if task.status == 'cancelled':
-                # Bekor qilingan vazifani ishga qaytarish — faqat rahbar
-                if not manage:
-                    return jsonify({'error': 'Faqat rahbar vazifani qayta ochadi'}), 403
-                log_audit('update', 'task', task.id, entity_label=task.name,
-                          details='bekor qilingan vazifa qayta ochildi')
-            elif task.status in ('completed', 'review') and not manage:
-                # Ijrochi tasdiqlangan yoki tekshiruvdagi vazifani o'zicha
-                # qayta ocha olmaydi (ilgari `completed_at` saqlanib qolardi)
-                return jsonify({'error': "Bu holatdagi vazifani o'zgartira olmaysiz"}), 403
-            elif not manage and not is_assignee:
-                return jsonify({'error': 'Ruxsat yo\'q'}), 403
-            task.completed_at = None
-
-        if new_status != 'cancelled':
-            task.cancelled_at = None
-            task.cancel_reason = ''
-
-        task.status = new_status
-        events.task_status_changed(task, new_status,
-                                   reason=(data.get('return_reason') or '').strip())
+        err = apply_status_change(task, actor, new_status, data)
+        if err:
+            return jsonify({'error': err[0]}), err[1]
 
     # Vazifa ma'lumotlarini tahrirlash — ko'lamidagi rahbar, o'z vazifasini
     # tahrirlayotgan xodim va "Vazifani tahrirlash" huquqi berilgan xodim

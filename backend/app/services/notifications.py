@@ -90,6 +90,7 @@ def notify(user_ids, *, event, title, body='', entity_type='', entity_id=None,
         'user_id': n.user_id,
         'title': n.title,
         'body': n.body,
+        'actor_name': actor_name,
         'data': dict(payload, notification_id=n.id),
     } for n in created])
 
@@ -241,6 +242,14 @@ def _deliver_safe(app, items):
     except Exception as e:
         # Push yetkazilmasligi asosiy amalni buzmasligi kerak
         print(f'[push] Yetkazishda kutilmagan xato: {type(e).__name__}: {e}')
+    # Telegram — alohida kanal: push xato bersa ham (yoki Firebase sozlanmagan
+    # bo'lsa ham) botga ulangan xodim xabarini oladi
+    try:
+        from app.services import telegram
+        with app.app_context():
+            telegram.deliver(app, items)
+    except Exception as e:
+        print(f'[telegram] Yetkazishda kutilmagan xato: {type(e).__name__}: {e}')
 
 
 @sa_event.listens_for(db.session,'after_commit')

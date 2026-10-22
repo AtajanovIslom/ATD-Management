@@ -644,7 +644,7 @@ def client_ip():
     return ip[:50]
 
 
-def log_audit(action, entity_type, entity_id=None, entity_label='', details=''):
+def log_audit(action, entity_type, entity_id=None, entity_label='', details='', actor=None):
     """Audit log yozish. db.session.commit() chaqiruvchi tomonidan bajariladi.
 
     Args:
@@ -653,6 +653,8 @@ def log_audit(action, entity_type, entity_id=None, entity_label='', details=''):
         entity_id: obyekt ID
         entity_label: inson uchun tushunarli nom (masalan foydalanuvchi ismi)
         details: qo'shimcha izoh yoki JSON string
+        actor: amal egasi (User). Berilmasa JWT'dan olinadi — Telegram bot
+               kabi tokensiz so'rovlarda shu orqali uzatiladi.
     """
     from flask_jwt_extended import get_jwt, get_jwt_identity, verify_jwt_in_request
     from app import db
@@ -663,16 +665,19 @@ def log_audit(action, entity_type, entity_id=None, entity_label='', details=''):
     user_role = ''
     ip = ''
 
-    try:
-        verify_jwt_in_request(optional=True)
-        uid_claim = get_jwt_identity()
-        if uid_claim:
-            user_id = int(uid_claim)
-            claims = get_jwt()
-            user_name = claims.get('full_name', '')
-            user_role = claims.get('role', '')
-    except Exception:
-        pass
+    if actor is not None:
+        user_id, user_name, user_role = actor.id, actor.full_name, actor.role
+    else:
+        try:
+            verify_jwt_in_request(optional=True)
+            uid_claim = get_jwt_identity()
+            if uid_claim:
+                user_id = int(uid_claim)
+                claims = get_jwt()
+                user_name = claims.get('full_name', '')
+                user_role = claims.get('role', '')
+        except Exception:
+            pass
 
     try:
         ip = client_ip()

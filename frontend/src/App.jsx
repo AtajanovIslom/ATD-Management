@@ -20,6 +20,7 @@ import InteractiveRequests from './pages/InteractiveRequests'
 import AuditLogs from './pages/AuditLogs'
 import Reminders from './pages/Reminders'
 import EmployeeReports from './pages/EmployeeReports'
+import Profile from './pages/Profile'
 import PrivacyPolicy from './pages/PrivacyPolicy'
 import ReminderNotification from './components/ReminderNotification'
 import TaskNotifier from './components/TaskNotifier'
@@ -112,6 +113,8 @@ export default function App() {
           {/* Loyiha/vazifa tafsilotlari — havola orqali ochiladi, alohida
               menyu bandi emas, shuning uchun barcha rollarda mavjud */}
           <Route path="/projects/:id" element={<ProjectDetail />} />
+          {/* Profil (Telegram'ga ulash) — barcha rollarga */}
+          <Route path="/profile" element={<Profile />} />
           <Route path="/tasks/:id" element={<TaskDetail />} />
 
           {/* Noma'lum manzil — rolning bosh sahifasiga (agent uchun bu "/" emas) */}
