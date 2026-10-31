@@ -1,3 +1,21 @@
+# Backend va Telegram poller uchun umumiy sozlamalar
+x-backend-env: &backend-env
+  DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-1111}@db:5432/${POSTGRES_DB:-hisobot}
+  JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-me-in-prod}
+  # Firebase (mobil bildirishnomalar). Fayl volume orqali ulanadi —
+  # image ichiga yozilmaydi. Kalit bo'lmasa push jim o'chadi.
+  FIREBASE_CREDENTIALS_PATH: /app/secrets/firebase-service-account.json
+  PUSH_ENABLED: ${PUSH_ENABLED:-1}
+  FCM_ANDROID_CHANNEL_ID: ${FCM_ANDROID_CHANNEL_ID:-atd_high_importance}
+  # ISUP (kadrlar tizimi) — qiymatlar faqat serverdagi .env'da
+  ISUP_USER: ${ISUP_USER:-}
+  ISUP_PASSWORD: ${ISUP_PASSWORD:-}
+  # Telegram bot — token BotFather'dan, faqat serverdagi .env'da
+  TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+  TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
+  PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-https://atd.uzbeksteel.uz}
+  TELEGRAM_MODE: ${TELEGRAM_MODE:-polling}
+
 services:
   db:
     image: postgres:16-alpine
@@ -17,27 +35,30 @@ services:
   backend:
     build: ./backend
     restart: always
-    environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-1111}@db:5432/${POSTGRES_DB:-hisobot}
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-me-in-prod}
-      # Firebase (mobil bildirishnomalar). Fayl volume orqali ulanadi —
-      # image ichiga yozilmaydi. Kalit bo'lmasa push jim o'chadi.
-      FIREBASE_CREDENTIALS_PATH: /app/secrets/firebase-service-account.json
-      PUSH_ENABLED: ${PUSH_ENABLED:-1}
-      FCM_ANDROID_CHANNEL_ID: ${FCM_ANDROID_CHANNEL_ID:-atd_high_importance}
-      # ISUP (kadrlar tizimi) — qiymatlar faqat serverdagi .env'da
-      ISUP_USER: ${ISUP_USER:-}
-      ISUP_PASSWORD: ${ISUP_PASSWORD:-}
-      # Telegram bot — token BotFather'dan, faqat serverdagi .env'da
-      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
-      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
-      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-https://atd.uzbeksteel.uz}
+    environment: *backend-env
     volumes:
       - uploads:/app/uploads
       - ./backend/secrets:/app/secrets:ro
     depends_on:
       db:
         condition: service_healthy
+
+  # Telegram bot — xabarlarni getUpdates bilan qabul qiladi (polling).
+  # Backend bilan bir xil image; YAGONA nusxada ishlashi shart, aks holda
+  # bitta xabar ikki marta qayta ishlanadi. Token bo'lmasa jim kutadi.
+  telegram:
+    build: ./backend
+    restart: always
+    command: ["python", "-m", "app.telegram_poller"]
+    environment: *backend-env
+    volumes:
+      - uploads:/app/uploads
+      - ./backend/secrets:/app/secrets:ro
+    depends_on:
+      db:
+        condition: service_healthy
+      backend:
+        condition: service_started
 
   frontend:
     build: ./frontend

@@ -126,17 +126,22 @@ def webhook():
     if request.headers.get('X-Telegram-Bot-Api-Secret-Token') != tg.webhook_secret(cfg):
         return jsonify({}), 403
 
-    update = request.get_json(silent=True) or {}
+    # Telegram 200 olmasa xabarni qayta-qayta yuboradi — xato log'ga
+    handle_update(request.get_json(silent=True) or {})
+    return jsonify({})
+
+
+def handle_update(update):
+    """Bitta Telegram update'ini qayta ishlaydi (webhook va poller uchun umumiy).
+    App kontekstida chaqiriladi; xato yutib yuboriladi va log'ga yoziladi."""
     try:
         if 'callback_query' in update:
             _on_callback(update['callback_query'])
         elif 'message' in update:
             _on_message(update['message'])
     except Exception as e:
-        # Telegram 200 olmasa xabarni qayta-qayta yuboradi — xato log'ga
         db.session.rollback()
-        print(f'[telegram] webhook xatosi: {type(e).__name__}: {e}')
-    return jsonify({})
+        print(f'[telegram] update xatosi: {type(e).__name__}: {e}')
 
 
 def _linked_user(chat_id):

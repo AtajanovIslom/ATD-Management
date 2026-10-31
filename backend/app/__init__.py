@@ -8,7 +8,7 @@ db = SQLAlchemy()
 jwt = JWTManager()
 
 
-def create_app():
+def create_app(init_db=True):
     app = Flask(__name__)
     app.config.from_object('app.config.Config')
 
@@ -87,6 +87,16 @@ def create_app():
         from app.services import telegram as _tg
         _tg.ensure_setup(app)
 
+    # Jadval/migratsiya/boshlang'ich admin. Telegram poller kabi yordamchi
+    # jarayonlar init_db=False bilan chaqiradi — migratsiyani backend bilan
+    # bir vaqtda ikkinchi marta ishga tushirmasin.
+    if init_db:
+        _init_database(app)
+
+    return app
+
+
+def _init_database(app):
     with app.app_context():
         from app.models import User
         db.create_all()
@@ -369,5 +379,3 @@ def create_app():
         # har bir worker fork'dan keyin o'z ulanishini ochadi.
         db.session.remove()
         db.engine.dispose()
-
-    return app

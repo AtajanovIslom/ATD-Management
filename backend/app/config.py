@@ -36,6 +36,12 @@ class Config:
     # Webhook so'rovi haqiqatan Telegram'dan kelganini tekshirish uchun.
     # Berilmasa tokendan hosil qilinadi.
     TELEGRAM_WEBHOOK_SECRET = os.getenv('TELEGRAM_WEBHOOK_SECRET', '').strip()
+    # polling — server o'zi Telegram'dan xabarlarni so'raydi (alohida
+    #   `telegram` konteyneri). Faqat chiquvchi ulanish kerak — sayt
+    #   internetdan ochiq bo'lmasa ham ishlaydi. Standart rejim.
+    # webhook — Telegram PUBLIC_BASE_URL ga o'zi yuboradi (domen internetdan
+    #   to'g'ri serverga va haqiqiy sertifikat bilan ochilishi shart).
+    TELEGRAM_MODE = os.getenv('TELEGRAM_MODE', 'polling').strip().lower()
 
     # --- ISUP (kadrlar tizimi) — tabel raqami bo'yicha xodim ma'lumoti ---
     # Login va parol faqat .env'da turadi, git'ga tushmaydi.

@@ -4,10 +4,13 @@ Tashkilotda bitta umumiy bot (token .env'dagi TELEGRAM_BOT_TOKEN). Xodim
 profil sahifasidan bir martalik havola orqali botga ulanadi (TelegramLink),
 shundan so'ng tizimdagi bildirishnomalar (notify) botga ham yuboriladi.
 
-Bot webhook rejimida ishlaydi: Telegram yangi xabarlarni
-PUBLIC_BASE_URL/api/telegram/webhook ga yuboradi (routes/telegram.py).
-Alohida jarayon yoki qo'shimcha kutubxona kerak emas — HTTP so'rovlar
-standart urllib bilan.
+Xabarlarni qabul qilish ikki rejimda (TELEGRAM_MODE):
+  polling (standart) — `telegram` konteyneridagi app/telegram_poller.py
+      Telegram'dan getUpdates bilan o'zi so'raydi. Faqat chiquvchi ulanish
+      kerak: domen internetdan boshqa serverga qaraganda ham ishlaydi.
+  webhook — Telegram PUBLIC_BASE_URL/api/telegram/webhook ga o'zi yuboradi.
+Ikkalasi ham bir xil ishlovchi (routes/telegram.handle_update) orqali.
+HTTP so'rovlar standart urllib bilan — qo'shimcha kutubxona yo'q.
 
 Telegram'ga ulanib bo'lmasa (token yo'q, tarmoq yopiq) — sayt odatdagidek
 ishlaydi, xatolar log'ga yoziladi va profil sahifasida ko'rsatiladi.
@@ -100,9 +103,14 @@ def bot_username(config):
     return _state['username']
 
 
+def mode(config):
+    return 'webhook' if config.get('TELEGRAM_MODE') == 'webhook' else 'polling'
+
+
 def status(config):
     return {
         'enabled': enabled(config),
+        'mode': mode(config),
         'bot_username': bot_username(config) if enabled(config) else None,
         'webhook_ok': _state['webhook_ok'],
         'error': _state['last_error'] or None,
@@ -113,7 +121,9 @@ def ensure_setup(app):
     """Webhook va buyruqlar menyusini o'rnatadi — har jarayonda bir marta,
     fon oqimida (so'rovni kutdirmaydi). setWebhook takror chaqirilsa ham
     zarari yo'q."""
-    if not enabled(app.config):
+    # Polling rejimida webhook o'rnatilmaydi — aks holda poller'ning
+    # getUpdates so'rovi 409 (Conflict) olardi. Sozlashni poller qiladi.
+    if not enabled(app.config) or mode(app.config) != 'webhook':
         return
     with _lock:
         if _state['setup_started']:
