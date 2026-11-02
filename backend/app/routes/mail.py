@@ -68,8 +68,11 @@ def connect():
     acc.email = address
     acc.password_enc = mail_svc.encrypt(cfg, password)
     acc.is_active = True
-    # Shu paytgacha kelgan xatlar botga yuborilmaydi — faqat bundan keyingilari
+    # Shu paytgacha kelgan xatlar "yangi xat" sifatida yuborilmaydi (chegara);
+    # ulardan o'qilmaganlari esa alohida, bir marta yuboriladi
     acc.uidvalidity, acc.last_uid = validity, uidnext - 1
+    # O'qilmagan xatlar keyingi tekshiruvda (bir daqiqa ichida) yuboriladi
+    acc.send_unseen = True
     acc.last_error = ''
     log_audit('create', 'mail_account', user_id, entity_label='Korporativ pochta ulandi',
               details=address)

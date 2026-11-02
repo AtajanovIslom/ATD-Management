@@ -1532,6 +1532,9 @@ class MailAccount(db.Model):
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     uidvalidity = db.Column(db.BigInteger)
     last_uid = db.Column(db.BigInteger)
+    # True — keyingi tekshiruvda o'qilmagan (UNSEEN) xatlar ham yuboriladi
+    # (ulanganda va botdagi "📬 O'qilmaganlarni yuborish" tugmasida)
+    send_unseen = db.Column(db.Boolean, default=True, nullable=False)
     last_checked_at = db.Column(db.DateTime)
     last_error = db.Column(db.Text, default='')
     created_at = db.Column(db.DateTime, default=utc_naive_now)

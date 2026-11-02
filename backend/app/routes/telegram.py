@@ -342,8 +342,10 @@ def _mail_status(chat_id, user):
         rows.append(f'🔄 Oxirgi tekshiruv: {tg.local_dt(acc.last_checked_at)}')
     if acc.last_error:
         rows.append(f'⚠️ {tg.esc(acc.last_error)}')
-    _reply(chat_id, tg.card('📧 Korporativ pochta', None, rows),
-           [[{'text': '🌐 Pochtani ochish', 'url': current_app.config['MAIL_WEB_URL']}]] + profile)
+    buttons = [[{'text': '🌐 Pochtani ochish', 'url': current_app.config['MAIL_WEB_URL']}]]
+    if acc.is_active:
+        buttons.insert(0, [{'text': "📬 O'qilmaganlarni yuborish", 'callback_data': 'mu:0'}])
+    _reply(chat_id, tg.card('📧 Korporativ pochta', None, rows), buttons + profile)
 
 
 # =========================================================================
@@ -385,9 +387,21 @@ def _on_callback(cb):
 
     if action == 'mf':
         return _mail_full(cb, chat_id, message_id, user, obj_id)
+    if action == 'mu':
+        return _mail_unseen(cb, user)
     if action in ('ta', 'tr', 'tv'):
         return _task_action(cb, chat_id, message_id, user, action, obj_id)
     return _answer(cb, "Noma'lum amal")
+
+
+def _mail_unseen(cb, user):
+    acc = MailAccount.query.filter_by(user_id=user.id, is_active=True).first()
+    if acc is None:
+        return _answer(cb, "Pochta ulanmagan yoki to'xtatilgan — Profilda ulang", alert=True)
+    acc.send_unseen = True
+    db.session.commit()
+    interval = current_app.config['MAIL_CHECK_INTERVAL']
+    _answer(cb, f"📬 {interval} soniya ichida yuboriladi", alert=False)
 
 
 def _mail_full(cb, chat_id, message_id, user, msg_id):

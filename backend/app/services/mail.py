@@ -33,6 +33,7 @@ from app.services import telegram as tg
 
 PREVIEW = 300               # kartochkadagi matn boshi
 MAX_PER_CYCLE = 10          # bir tekshiruvda bitta qutidan ko'pi bilan
+MAX_UNSEEN = 20             # o'qilmaganlardan eng so'nggi shunchasi yuboriladi
 MAX_ATTACHMENTS = 10        # bitta xatdan yuboriladigan fayllar
 MAX_BODY_STORE = 100_000    # bazada saqlanadigan matn (belgi)
 CHUNK = 3500                # "Barchasini o'qish" — bitta xabardagi matn
@@ -219,7 +220,7 @@ def _size(n):
     return f'{n / 1024 / 1024:.1f} MB' if n >= 1024 * 1024 else f'{max(1, n // 1024)} KB'
 
 
-def card_text(row, full=False):
+def card_text(row, full=False, header='📧 Yangi xat'):
     rows = [f'👤 <b>{tg.esc(row.sender)}</b>']
     if row.sent_at:
         rows.append(f'🕒 {tg.local_dt(row.sent_at)}')
@@ -230,7 +231,7 @@ def card_text(row, full=False):
     footer = f'📎 {len(files)} ta ilova: ' + ', '.join(f['name'] for f in files[:5]) if files else None
     if footer and len(files) > 5:
         footer += ' …'
-    return tg.card('📧 Yangi xat', f'✉️ {row.subject}', rows, body=body,
+    return tg.card(header, f'✉️ {row.subject}', rows, body=body,
                    expandable=full and len(body) > 600, footer=tg.esc(footer) if footer else None)
 
 
@@ -257,7 +258,7 @@ def _chat_for(user_id):
     return link.chat_id if link and link.user and link.user.is_active else None
 
 
-def _deliver(config, acc, parsed, uid):
+def _deliver(config, acc, parsed, uid, header='📧 Yangi xat'):
     """Xatni bazaga yozadi va (Telegram ulangan bo'lsa) botga yuboradi."""
     from app import db
     from app.models import MailMessage
@@ -273,7 +274,7 @@ def _deliver(config, acc, parsed, uid):
     chat_id = _chat_for(acc.user_id)
     if chat_id is None:
         return
-    sent = tg.send(config, chat_id, card_text(row), card_buttons(config, row))
+    sent = tg.send(config, chat_id, card_text(row, header=header), card_buttons(config, row))
     reply_to = (sent or {}).get('message_id')
     for name, data in parsed['attachments'][:MAX_ATTACHMENTS]:
         if len(data) > tg.MAX_DOCUMENT:
@@ -300,6 +301,45 @@ def _notify_auth_failed(config, acc):
             footer="Saytda Profil → Korporativ pochta bo'limida qayta ulang."))
     except tg.TelegramError:
         pass
+
+
+def _fetch_and_deliver(cfg, conn, acc, uid, header):
+    typ, msg_data = conn.uid('fetch', str(uid), '(BODY.PEEK[])')
+    raw = next((p[1] for p in msg_data if isinstance(p, tuple)), None)
+    if typ == 'OK' and raw:
+        try:
+            _deliver(cfg, acc, parse_message(raw), uid, header=header)
+        except tg.TelegramError as e:
+            print(f'[mail] user={acc.user_id}: {e.description}')
+
+
+def _send_unseen(cfg, conn, acc):
+    """Hozircha o'qilmagan xatlar — eng so'nggi MAX_UNSEEN tasi, eskidan
+    yangiga (eng yangisi chat oxirida). Xatlar o'qilgan deb belgilanmaydi."""
+    from app import db
+    conn.select('INBOX', readonly=True)
+    typ, data = conn.uid('search', None, 'UNSEEN')
+    uids = sorted(int(x) for x in (data[0] or b'').split()) if typ == 'OK' else []
+    # Chegaradan keyingilarini oddiy oqim "yangi xat" sifatida yuboradi
+    if acc.last_uid is not None:
+        uids = [u for u in uids if u <= acc.last_uid]
+    acc.send_unseen = False
+    db.session.commit()
+    chat_id = _chat_for(acc.user_id)
+    if not uids or chat_id is None:
+        if chat_id is not None:
+            tg.send(cfg, chat_id, tg.card('📬 O\'qilmagan xatlar', acc.email,
+                                          ["✨ Pochtangizda o'qilmagan xat yo'q."]))
+        return
+    shown = uids[-MAX_UNSEEN:]
+    rows = [f'Pochtangizda <b>{len(uids)}</b> ta o\'qilmagan xat bor.']
+    if len(uids) > MAX_UNSEEN:
+        rows.append(f'Eng so\'nggi {MAX_UNSEEN} tasi quyida, qolganini pochtada ko\'ring.')
+    tg.send(cfg, chat_id, tg.card('📬 O\'qilmagan xatlar', acc.email, rows),
+            [[{'text': '🌐 Pochtani ochish', 'url': cfg['MAIL_WEB_URL']}]])
+    for uid in shown:
+        _fetch_and_deliver(cfg, conn, acc, uid, header='📩 O\'qilmagan xat')
+        db.session.commit()
 
 
 def check_account(app, account_id):
@@ -335,21 +375,18 @@ def check_account(app, account_id):
         try:
             validity, uidnext = inbox_state(conn)
             if acc.uidvalidity != validity or acc.last_uid is None:
-                # Birinchi tekshiruv yoki quti qayta yaratilgan — eskilarni yubormaymiz
+                # Birinchi tekshiruv yoki quti qayta yaratilgan — eskilarni
+                # "yangi xat" qilib yubormaymiz (o'qilmaganlari alohida quyida)
                 acc.uidvalidity, acc.last_uid = validity, uidnext - 1
-            elif uidnext - 1 > acc.last_uid:
+            if acc.send_unseen:
+                _send_unseen(cfg, conn, acc)
+            if uidnext - 1 > acc.last_uid:
                 conn.select('INBOX', readonly=True)
                 typ, data = conn.uid('search', None, f'UID {acc.last_uid + 1}:*')
                 uids = sorted(int(x) for x in (data[0] or b'').split() if int(x) > acc.last_uid) \
                     if typ == 'OK' else []
                 for uid in uids[:MAX_PER_CYCLE]:
-                    typ, msg_data = conn.uid('fetch', str(uid), '(BODY.PEEK[])')
-                    raw = next((p[1] for p in msg_data if isinstance(p, tuple)), None)
-                    if typ == 'OK' and raw:
-                        try:
-                            _deliver(cfg, acc, parse_message(raw), uid)
-                        except tg.TelegramError as e:
-                            print(f'[mail] user={acc.user_id}: {e.description}')
+                    _fetch_and_deliver(cfg, conn, acc, uid, header='📧 Yangi xat')
                     acc.last_uid = uid
                     db.session.commit()   # yuborilgani qayta yuborilmasin
                 rest = len(uids) - MAX_PER_CYCLE

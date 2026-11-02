@@ -337,6 +337,19 @@ def _init_database(app):
             # kod tomonidan e'tiborga olinmaydi, jadvalni ham tozalab qo'yamiz.
             "DELETE FROM role_pages WHERE page IN ('projects', 'tasks')",
             "DELETE FROM user_pages WHERE page IN ('projects', 'tasks')",
+            # O'qilmagan xatlarni yuborish belgisi. Ustun birinchi marta
+            # qo'shilganda allaqachon ulangan qutilar uchun ham yoqiladi —
+            # ularga o'qilmagan xatlar bir marta yuboriladi.
+            """DO $$
+            BEGIN
+                IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'mail_accounts')
+                   AND NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'mail_accounts' AND column_name = 'send_unseen'
+                ) THEN
+                    ALTER TABLE mail_accounts ADD COLUMN send_unseen BOOLEAN DEFAULT TRUE NOT NULL;
+                END IF;
+            END $$;""",
         ]
         # Har bir migratsiya o'z tranzaksiyasida bajariladi — bittasi xato bersa
         # keyingilariga ta'sir qilmasin. Ilgari umumiy commit edi, bir SQL rollback
