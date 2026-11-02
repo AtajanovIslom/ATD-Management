@@ -10,6 +10,9 @@ server o'zi Telegram'ga murojaat qiladi — faqat chiquvchi ulanish kerak.
 
 Xabar ishlovchisi webhook bilan umumiy (routes/telegram.handle_update),
 shuning uchun botdagi barcha ruxsat qoidalari sayt bilan bir xil.
+
+Shu jarayonda korporativ pochta kuzatuvchisi ham ishlaydi
+(services/mail.start_watcher) — u ham yagona nusxada bo'lishi kerak.
 """
 import time
 
@@ -27,9 +30,7 @@ def _prepare(cfg):
     """Webhook'ni o'chiradi (aks holda getUpdates 409 qaytaradi) va
     buyruqlar menyusini o'rnatadi."""
     tg.api(cfg, 'deleteWebhook', {'drop_pending_updates': False})
-    tg.api(cfg, 'setMyCommands', {
-        'commands': [{'command': c, 'description': d} for c, d in tg.COMMANDS],
-    })
+    tg.configure_bot(cfg)
     username = tg.bot_username(cfg)
     print(f'[telegram] polling boshlandi (@{username})')
 
@@ -45,6 +46,8 @@ def main():
             time.sleep(3600)
 
     from app.routes.telegram import handle_update
+    from app.services import mail as mail_svc
+    mail_svc.start_watcher(app)
 
     offset = None
     backoff = 5

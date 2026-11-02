@@ -43,6 +43,15 @@ class Config:
     #   to'g'ri serverga va haqiqiy sertifikat bilan ochilishi shart).
     TELEGRAM_MODE = os.getenv('TELEGRAM_MODE', 'polling').strip().lower()
 
+    # --- Korporativ pochta (IMAP) — yangi xatlar Telegram'ga ---
+    MAIL_IMAP_HOST = os.getenv('MAIL_IMAP_HOST', 'mail.uzbeksteel.uz')
+    MAIL_IMAP_PORT = int(os.getenv('MAIL_IMAP_PORT', '993'))
+    MAIL_WEB_URL = os.getenv('MAIL_WEB_URL', 'https://mail.uzbeksteel.uz/SOGo/')
+    MAIL_CHECK_INTERVAL = int(os.getenv('MAIL_CHECK_INTERVAL', '60'))  # soniya
+    # Parollarni shifrlash kaliti. Berilmasa JWT_SECRET_KEY'dan hosil qilinadi
+    # (u almashtirilsa xodimlar pochtani qayta ulashi kerak bo'ladi).
+    MAIL_ENCRYPTION_KEY = os.getenv('MAIL_ENCRYPTION_KEY', '').strip()
+
     # --- ISUP (kadrlar tizimi) — tabel raqami bo'yicha xodim ma'lumoti ---
     # Login va parol faqat .env'da turadi, git'ga tushmaydi.
     ISUP_EMPLOYEE_URL = os.getenv(

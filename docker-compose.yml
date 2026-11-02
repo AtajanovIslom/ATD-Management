@@ -15,6 +15,10 @@ x-backend-env: &backend-env
   TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
   PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-https://atd.uzbeksteel.uz}
   TELEGRAM_MODE: ${TELEGRAM_MODE:-polling}
+  # Korporativ pochta (IMAP) — yangi xatlar botga. Parollar shifrlanadi.
+  MAIL_IMAP_HOST: ${MAIL_IMAP_HOST:-mail.uzbeksteel.uz}
+  MAIL_CHECK_INTERVAL: ${MAIL_CHECK_INTERVAL:-60}
+  MAIL_ENCRYPTION_KEY: ${MAIL_ENCRYPTION_KEY:-}
 
 services:
   db:

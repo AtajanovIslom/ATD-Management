@@ -28,4 +28,20 @@ export default {
   'tg.waiting': 'Botda "Start" bosilishi kutilmoqda...',
   'tg.openAgain': 'Havolani qayta ochish',
   'tg.linkedNow': "✅ Telegram muvaffaqiyatli ulandi!",
+
+  // Korporativ pochta
+  "mail.title": "Korporativ pochta",
+  "mail.intro": "Pochtangizni ulasangiz, unga kelgan har bir yangi xat Telegram botga keladi: kimdan, mavzu, matnning boshi (\"Barchasini o'qish\" bilan to'liq matn) va ilova fayllar.",
+  "mail.needTelegram": "Xatlar Telegram botga yuboriladi — avval yuqorida Telegram'ni ulang.",
+  "mail.email": "Pochta manzili",
+  "mail.password": "Pochta paroli",
+  "mail.privacy": "Parol serverda shifrlangan holda saqlanadi. Xatlar o'qilgan deb belgilanmaydi va pochtadan hech narsa o'chirilmaydi.",
+  "mail.connect": "Pochtani ulash",
+  "mail.checking": "Tekshirilmoqda...",
+  "mail.watching": "Har {n} soniyada yangi xatlar tekshiriladi",
+  "mail.stopped": "Kuzatish to'xtatilgan — parolni yangilang",
+  "mail.lastCheck": "oxirgi tekshiruv",
+  "mail.openWeb": "Pochtani ochish",
+  "mail.updatePassword": "Parolni yangilash",
+  "mail.disconnectConfirm": "Pochtani uzmoqchimisiz? Saqlangan parol o'chiriladi va xatlar botga kelmay qoladi.",
 }

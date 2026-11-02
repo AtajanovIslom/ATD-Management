@@ -179,6 +179,129 @@ export default function Profile() {
           </div>
         )}
       </div>
+
+      <MailSection t={t} formatDateTime={formatDateTime} telegramLinked={!!tg?.linked} />
+    </div>
+  )
+}
+
+
+/**
+ * Korporativ pochta: manzil va parol bir marta kiritiladi, server IMAP'ga
+ * kirib tekshiradi va parolni shifrlab saqlaydi. Yangi xatlar botga keladi.
+ */
+function MailSection({ t, formatDateTime, telegramLinked }) {
+  const [st, setSt] = useState(null)
+  const [form, setForm] = useState({ email: '', password: '' })
+  const [editing, setEditing] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  const load = useCallback(async () => {
+    try {
+      const res = await api.get('/mail/status')
+      setSt(res.data)
+      if (!res.data.connected) {
+        setForm(f => ({ ...f, email: f.email || res.data.suggested_email || '' }))
+      }
+    } catch {
+      setSt(null)
+    }
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  const submit = async (e) => {
+    e.preventDefault()
+    setBusy(true)
+    setError('')
+    try {
+      const res = await api.post('/mail/connect', form)
+      setSt(res.data)
+      setEditing(false)
+      setForm(f => ({ ...f, password: '' }))
+    } catch (err) {
+      setError(err.response?.data?.error || t('state.error'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const disconnect = async () => {
+    if (!window.confirm(t('mail.disconnectConfirm'))) return
+    setBusy(true)
+    try {
+      const res = await api.delete('/mail/connect')
+      setSt(res.data)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (!st) return null
+  const acc = st.account
+  const showForm = !st.connected || editing
+
+  return (
+    <div className="card">
+      <h2 style={{ fontSize: 16, marginBottom: 4 }}>📧 {t('mail.title')}</h2>
+      <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14, maxWidth: 680 }}>
+        {t('mail.intro')}
+      </p>
+
+      {!telegramLinked && (
+        <div className="alert alert-error" style={{ marginBottom: 12 }}>{t('mail.needTelegram')}</div>
+      )}
+
+      {st.connected && !editing && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: 220 }}>
+            <div style={{ fontWeight: 600 }}>
+              {acc.is_active ? '🟢' : '🔴'} {acc.email}
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              {acc.is_active ? t('mail.watching', { n: st.check_interval }) : t('mail.stopped')}
+              {acc.last_checked_at && ` · ${t('mail.lastCheck')}: ${formatDateTime(acc.last_checked_at)}`}
+            </div>
+            {acc.last_error && (
+              <div style={{ fontSize: 12, color: 'var(--danger)', marginTop: 4 }}>⚠️ {acc.last_error}</div>
+            )}
+          </div>
+          <a className="btn btn-outline btn-sm" href={st.web_url} target="_blank" rel="noopener noreferrer">
+            🌐 {t('mail.openWeb')}
+          </a>
+          <button className="btn btn-outline btn-sm" onClick={() => { setEditing(true); setForm({ email: acc.email, password: '' }) }}>
+            🔑 {t('mail.updatePassword')}
+          </button>
+          <button className="btn btn-danger btn-sm" onClick={disconnect} disabled={busy}>{t('tg.unlink')}</button>
+        </div>
+      )}
+
+      {showForm && (
+        <form onSubmit={submit} style={{ maxWidth: 460 }}>
+          {error && <div className="alert alert-error">{error}</div>}
+          <div className="form-group">
+            <label>{t('mail.email')}</label>
+            <input className="form-input" type="email" autoComplete="username" required
+              placeholder="ism.familiya@uzbeksteel.uz"
+              value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} />
+          </div>
+          <div className="form-group">
+            <label>{t('mail.password')}</label>
+            <input className="form-input" type="password" autoComplete="current-password" required
+              value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} />
+          </div>
+          <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 12 }}>🔒 {t('mail.privacy')}</p>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="submit" className="btn btn-primary" disabled={busy}>
+              {busy ? t('mail.checking') : `📧 ${t('mail.connect')}`}
+            </button>
+            {editing && (
+              <button type="button" className="btn btn-outline" onClick={() => setEditing(false)}>{t('btn.cancel')}</button>
+            )}
+          </div>
+        </form>
+      )}
     </div>
   )
 }

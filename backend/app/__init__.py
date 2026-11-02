@@ -53,6 +53,7 @@ def create_app(init_db=True):
     from app.routes.notifications import notifications_bp
     from app.routes.employee_reports import employee_reports_bp
     from app.routes.telegram import telegram_bp
+    from app.routes.mail import mail_bp
 
     # Import qilinishi shart: push navbatini commit'ga ulaydigan SQLAlchemy
     # hodisa tinglovchilari shu modulda ro'yxatdan o'tadi.
@@ -79,6 +80,7 @@ def create_app(init_db=True):
     app.register_blueprint(notifications_bp, url_prefix='/api/notifications')
     app.register_blueprint(employee_reports_bp, url_prefix='/api/employee-reports')
     app.register_blueprint(telegram_bp, url_prefix='/api/telegram')
+    app.register_blueprint(mail_bp, url_prefix='/api/mail')
 
     # Telegram webhook'i har worker'da birinchi so'rovda fon oqimida
     # o'rnatiladi (token bo'lmasa — hech narsa qilinmaydi)

@@ -1511,3 +1511,57 @@ class TelegramChatState(db.Model):
     state = db.Column(db.String(50), nullable=False)
     data = db.Column(db.JSON, default=dict)
     updated_at = db.Column(db.DateTime, default=utc_naive_now, onupdate=utc_naive_now)
+
+
+class MailAccount(db.Model):
+    """Xodimning korporativ pochtasi (IMAP) — yangi xatlar Telegram'ga keladi.
+
+    Parol ochiq saqlanmaydi: services/mail.py uni Fernet bilan shifrlaydi
+    (kalit .env'dagi MAIL_ENCRYPTION_KEY yoki JWT_SECRET_KEY'dan hosil
+    qilinadi). Parol noto'g'ri bo'lib qolsa (xodim pochtada almashtirgan)
+    ulanish darhol to'xtatiladi — qayta-qayta urinish pochta akkauntini
+    bloklab qo'ymasin.
+    """
+    __tablename__ = 'mail_accounts'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'),
+                        nullable=False, unique=True)
+    email = db.Column(db.String(255), nullable=False)
+    password_enc = db.Column(db.Text, nullable=False)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+    uidvalidity = db.Column(db.BigInteger)
+    last_uid = db.Column(db.BigInteger)
+    last_checked_at = db.Column(db.DateTime)
+    last_error = db.Column(db.Text, default='')
+    created_at = db.Column(db.DateTime, default=utc_naive_now)
+
+    user = db.relationship('User', foreign_keys=[user_id], lazy='joined')
+
+    def to_dict(self):
+        def iso(dt):
+            return dt.isoformat() + 'Z' if dt else None
+        return {
+            'email': self.email,
+            'is_active': bool(self.is_active),
+            'last_checked_at': iso(self.last_checked_at),
+            'last_error': self.last_error or '',
+            'connected_at': iso(self.created_at),
+        }
+
+
+class MailMessage(db.Model):
+    """Botga yuborilgan xat (to'liq matnni "Barchasini o'qish" uchun saqlab
+    turadi). Eski yozuvlar vaqti-vaqti bilan tozalanadi."""
+    __tablename__ = 'mail_messages'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'),
+                        nullable=False, index=True)
+    uid = db.Column(db.BigInteger, nullable=False)
+    sender = db.Column(db.String(500), default='')
+    subject = db.Column(db.String(1000), default='')
+    sent_at = db.Column(db.DateTime)
+    body = db.Column(db.Text, default='')
+    attachments = db.Column(db.JSON, default=list)
+    created_at = db.Column(db.DateTime, default=utc_naive_now, index=True)
