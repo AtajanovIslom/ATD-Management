@@ -15,6 +15,7 @@ HTTP so'rovlar standart urllib bilan — qo'shimcha kutubxona yo'q.
 import hashlib
 import html
 import json
+import re
 import threading
 import uuid
 from datetime import timezone
@@ -268,8 +269,21 @@ def send_document(config, chat_id, filename, content, caption=None, reply_to=Non
 # DIZAYN YORDAMCHILARI
 # =========================================================================
 
+# Foydalanuvchi matnidagi HTML teglari (masalan vazifa nomida
+# <font color="#00ff00">…</font>). Bot ularni ko'rsatmaydi — faqat matn.
+# Faqat ma'lum teg nomlari: "Ism <ism@pochta.uz>" kabi matn tegilmaydi.
+_HTML_TAG = re.compile(
+    r'</?(?:font|b|i|u|s|strong|em|span|div|p|br|hr|a|img|small|big|mark|sub|sup|'
+    r'h[1-6]|ul|ol|li|table|thead|tbody|tr|td|th|center|script|style)(?:\s[^>]*)?/?>',
+    re.IGNORECASE)
+
+
+def strip_html(s):
+    return _HTML_TAG.sub('', s or '')
+
+
 def esc(s):
-    return html.escape(s or '', quote=False)
+    return html.escape(strip_html(s), quote=False)
 
 
 def clip(s, n):

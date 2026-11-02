@@ -25,7 +25,8 @@ tasks_bp = Blueprint('tasks', __name__)
 
 
 def parse_datetime(s):
-    return datetime.fromisoformat(s.replace('Z', '+00:00'))
+    from app.utils import parse_client_datetime
+    return parse_client_datetime(s)
 
 
 # =========================================================================

@@ -632,6 +632,21 @@ def fetch_employee_from_isup(tabel_num):
     }
 
 
+def parse_client_datetime(s):
+    """Mijozdan kelgan sana-vaqt → UTC (aware).
+
+    Sayt vaqtni "Z" (UTC) bilan yuboradi. Mobil ilova esa mintaqasiz
+    ("2026-10-30T23:59:59") — bu xodimning mahalliy vaqti. Ilgari u UTC deb
+    olinar va muddat 5 soat surilib ketardi (23:59 → ertasi 04:59).
+    Mintaqasiz vaqt server mintaqasida (TZ=Asia/Tashkent) deb qabul qilinadi.
+    """
+    from datetime import datetime, timezone
+    dt = datetime.fromisoformat(str(s).strip().replace('Z', '+00:00'))
+    if dt.tzinfo is None:
+        dt = dt.astimezone()   # naive → mahalliy vaqt
+    return dt.astimezone(timezone.utc)
+
+
 def client_ip():
     """Mijoz IP manzili.
 

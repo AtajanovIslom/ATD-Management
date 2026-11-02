@@ -17,7 +17,8 @@ ALLOWED_EXTENSIONS = {'doc', 'docx', 'xls', 'xlsx', 'pdf', 'txt', 'png', 'jpg', 
 
 
 def parse_datetime(s):
-    return datetime.fromisoformat(s.replace('Z', '+00:00'))
+    from app.utils import parse_client_datetime
+    return parse_client_datetime(s)
 
 
 projects_bp = Blueprint('projects', __name__)
