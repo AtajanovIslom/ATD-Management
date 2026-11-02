@@ -196,4 +196,8 @@ export default {
   'perm.task.edit': 'Vazifani tahrirlash',
   'perm.task.edit.desc': "Vazifa nomi, tavsifi va muddatlarini tahrirlash "
     + "(yuklash, tasdiqlash va o'chirish rahbarda qoladi)",
+  'perm.user.create': "Xodim qo'shish",
+  'perm.user.create.desc': "Yangi xodim qo'shish va ro'yxatdan o'tish havolasini berish: "
+    + "boshqarma rahbari — o'z boshqarmasiga, bo'lim rahbari — o'z bo'limiga",
+  'users.noCreateRight': "Xodim qo'shish uchun Bosh Administrator sizga \"Xodim qo'shish\" huquqini berishi kerak",
 }

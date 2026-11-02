@@ -192,7 +192,8 @@ export function AuthProvider({ children }) {
     const adminPerms = [
       'project.create', 'project.edit', 'project.delete',
       'task.create', 'task.edit',
-      'user.view', 'user.create', 'user.edit', 'user.delete',
+      // 'user.create' bu yerda yo'q — u faqat /roles sahifasida beriladi
+      'user.view', 'user.edit', 'user.delete',
       'dept.view', 'div.view', 'stats.view',
     ]
 

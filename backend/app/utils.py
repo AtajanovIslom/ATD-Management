@@ -242,6 +242,13 @@ PERMISSION_DEFS = [
                        "loyihalarni ro'yxatda va statistikada ko'rish",
     },
     {
+        'key': 'user.create',
+        'label': "Xodim qo'shish",
+        'description': "Yangi xodim qo'shish va ro'yxatdan o'tish havolasini berish: "
+                       "boshqarma rahbari — o'z boshqarmasiga, bo'lim rahbari — o'z "
+                       "bo'limiga. O'zi ro'yxatdan o'tish yopiq.",
+    },
+    {
         'key': 'task.edit',
         'label': 'Vazifani tahrirlash',
         'description': "Vazifa nomi, tavsifi va muddatlarini tahrirlash "

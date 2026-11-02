@@ -8,6 +8,7 @@ export default {
   'auth.login.submit': 'Kirish',
   'auth.login.submitting': 'Kirish...',
   'auth.noAccount': "Akkauntingiz yo'qmi?",
+  'auth.askAdmin': "Rahbaringiz yoki administratorga murojaat qiling.",
   'auth.haveAccount': 'Akkauntingiz bormi?',
   'auth.signup.link': "Ro'yxatdan o'tish",
   'auth.login.link': 'Kirish',

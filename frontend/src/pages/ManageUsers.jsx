@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import api from '../api/axios'
 import { useI18n } from '../i18n'
 import { roleLabel } from '../i18n/labels'
+import { useAuth } from '../context/AuthContext'
 
 // Rol yonidagi belgilar — matni `role.*` kalitlaridan olinadi
 const ROLE_ICONS = {
@@ -14,6 +15,10 @@ const TOP_ROLES = ['superadmin', 'director', 'deputy_director']
 
 export default function ManageUsers() {
   const { t } = useI18n()
+  const { can, isAdmin } = useAuth()
+  // Xodim qo'shish — superadmin/direksiya, hamda "Xodim qo'shish" huquqi
+  // berilgan rahbar (backend ham tekshiradi)
+  const canCreate = can('user.create')
   const [users, setUsers] = useState([])
   const [departments, setDepartments] = useState([])
   const [divisions, setDivisions] = useState([])
@@ -189,7 +194,13 @@ export default function ManageUsers() {
     <div>
       <div className="page-header">
         <h1>{t('users.title')}</h1>
-        <button className="btn btn-primary" onClick={openAdd}>{t('users.add')}</button>
+        {canCreate ? (
+          <button className="btn btn-primary" onClick={openAdd}>{t('users.add')}</button>
+        ) : (
+          <span style={{ fontSize: 12, color: 'var(--text-muted)', maxWidth: 360, textAlign: 'right' }}>
+            🔒 {t('users.noCreateRight')}
+          </span>
+        )}
       </div>
 
       {topLeadership.length > 0 && (
@@ -321,6 +332,7 @@ export default function ManageUsers() {
                 <input className="form-input" value={form.full_name}
                   onChange={e => setForm({ ...form, full_name: e.target.value })} required />
               </div>
+              {isAdmin && (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div className="form-group">
                   <label>{t('users.field.department')}</label>
@@ -340,6 +352,7 @@ export default function ManageUsers() {
                   </select>
                 </div>
               </div>
+              )}
               <div className="form-group">
                 <label>{t('users.field.position')}</label>
                 <input className="form-input" value={form.position}

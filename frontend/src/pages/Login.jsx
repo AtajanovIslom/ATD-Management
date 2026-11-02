@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useI18n } from '../i18n'
 import LanguageSwitcher from '../components/LanguageSwitcher'
@@ -63,7 +63,10 @@ export default function Login() {
           </button>
         </form>
         <p style={{ marginTop: 16, textAlign: 'center' }}>
-          {t('auth.noAccount')} <Link to="/signup">{t('auth.signup.link')}</Link>
+          {/* O'zi ro'yxatdan o'tish yopiq — akkauntni rahbar yoki administrator beradi */}
+          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+            {t('auth.noAccount')} {t('auth.askAdmin')}
+          </span>
         </p>
       </div>
     </div>

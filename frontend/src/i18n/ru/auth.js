@@ -8,6 +8,7 @@ export default {
   'auth.login.submit': 'Войти',
   'auth.login.submitting': 'Вход...',
   'auth.noAccount': 'Нет аккаунта?',
+  'auth.askAdmin': 'Обратитесь к руководителю или администратору.',
   'auth.haveAccount': 'Уже есть аккаунт?',
   'auth.signup.link': 'Зарегистрироваться',
   'auth.login.link': 'Войти',

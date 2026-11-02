@@ -41,44 +41,12 @@ def _make_tokens(user):
 
 @auth_bp.route('/signup', methods=['POST'])
 def signup():
-    data = request.get_json(silent=True) or {}
-    full_name = data.get('full_name', '').strip()
-    department = data.get('department', '').strip()
-    position = data.get('position', '').strip()
-    tab_number = data.get('tab_number', '').strip()
-    login = data.get('login', '').strip()
-    password = data.get('password', '')
-
-    # Boshqarma/bo'linma registratsiyada so'ralmaydi — adminlar keyin biriktiradi
-    if not all([full_name, tab_number, login]):
-        return jsonify({'error': 'Barcha majburiy maydonlar to\'ldirilishi shart'}), 400
-
-    if ' ' in login:
-        return jsonify({'error': 'Loginda probel bo\'lmasligi kerak'}), 400
-
-    password_error = validate_password(password)
-    if password_error:
-        return jsonify({'error': password_error}), 400
-
-    if User.query.filter_by(login=login).first():
-        return jsonify({'error': 'Bu login allaqachon mavjud'}), 400
-    if User.query.filter_by(tab_number=tab_number).first():
-        return jsonify({'error': 'Bu tabel raqam allaqachon mavjud'}), 400
-
-    user = User(
-        full_name=full_name,
-        department=department,
-        position=position,
-        tab_number=tab_number,
-        login=login,
-        password_hash=generate_password_hash(password),
-        plain_password=password,
-        role='user',
-    )
-    db.session.add(user)
-    db.session.commit()
-
-    return jsonify({**_make_tokens(user), 'user': user.to_dict()}), 201
+    # O'zi ro'yxatdan o'tish yopilgan (2026-10-28 da begona VPN manzildan
+    # sinov akkauntlari ochilgan edi). Yangi xodimni "Xodim qo'shish"
+    # huquqi bor rahbar qo'shadi yoki shaxsiy ro'yxatdan o'tish havolasini
+    # yuboradi (/register/<token>).
+    return jsonify({'error': "O'zi ro'yxatdan o'tish yopilgan. Akkaunt olish uchun "
+                             "rahbaringiz yoki administratorga murojaat qiling"}), 403
 
 
 @auth_bp.route('/login', methods=['POST'])

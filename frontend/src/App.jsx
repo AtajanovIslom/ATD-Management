@@ -3,7 +3,6 @@ import { useAuth } from './context/AuthContext'
 import { useI18n } from './i18n'
 import Login from './pages/Login'
 import Register from './pages/Register'
-import SignUp from './pages/SignUp'
 import AdminDashboard from './pages/AdminDashboard'
 import CreateProject from './pages/CreateProject'
 import ManageUsers from './pages/ManageUsers'
@@ -34,7 +33,6 @@ export default function App() {
     return (
       <Routes>
         <Route path="/login" element={<Login />} />
-        <Route path="/signup" element={<SignUp />} />
         <Route path="/register/:token" element={<Register />} />
         {/* Play Market / App Store review'i va foydalanuvchilar login
             bo'lmasdan ko'ra olishi kerak — shuning uchun autentifikatsiya

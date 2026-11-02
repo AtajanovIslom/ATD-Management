@@ -8,6 +8,7 @@ from app.models import User, Division, Vacation
 from app.utils import (
     validate_password, get_scope, is_admin_or_above, is_dept_admin_or_above,
     is_any_admin, log_audit, ROLES, scope_user_ids, can_manage_user,
+    has_permission, FULL_ACCESS_ROLES,
 )
 
 users_bp = Blueprint('users', __name__)
@@ -79,12 +80,21 @@ def get_workers():
     return jsonify([w.to_brief() for w in workers])
 
 
+def can_create_users(role):
+    """Xodim qo'shish: superadmin/direksiya doim; boshqarma va bo'lim
+    rahbari — faqat Bosh Administrator "Xodim qo'shish" huquqini (rolga
+    yoki shaxsan) yoqib bergan bo'lsa. O'zi ro'yxatdan o'tish yopiq."""
+    if role in FULL_ACCESS_ROLES:
+        return True
+    return role in ('admin', 'department_admin') and has_permission('user.create')
+
+
 @users_bp.route('', methods=['POST'])
 @jwt_required()
 def create_user():
     role, dept_id, div_id, me, scope = _actor()
-    if not is_admin_or_above(role):
-        return jsonify({'error': "Ruxsat yo'q"}), 403
+    if not can_create_users(role):
+        return jsonify({'error': "Xodim qo'shish huquqingiz yo'q — Bosh Administratorga murojaat qiling"}), 403
 
     data = request.get_json(silent=True) or {}
     full_name = (data.get('full_name') or '').strip()
@@ -114,6 +124,14 @@ def create_user():
             div = Division.query.get(new_division_id)
             if not div or div.department_id != dept_id:
                 return jsonify({'error': "Bo'lim sizning boshqarmangizga tegishli emas"}), 403
+    elif role == 'department_admin':
+        # Bo'lim rahbari — faqat o'z bo'limiga va faqat oddiy xodim
+        if not div_id:
+            return jsonify({'error': "Sizga bo'lim biriktirilmagan"}), 400
+        new_role = 'user'
+        new_division_id = div_id
+        div = Division.query.get(div_id)
+        new_department_id = div.department_id if div else None
     elif role != 'superadmin' and new_role in ('superadmin', 'director'):
         # Direksiya Bosh Administrator yoki direktor yarata olmaydi
         return jsonify({'error': "Bu rolni faqat Bosh Administrator beradi"}), 403

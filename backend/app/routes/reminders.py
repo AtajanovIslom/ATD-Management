@@ -8,7 +8,6 @@ import uuid
 from datetime import datetime, timezone, date as _date
 from flask import Blueprint, request, jsonify, send_from_directory, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from werkzeug.utils import secure_filename
 from app import db
 from app.models import Reminder, ReminderAttachment, utc_naive_now
 from app.utils import log_audit
@@ -54,9 +53,20 @@ def _parse_interval(v):
     return iv if iv in ALLOWED_INTERVALS else None
 
 
+# Vazifa/loyiha fayllari bilan bir xil ro'yxat. Ilgari tekshiruv yo'q edi —
+# .html, .svg, .py kabi fayllar ham yuklanardi.
+ALLOWED_EXTENSIONS = {'doc', 'docx', 'xls', 'xlsx', 'pdf', 'txt', 'png', 'jpg', 'jpeg', 'zip', 'rar', 'pptx'}
+
+
+def _allowed_file(name):
+    return '.' in name and name.rsplit('.', 1)[-1].lower() in ALLOWED_EXTENSIONS
+
+
 def _save_file(f):
     _ensure_upload_dir()
-    ext = os.path.splitext(secure_filename(f.filename))[1]
+    # Kengaytma asl nomdan: secure_filename kirill nomlarni ("отчёт.pdf")
+    # nuqtasi bilan birga o'chirib, fayl kengaytmasiz saqlanardi
+    ext = '.' + f.filename.rsplit('.', 1)[-1].lower()
     unique_name = f"{uuid.uuid4().hex}{ext}"
     path = os.path.join(UPLOAD_DIR, unique_name)
     f.save(path)
@@ -111,7 +121,7 @@ def create():
 
     uploaded_files = request.files.getlist('files')
     for f in uploaded_files:
-        if f and f.filename:
+        if f and f.filename and _allowed_file(f.filename):
             unique_name, orig_name, size = _save_file(f)
             att = ReminderAttachment(
                 reminder_id=r.id, filename=unique_name,
@@ -171,7 +181,7 @@ def update(rid):
 
     uploaded_files = request.files.getlist('files')
     for f in uploaded_files:
-        if f and f.filename:
+        if f and f.filename and _allowed_file(f.filename):
             unique_name, orig_name, size = _save_file(f)
             att = ReminderAttachment(
                 reminder_id=r.id, filename=unique_name,
