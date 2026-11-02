@@ -16,7 +16,10 @@ import time
 from app import create_app, db
 from app.services import telegram as tg
 
-LONG_POLL = 50          # Telegram javobni shuncha soniya ushlab turadi
+# Telegram javobni shuncha soniya ushlab turadi. 50 s da tashkilot tarmog'i
+# uzoq ochiq turgan ulanishni uzib yuborardi (read timed out / reset) —
+# qisqaroq so'rovlar firewall/proksi orqali barqaror o'tadi.
+LONG_POLL = 25
 ALLOWED = ['message', 'callback_query']
 
 
@@ -54,7 +57,7 @@ def main():
             payload = {'timeout': LONG_POLL, 'allowed_updates': ALLOWED}
             if offset is not None:
                 payload['offset'] = offset
-            updates = tg.api(cfg, 'getUpdates', payload, timeout=LONG_POLL + 15)
+            updates = tg.api(cfg, 'getUpdates', payload, timeout=LONG_POLL + 10)
             backoff = 5
         except tg.TelegramError as e:
             print(f'[telegram] getUpdates xatosi: {e.description}')
