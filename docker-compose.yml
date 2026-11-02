@@ -20,6 +20,12 @@ x-backend-env: &backend-env
   MAIL_CHECK_INTERVAL: ${MAIL_CHECK_INTERVAL:-60}
   MAIL_ENCRYPTION_KEY: ${MAIL_ENCRYPTION_KEY:-}
 
+# Pochta serveri ichki manzili. Tashqi DNS mail.uzbeksteel.uz ni 45.150.25.50
+# ga yo'naltiradi — server tarmog'idan u yopiq, ichki 172.16.1.5 esa ochiq.
+# Nom o'zgarmagani uchun TLS sertifikati (*.uzbeksteel.uz) to'g'ri tekshiriladi.
+x-backend-hosts: &backend-hosts
+  - "mail.uzbeksteel.uz:${MAIL_IMAP_IP:-172.16.1.5}"
+
 services:
   db:
     image: postgres:16-alpine
@@ -40,6 +46,7 @@ services:
     build: ./backend
     restart: always
     environment: *backend-env
+    extra_hosts: *backend-hosts
     volumes:
       - uploads:/app/uploads
       - ./backend/secrets:/app/secrets:ro
@@ -55,6 +62,7 @@ services:
     restart: always
     command: ["python", "-m", "app.telegram_poller"]
     environment: *backend-env
+    extra_hosts: *backend-hosts
     volumes:
       - uploads:/app/uploads
       - ./backend/secrets:/app/secrets:ro
