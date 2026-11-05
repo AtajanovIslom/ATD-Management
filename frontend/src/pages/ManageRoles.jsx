@@ -113,7 +113,6 @@ function UserRoles() {
   const [newDivId, setNewDivId] = useState('')
   const [newPerms, setNewPerms] = useState([])
   const [newCats, setNewCats] = useState([])
-  const [catsTouched, setCatsTouched] = useState(false)
   const [filteredDivs, setFilteredDivs] = useState([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -149,13 +148,11 @@ function UserRoles() {
     setNewDivId(u.division_id || '')
     setNewPerms(u.permissions || [])
     setNewCats(u.interactive_categories || [])
-    setCatsTouched(false)
     setError('')
     updateFilteredDivs(u.department_id, divisions)
   }
 
   const toggleCat = (id) => {
-    setCatsTouched(true)
     setNewCats(prev => prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id])
   }
 
@@ -206,10 +203,7 @@ function UserRoles() {
         department_id: newDeptId ? parseInt(newDeptId) : null,
         division_id: newDivId ? parseInt(newDivId) : null,
         permissions: newPerms,
-        // Toifalar faqat o'zgartirilganda yuboriladi — tegilmasa xodim
-        // avvalgidek bo'linmasi orqali olgan toifalarida qoladi
-        ...((catsTouched || modal.interactive_categories_set)
-          ? { interactive_categories: newCats } : {}),
+        interactive_categories: newCats,
       })
       setModal(null)
       await loadAll()
@@ -453,11 +447,6 @@ function UserRoles() {
                     </label>
                   ))}
                 </div>
-                {!modal.interactive_categories_set && !catsTouched && newCats.length > 0 && (
-                  <p style={{ fontSize: 11, color: '#f59e0b', marginTop: 6 }}>
-                    {t('roles.interactive.legacy')}
-                  </p>
-                )}
               </div>
             )}
 

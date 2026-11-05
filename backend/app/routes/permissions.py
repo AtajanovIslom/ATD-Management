@@ -526,9 +526,6 @@ def _user_dict(u):
         'division_id': u.division_id,
         'division_name': div.name if div else None,
         'permissions': u.extra_permissions(),
-        # Amaldagi toifalar; `_set` False — rol berishda hali sozlanmagan
-        # (bo'linmasi xizmat ko'rsatgani uchun avtomatik berilgan)
         'interactive_categories': interactive_categories_for(u),
-        'interactive_categories_set': u.interactive_categories is not None,
         'is_active': u.is_active,
     }

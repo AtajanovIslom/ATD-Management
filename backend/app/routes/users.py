@@ -61,12 +61,10 @@ def get_workers():
 
     q = _scoped_query(scope).filter(User.role.in_(['user', 'department_admin']))
 
-    # ?service_provider=1 — faqat interaktiv xizmat ko'rsatuvchi bo'lim a'zolari.
-    # Agar hali hech qaysi bo'lim belgilanmagan bo'lsa, cheklamaslik (eski xatti-harakat).
+    # ?service_provider=1 — faqat interaktiv ariza toifasi berilgan xodimlar
     if request.args.get('service_provider') == '1':
-        provider_div_ids = [d.id for d in Division.query.filter_by(is_service_provider=True).all()]
-        if provider_div_ids:
-            q = q.filter(User.division_id.in_(provider_div_ids))
+        q = q.filter(User.interactive_categories.isnot(None))
+        q = q.filter(db.cast(User.interactive_categories, db.Text) != '[]')
 
     # Bugun tatilda bo'lgan xodimlar chiqariladi (vazifa/interaktiv yuklab bo'lmaydi)
     today = _date.today()

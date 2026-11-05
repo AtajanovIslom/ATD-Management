@@ -102,8 +102,8 @@ DEFAULT_ROLE_PAGES = {
 # uning qatori har doim to'liq va tahrirlanmaydi.
 LOCKED_ROLES = ('superadmin',)
 
-# Bo'linmasi "interaktiv xizmat ko'rsatadi" deb belgilangan xodimlarga
-# matritsadan qat'i nazar ochiladigan sahifa (avvalgi xatti-harakat saqlanadi).
+# Rol berishda interaktiv ariza toifasi berilgan xodimlarga matritsadan
+# qat'i nazar ochiladigan sahifa.
 SERVICE_PROVIDER_PAGES = ('interactive_requests',)
 
 
@@ -196,9 +196,8 @@ def allowed_pages_for_user(user):
     """Aniq xodim ko'ra oladigan sahifalar.
 
     Tartib: shaxsiy sozlama (user_pages) → roldagi qiymat (role_pages) →
-    standart qiymat. Xodimga interaktiv ariza toifasi berilgan bo'lsa
-    (rol berishda yoki bo'linmasi xizmat ko'rsatgani uchun), arizalar
-    sahifasi har qanday holatda ochiladi.
+    standart qiymat. Xodimga rol berishda interaktiv ariza toifasi
+    berilgan bo'lsa, arizalar sahifasi har qanday holatda ochiladi.
     """
     if user is None:
         return []
@@ -221,9 +220,9 @@ def allowed_pages_for_user(user):
 # beriladi va u faqat shu toifadagi arizalarni ko'radi va bajaradi —
 # toifalar bir-biriga ko'rinmaydi.
 #
-# `users.interactive_categories` NULL bo'lsa (hali sozlanmagan) avvalgi
-# qoida ishlaydi: bo'linmasi xizmat ko'rsatsa yoki agent bo'lsa — barcha
-# toifalar, aks holda hech biri.
+# Toifalar faqat rol berish orqali beriladi. `users.interactive_categories`
+# NULL — hali berilmagan, ya'ni hech qaysi toifa ochiq emas. (Ilgari
+# bo'linmaning "Servis" belgisi barcha toifalarni ochardi — olib tashlandi.)
 # =========================================================================
 
 def _all_category_ids():
@@ -238,38 +237,25 @@ def _all_category_ids():
     return list(ids)
 
 
-def _legacy_holder(user, provider_div_ids=None):
-    if user.role == 'agent':
-        return True
-    if provider_div_ids is not None:
-        return user.division_id in provider_div_ids
-    div = user.division
-    return bool(div.is_service_provider) if div else False
-
-
 def interactive_categories_for(user):
     """Xodim ishlaydigan toifalar (service_departments.id ro'yxati)"""
     if user is None:
         return []
     cats = user.interactive_categories
-    if cats is not None:
-        valid = set(_all_category_ids())
-        return sorted({int(c) for c in cats if str(c).isdigit() and int(c) in valid})
-    return _all_category_ids() if _legacy_holder(user) else []
+    if not cats:
+        return []
+    valid = set(_all_category_ids())
+    return sorted({int(c) for c in cats if str(c).isdigit() and int(c) in valid})
 
 
 def interactive_holder_ids(category_id):
     """Shu toifada ishlaydigan faol xodimlar ID'lari"""
-    from app.models import User, Division
+    from app.models import User
     category_id = int(category_id)
-    provider_div_ids = {d.id for d in Division.query.filter_by(is_service_provider=True).all()}
     ids = set()
-    for u in User.query.filter(User.is_active.is_(True)).all():
-        cats = u.interactive_categories
-        if cats is not None:
-            if category_id in {int(c) for c in cats if str(c).isdigit()}:
-                ids.add(u.id)
-        elif _legacy_holder(u, provider_div_ids):
+    for u in User.query.filter(User.is_active.is_(True),
+                               User.interactive_categories.isnot(None)).all():
+        if category_id in {int(c) for c in (u.interactive_categories or []) if str(c).isdigit()}:
             ids.add(u.id)
     return ids
 

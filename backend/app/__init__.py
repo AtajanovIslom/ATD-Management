@@ -368,6 +368,28 @@ def _init_database(app):
                         WHERE TRIM(name) = 'Создание учётных записей';
                 END IF;
             END $$;""",
+            # Bosh Administrator bitta qoladi: Buriyev Abdumalik — Axborot
+            # xavfsizligi bo'limi rahbari. Bir martalik (audit yozuvi belgi
+            # bo'ladi), keyinchalik rol berish oynasidagi o'zgarishga tegmaydi.
+            """DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM audit_logs
+                    WHERE entity_type = 'user' AND details LIKE '%migratsiya: bosh administrator bitta%'
+                ) THEN
+                    INSERT INTO audit_logs (user_name, user_role, action, entity_type,
+                                            entity_id, entity_label, details, created_at)
+                    SELECT 'Tizim', 'system', 'set_role', 'user', u.id, u.full_name,
+                           'role=department_admin (migratsiya: bosh administrator bitta)', NOW()
+                    FROM users u
+                    WHERE u.role = 'superadmin' AND u.full_name LIKE 'Buriyev Abdumalik%';
+                    UPDATE users u SET role = 'department_admin',
+                        department_id = COALESCE(
+                            (SELECT d.department_id FROM divisions d WHERE d.id = u.division_id),
+                            u.department_id)
+                    WHERE u.role = 'superadmin' AND u.full_name LIKE 'Buriyev Abdumalik%';
+                END IF;
+            END $$;""",
         ]
         # Har bir migratsiya o'z tranzaksiyasida bajariladi — bittasi xato bersa
         # keyingilariga ta'sir qilmasin. Ilgari umumiy commit edi, bir SQL rollback

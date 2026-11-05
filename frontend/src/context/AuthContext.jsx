@@ -54,7 +54,7 @@ const legacyPages = (user) => {
   const isSuper = ['superadmin', 'director', 'deputy_director'].includes(role)
   const isAdmin = isSuper || role === 'admin'
   const isDept = isAdmin || role === 'department_admin'
-  const isProvider = !!user?.division_is_service_provider
+  const isProvider = (user?.interactive_categories || []).length > 0
 
   const allow = new Set(['dashboard', 'reminders'])
   if (!isDept) {

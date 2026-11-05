@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { useI18n } from '../i18n'
 
 export default function ManageDepartments() {
-  const { can, isSuperAdmin } = useAuth()
+  const { can } = useAuth()
   const { t } = useI18n()
   const [departments, setDepartments] = useState([])
   const [expanded, setExpanded] = useState({})
@@ -23,7 +23,6 @@ export default function ManageDepartments() {
   const [allUsers, setAllUsers] = useState([])
   const [selectedUsers, setSelectedUsers] = useState([])
 
-  const [serviceModal, setServiceModal] = useState(null) // division obj
 
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -172,22 +171,6 @@ export default function ManageDepartments() {
     }
   }
 
-  // --- Interaktiv xizmat ko'rsatuvchi bo'lim belgisi ---
-  const openServiceConfig = (div) => setServiceModal(div)
-
-  const toggleServiceProvider = async (enable) => {
-    if (!serviceModal) return
-    try {
-      const res = await api.put(`/divisions/${serviceModal.id}`, {
-        is_service_provider: enable,
-      })
-      setServiceModal(res.data)
-      load()
-    } catch (err) {
-      alert(err.response?.data?.error || t('state.error'))
-    }
-  }
-
   if (loading) return <div className="loading">{t('state.loading')}</div>
 
   return (
@@ -248,15 +231,6 @@ export default function ManageDepartments() {
                       }}>
                         <div style={{ flex: 1 }}>
                           <strong>{div.name}</strong>
-                          {div.is_service_provider && (
-                            <span style={{
-                              marginLeft: 8, fontSize: 11, padding: '2px 8px',
-                              borderRadius: 4, background: 'rgba(16, 185, 129, 0.15)',
-                              color: '#10b981', fontWeight: 600,
-                            }}>
-                              🧩 {t('div.isServiceProvider')}
-                            </span>
-                          )}
                           {div.description && (
                             <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 8 }}>{div.description}</span>
                           )}
@@ -273,15 +247,6 @@ export default function ManageDepartments() {
                           </div>
                         </div>
                         <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                          {isSuperAdmin && (
-                            <button
-                              className={`btn btn-sm ${div.is_service_provider ? 'btn-primary' : 'btn-outline'}`}
-                              onClick={() => openServiceConfig(div)}
-                              title={t('div.serviceBtn.title')}
-                            >
-                              🧩 {t('div.serviceBtn')}
-                            </button>
-                          )}
                           {can('div.members') && (
                             <button className="btn btn-outline btn-sm" onClick={() => openMembers(div)}>
                               👥 {t('div.membersBtn', { n: div.member_count })}
@@ -408,49 +373,6 @@ export default function ManageDepartments() {
         </div>
       )}
 
-      {/* Interaktiv xizmat ko'rsatuvchi bo'lim modal */}
-      {serviceModal && (
-        <div className="modal-overlay" onClick={() => setServiceModal(null)}>
-          <div className="modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
-            <h2 style={{ marginBottom: 4 }}>🧩 {t('service.modal.title')}</h2>
-            <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>
-              {t('service.modal.subtitle', { name: serviceModal.name })}
-            </p>
-
-            <div style={{
-              padding: 14, borderRadius: 8,
-              background: serviceModal.is_service_provider
-                ? 'rgba(16, 185, 129, 0.08)'
-                : 'var(--bg-input, rgba(255,255,255,0.03))',
-              border: `1px solid ${serviceModal.is_service_provider ? '#10b981' : 'var(--border)'}`,
-              marginBottom: 16,
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                <div>
-                  <div style={{ fontWeight: 600, marginBottom: 4 }}>
-                    {serviceModal.is_service_provider
-                      ? t('service.enabled')
-                      : t('service.disabled')}
-                  </div>
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                    {t('service.hint')}
-                  </div>
-                </div>
-                <button
-                  className={`btn ${serviceModal.is_service_provider ? 'btn-outline' : 'btn-primary'}`}
-                  onClick={() => toggleServiceProvider(!serviceModal.is_service_provider)}
-                >
-                  {serviceModal.is_service_provider ? t('service.turnOff') : t('service.turnOn')}
-                </button>
-              </div>
-            </div>
-
-            <div className="modal-actions">
-              <button className="btn btn-primary" onClick={() => setServiceModal(null)}>{t('btn.close')}</button>
-            </div>
-          </div>
-        </div>
-      )}
 
     </div>
   )

@@ -185,6 +185,9 @@ export default function ManageUsers() {
       grouped[deptName].divs[divName].push(u)
     }
   })
+  // Bo'lim jadvalida rahbar(lar) eng tepada, qolgan tartib o'zgarmaydi
+  Object.values(grouped).forEach(g => Object.values(g.divs).forEach(list =>
+    list.sort((a, b) => (b.role === 'department_admin') - (a.role === 'department_admin'))))
 
   const toggleCollapse = (key) => setCollapsed(prev => ({ ...prev, [key]: !prev[key] }))
 

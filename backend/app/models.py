@@ -815,8 +815,7 @@ class User(db.Model):
     division_id = db.Column(db.Integer, db.ForeignKey('divisions.id'), nullable=True)
     department_id = db.Column(db.Integer, db.ForeignKey('departments.id'), nullable=True)
     # Xodim ishlaydigan interaktiv ariza toifalari (service_departments.id
-    # ro'yxati). NULL — rol berishda hali sozlanmagan: bo'linmasi xizmat
-    # ko'rsatsa barcha toifalar (avvalgi xatti-harakat), aks holda hech biri.
+    # ro'yxati) — faqat rol berishda beriladi. NULL / bo'sh — hech biri.
     interactive_categories = db.Column(db.JSON, nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
@@ -833,6 +832,7 @@ class User(db.Model):
         """
         div = self.division
         dept = self.managed_department
+        categories = self.effective_interactive_categories()
         data = {
             'id': self.id,
             'full_name': self.full_name,
@@ -847,10 +847,11 @@ class User(db.Model):
             'has_registration': bool(self.registration_token),
             'division_id': self.division_id,
             'division_name': div.name if div else None,
-            # Xodimning bo'linmasi interaktiv xizmat ko'rsatadimi (interaktiv arizalar
-            # sahifasiga kirish huquqini aniqlash uchun)
-            'division_is_service_provider': bool(div.is_service_provider) if div else False,
-            'interactive_categories': self.effective_interactive_categories(),
+            # Interaktiv arizalar bilan ishlaydimi. Nomi eski mijozlar (mobil
+            # ilova) uchun saqlandi — endi bo'lim belgisidan emas, rol berishda
+            # berilgan toifalardan hisoblanadi.
+            'division_is_service_provider': bool(categories),
+            'interactive_categories': categories,
             'department_id': self.department_id,
             'department_name': dept.name if dept else None,
             # Amaldagi qo'shimcha huquqlar (masalan 'project.edit') — rolga

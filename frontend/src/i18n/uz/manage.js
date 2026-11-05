@@ -157,7 +157,7 @@ export default {
   'pages.saved': "Saqlandi — o'zgarish xodimlar sahifani yangilaganda kuchga kiradi",
   'pages.hint': "Belgini olib tashlasangiz, o'sha rol menyuda bu bandni ko'rmaydi",
   'pages.locked': "Bosh Administrator qatorini o'zgartirib bo'lmaydi",
-  'pages.serviceNote': "Bo'linmasi «Interaktiv xizmat ko'rsatadi» deb belgilangan xodimlarga bu sahifa matritsadan qat'i nazar ochiq bo'ladi.",
+  'pages.serviceNote': "Rol berishda interaktiv ariza toifasi berilgan xodimlarga bu sahifa matritsadan qat'i nazar ochiq bo'ladi.",
   'pages.noAccess': "Sizning rolingizga hech qanday sahifa ochilmagan. Iltimos, Bosh Administratorga murojaat qiling.",
   'pages.expandHint': "Xodimlar ro'yxatini ochish — har biriga alohida ruxsat berish mumkin",
   'pages.override': 'shaxsiy',
@@ -186,7 +186,6 @@ export default {
   'roles.extraPermissions.hint': "Roldan qat'i nazar alohida beriladigan huquqlar",
   'roles.field.interactive': 'Interaktiv arizalar',
   'roles.interactive.hint': "Xodim faqat belgilangan toifadagi arizalarni ko'radi va bajaradi — toifalar bir-biriga ko'rinmaydi",
-  'roles.interactive.legacy': "Hozir bo'linmasi xizmat ko'rsatgani uchun barcha toifalar ochiq. Keraksizini olib tashlab saqlang.",
   'perm.project.edit': 'Loyihani tahrirlash',
   'perm.project.edit.desc': "Loyiha ma'lumotlari va bosqichlarini tahrirlash, "
     + 'bosqich ijrosini qabul qilish va loyihani yakunlash',
