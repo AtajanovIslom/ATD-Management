@@ -350,6 +350,24 @@ def _init_database(app):
                     ALTER TABLE mail_accounts ADD COLUMN send_unseen BOOLEAN DEFAULT TRUE NOT NULL;
                 END IF;
             END $$;""",
+            # Interaktiv ariza toifalari xodim bo'yicha ajratildi (rol berishda).
+            # NULL — hali sozlanmagan, avvalgi xatti-harakat ishlaydi.
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS interactive_categories JSON",
+            # "Создание учётных записей" faqat API orqali keladi. Backfill faqat
+            # ustun birinchi marta qo'shilganda — admin panelda o'zgartirilgan
+            # sozlama har restartda qayta yozilmasin.
+            """DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'service_departments' AND column_name = 'allow_walkin'
+                ) THEN
+                    ALTER TABLE service_departments
+                        ADD COLUMN allow_walkin BOOLEAN DEFAULT TRUE NOT NULL;
+                    UPDATE service_departments SET allow_walkin = FALSE
+                        WHERE TRIM(name) = 'Создание учётных записей';
+                END IF;
+            END $$;""",
         ]
         # Har bir migratsiya o'z tranzaksiyasida bajariladi — bittasi xato bersa
         # keyingilariga ta'sir qilmasin. Ilgari umumiy commit edi, bir SQL rollback

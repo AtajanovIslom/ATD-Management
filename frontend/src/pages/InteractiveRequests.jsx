@@ -39,6 +39,10 @@ export default function InteractiveRequests() {
   const [filter, setFilter] = useState('')
   const [selected, setSelected] = useState(null)
   const [workers, setWorkers] = useState([])
+  // Xodim ishlaydigan toifalar — "Ariza yaratish" faqat telefon orqali
+  // qabul qilinadigan toifalarda (allow_walkin) chiqadi
+  const [myCats, setMyCats] = useState([])
+  const walkinCats = myCats.filter(c => c.allow_walkin !== false)
 
   const [modal, setModal] = useState(null) // { type, req }
   const [modalData, setModalData] = useState({})
@@ -65,10 +69,19 @@ export default function InteractiveRequests() {
   useEffect(() => { load() }, [load])
 
   useEffect(() => {
-    // Biriktirish ierarxiyasi bo'yicha xodimlar: boshqarma rahbari -> bo'lim rahbarlariga,
-    // bo'lim rahbari -> o'z xodimlariga (backend rol bo'yicha aniqlaydi)
-    if (isAnyAdmin) api.get('/interactive-requests/assignable-workers').then(r => setWorkers(r.data)).catch(() => {})
-  }, [isAnyAdmin])
+    api.get('/interactive-requests/my-categories').then(r => setMyCats(r.data)).catch(() => setMyCats([]))
+  }, [])
+
+  // Yuklash oynasi ochilganda — shu ariza toifasidagi va ko'lamdagi xodimlar
+  // (bo'lim rahbari — o'z bo'limi, xodim — hamkasblari; backend aniqlaydi)
+  const openAction = (type, req) => {
+    setModal({ type, req }); setModalData({})
+    if (type === 'assign') {
+      setWorkers([])
+      api.get('/interactive-requests/assignable-workers', { params: { request_id: req.id } })
+        .then(r => setWorkers(r.data)).catch(() => setWorkers([]))
+    }
+  }
 
   const openReq = async (r) => {
     try {
@@ -127,9 +140,11 @@ export default function InteractiveRequests() {
     <div>
       <div className="page-header">
         <h1 style={{ margin: 0 }}>📥 {t('ir.title')}</h1>
-        <button className="btn btn-primary" onClick={() => setWalkinOpen(true)}>
-          {t('ir.create')}
-        </button>
+        {walkinCats.length > 0 && (
+          <button className="btn btn-primary" onClick={() => setWalkinOpen(true)}>
+            {t('ir.create')}
+          </button>
+        )}
       </div>
 
       {/* Statistika kartalari */}
@@ -233,7 +248,8 @@ export default function InteractiveRequests() {
             isAnyAdmin={isAnyAdmin}
             isAdmin={isAdmin}
             onClose={() => setSelected(null)}
-            onAction={(type, req) => { setModal({ type, req }); setModalData({}) }}
+            onAction={openAction}
+            userId={user?.id}
             onApprove={(req) => submitModalWith(req, 'approve')}
             onEdit={(req) => setEditReq(req)}
             onDelete={handleDelete}
@@ -248,7 +264,7 @@ export default function InteractiveRequests() {
         <ActionModal
           modal={modal}
           workers={workers}
-          isAdmin={isAdmin}
+          userId={user?.id}
           modalData={modalData}
           setModalData={setModalData}
           onClose={() => setModal(null)}
@@ -262,6 +278,8 @@ export default function InteractiveRequests() {
       {walkinOpen && (
         <WalkinModal
           t={t}
+          depts={walkinCats}
+          userId={user?.id}
           onClose={() => setWalkinOpen(false)}
           onCreated={async () => { setWalkinOpen(false); await load() }}
         />
@@ -300,8 +318,13 @@ export default function InteractiveRequests() {
 
 /* -------------------------- Ariza tafsilotlari -------------------------- */
 
-function RequestDetail({ r, isMine, isAnyAdmin, isAdmin, onClose, onAction, onApprove, onEdit, onDelete, t, fmt }) {
+function RequestDetail({ r, isMine, isAnyAdmin, isAdmin, userId, onClose, onAction, onApprove, onEdit, onDelete, t, fmt }) {
   const canEdit = isAnyAdmin && r.status !== 'completed' && r.status !== 'rejected'
+  // Rahbar har qanday ochiq arizani, xodim — navbatdagi yoki o'zinikini
+  // (o'zi olishi yoki hamkasbiga berishi uchun) yuklay oladi
+  const canAssign = r.status !== 'completed' && r.status !== 'rejected' && (
+    isAnyAdmin || (['new', 'in_progress'].includes(r.status) && (!r.assigned_to || r.assigned_to === userId))
+  )
   // Tarixdan oxirgi "uzatish" yozuvini topamiz — ariza sizga peer bo'lim
   // rahbaridan uzatilgan bo'lsa banner ko'rsatish uchun.
   const lastTransfer = (r.history || []).slice().reverse().find(h => (h.note || '').startsWith('🔄'))
@@ -414,12 +437,12 @@ function RequestDetail({ r, isMine, isAnyAdmin, isAdmin, onClose, onAction, onAp
             ✏️ {t('btn.edit')}
           </button>
         )}
-        {isAnyAdmin && r.status === 'new' && (
+        {canAssign && r.status === 'new' && (
           <button className="btn btn-primary" onClick={() => onAction('assign', r)}>
             {t('ir.action.assign')}
           </button>
         )}
-        {isAnyAdmin && r.status === 'in_progress' && (
+        {canAssign && r.status === 'in_progress' && (
           <button className="btn btn-outline" onClick={() => onAction('assign', r)}>
             {t('ir.action.reassign')}
           </button>
@@ -543,24 +566,22 @@ function WorkerPicker({ groups, value, onChange, t }) {
 }
 
 
-function ActionModal({ modal, workers, isAdmin, modalData, setModalData, onClose, onSubmit, busy, t }) {
+function ActionModal({ modal, workers, userId, modalData, setModalData, onClose, onSubmit, busy, t }) {
   const kind = modal.type
 
-  // Bo'lim rahbarlari alohida guruh. Boshqarma rahbari uchun ular o'z
-  // qo'l ostidagi rahbarlar, bo'lim rahbari uchun esa "boshqa bo'limga
-  // uzatish" — shuning uchun sarlavha ko'ruvchiga qarab o'zgaradi.
-  const admins = workers.filter(w => w.role === 'department_admin')
-  const plainWorkers = workers.filter(w => w.role !== 'department_admin')
-
-  const groups = isAdmin
-    ? [
-        { key: 'admins', label: t('ir.assign.deptAdmins'), items: admins },
-        { key: 'workers', label: t('ir.assign.workers'), items: plainWorkers },
-      ]
-    : [
-        { key: 'workers', label: t('ir.assign.ownWorkers'), items: plainWorkers },
-        { key: 'admins', label: t('ir.assign.peerAdmins'), items: admins },
-      ]
+  // Ro'yxatni backend ariza toifasi va ko'lami bo'yicha beradi — bu yerda
+  // faqat bo'limlar bo'yicha guruhlaymiz, o'zingiz eng tepada
+  const self = workers.filter(w => w.id === userId)
+  const byDiv = {}
+  workers.filter(w => w.id !== userId).forEach(w => {
+    const key = w.division_name || t('users.unassignedDiv')
+    if (!byDiv[key]) byDiv[key] = []
+    byDiv[key].push(w)
+  })
+  const groups = [
+    { key: 'self', label: t('ir.assign.self'), items: self },
+    ...Object.entries(byDiv).map(([name, items]) => ({ key: 'div-' + name, label: name, items })),
+  ]
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -576,11 +597,9 @@ function ActionModal({ modal, workers, isAdmin, modalData, setModalData, onClose
               onChange={id => setModalData({ user_id: id })}
               t={t}
             />
-            {!isAdmin && admins.length > 0 && (
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
-                {t('ir.assign.hint')}
-              </div>
-            )}
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
+              {t('ir.assign.hint')}
+            </div>
           </div>
         )}
 
@@ -634,12 +653,14 @@ function ActionModal({ modal, workers, isAdmin, modalData, setModalData, onClose
 
 /* -------------------------- Walk-in yaratish --------------------------- */
 
-function WalkinModal({ onClose, onCreated, t }) {
-  const [depts, setDepts] = useState([])
+function WalkinModal({ depts, userId, onClose, onCreated, t }) {
   const [types, setTypes] = useState([])
   const [form, setForm] = useState({
-    phone_num: '', tabel_num: '', department_id: '', type_ids: [], comment: '',
+    phone_num: '', tabel_num: '', department_id: depts.length === 1 ? String(depts[0].id) : '',
+    type_ids: [], comment: '', assigned_to: '',
   })
+  // Mas'ul xodim — tanlangan toifada ishlaydigan hamkasblar (bo'sh = o'zim)
+  const [assignees, setAssignees] = useState([])
   const [emp, setEmp] = useState({ full_name: '', position: '', division: '' })
   const [empLoading, setEmpLoading] = useState(false)
   const [empError, setEmpError] = useState('')
@@ -647,17 +668,15 @@ function WalkinModal({ onClose, onCreated, t }) {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    api.get('/public/interactive/departments')
-      .then(r => setDepts(r.data))
-      .catch(() => setDepts([]))
-  }, [])
-
-  useEffect(() => {
-    if (!form.department_id) { setTypes([]); return }
+    setForm(f => (f.assigned_to ? { ...f, assigned_to: '' } : f))
+    if (!form.department_id) { setTypes([]); setAssignees([]); return }
     api.get(`/public/interactive/departments/${form.department_id}/types`)
       .then(r => setTypes(r.data))
       .catch(() => setTypes([]))
-  }, [form.department_id])
+    api.get('/interactive-requests/assignable-workers', { params: { department_id: form.department_id } })
+      .then(r => setAssignees(r.data.filter(w => w.id !== userId)))
+      .catch(() => setAssignees([]))
+  }, [form.department_id, userId])
 
   // Tabel raqami kiritilganda ISUP dan xodim ma'lumotlarini avtomatik olib kelish (debounce bilan)
   useEffect(() => {
@@ -724,6 +743,7 @@ function WalkinModal({ onClose, onCreated, t }) {
         department_id: parseInt(form.department_id),
         type_ids: form.type_ids,
         comment: form.comment.trim(),
+        ...(form.assigned_to ? { assigned_to: parseInt(form.assigned_to) } : {}),
       })
       onCreated()
     } catch (err) {
@@ -846,6 +866,21 @@ function WalkinModal({ onClose, onCreated, t }) {
                   </label>
                 ))}
               </div>
+            </div>
+          )}
+
+          {form.department_id && assignees.length > 0 && (
+            <div className="form-group">
+              <label>{t('ir.field.assignee')}</label>
+              <select className="form-input" value={form.assigned_to}
+                onChange={e => setForm({ ...form, assigned_to: e.target.value })}>
+                <option value="">{t('ir.field.assignee.self')}</option>
+                {assignees.map(w => (
+                  <option key={w.id} value={w.id}>
+                    {w.full_name}{w.position ? ` — ${w.position}` : ''}
+                  </option>
+                ))}
+              </select>
             </div>
           )}
 

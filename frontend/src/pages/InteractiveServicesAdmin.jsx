@@ -33,9 +33,10 @@ export default function InteractiveServicesAdmin() {
   useEffect(() => { loadDepartments() }, [loadDepartments])
 
   // Bo'lim CRUD
-  const openAddDept = () => setDeptDialog({ mode: 'add', name: '', multiType: false })
+  const openAddDept = () => setDeptDialog({ mode: 'add', name: '', multiType: false, allowWalkin: true })
   const openEditDept = (d) => setDeptDialog({
     mode: 'edit', item: d, name: d.name, multiType: !!d.multi_type,
+    allowWalkin: d.allow_walkin !== false,
   })
   const closeDeptDialog = () => setDeptDialog(null)
 
@@ -45,7 +46,7 @@ export default function InteractiveServicesAdmin() {
     if (!name) return
     setBusy(true)
     try {
-      const payload = { name, multi_type: deptDialog.multiType }
+      const payload = { name, multi_type: deptDialog.multiType, allow_walkin: deptDialog.allowWalkin }
       if (deptDialog.mode === 'add') {
         await api.post('/interactive/departments', payload)
       } else {
@@ -120,6 +121,15 @@ export default function InteractiveServicesAdmin() {
                         {t('isa.multiBadge')}
                       </span>
                     )}
+                    {d.allow_walkin === false && (
+                      <span style={{
+                        marginLeft: 8, fontSize: 11, fontWeight: 600,
+                        padding: '2px 8px', borderRadius: 10, whiteSpace: 'nowrap',
+                        background: 'rgba(245,158,11,0.12)', color: '#f59e0b',
+                      }} title={t('isa.apiOnlyBadge.title')}>
+                        {t('isa.apiOnlyBadge')}
+                      </span>
+                    )}
                   </td>
                   <td style={{ textAlign: 'center' }}>
                     <span style={{
@@ -155,10 +165,18 @@ export default function InteractiveServicesAdmin() {
           onSave={saveDept}
           busy={busy}
           placeholder={t('isa.dept.placeholder')}
-          switchValue={deptDialog.multiType}
-          onSwitchChange={(v) => setDeptDialog({ ...deptDialog, multiType: v })}
-          switchLabel={t('isa.multi.label')}
-          switchHint={t('isa.multi.hint')}
+          switches={[
+            {
+              key: 'multi', checked: deptDialog.multiType,
+              onChange: (v) => setDeptDialog({ ...deptDialog, multiType: v }),
+              label: t('isa.multi.label'), hint: t('isa.multi.hint'),
+            },
+            {
+              key: 'walkin', checked: deptDialog.allowWalkin,
+              onChange: (v) => setDeptDialog({ ...deptDialog, allowWalkin: v }),
+              label: t('isa.walkin.label'), hint: t('isa.walkin.hint'),
+            },
+          ]}
         />
       )}
 
@@ -307,11 +325,10 @@ function TypesDialog({ department, onClose }) {
 
 function NameDialog({
   title, value, onChange, onClose, onSave, busy, placeholder,
-  switchValue, onSwitchChange, switchLabel, switchHint,
+  switches = [],   // [{ key, checked, onChange, label, hint }]
 }) {
   const { t } = useI18n()
   const canSave = useMemo(() => value.trim().length > 0, [value])
-  const hasSwitch = typeof onSwitchChange === 'function'
 
   const onKey = (e) => {
     if (e.key === 'Enter' && canSave && !busy) onSave()
@@ -334,16 +351,16 @@ function NameDialog({
           />
         </div>
 
-        {hasSwitch && (
-          <div className="form-group">
+        {switches.map(sw => (
+          <div className="form-group" key={sw.key}>
             <Switch
-              checked={!!switchValue}
-              onChange={onSwitchChange}
-              label={switchLabel}
-              hint={switchHint}
+              checked={!!sw.checked}
+              onChange={sw.onChange}
+              label={sw.label}
+              hint={sw.hint}
             />
           </div>
-        )}
+        ))}
 
         <div className="modal-actions">
           <button className="btn btn-outline" onClick={onClose}>{t('btn.cancel')}</button>

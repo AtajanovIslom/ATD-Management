@@ -184,6 +184,9 @@ export default {
   // Roldan tashqari beriladigan qo'shimcha huquqlar
   'roles.field.extraPermissions': "Qo'shimcha huquqlar",
   'roles.extraPermissions.hint': "Roldan qat'i nazar alohida beriladigan huquqlar",
+  'roles.field.interactive': 'Interaktiv arizalar',
+  'roles.interactive.hint': "Xodim faqat belgilangan toifadagi arizalarni ko'radi va bajaradi — toifalar bir-biriga ko'rinmaydi",
+  'roles.interactive.legacy': "Hozir bo'linmasi xizmat ko'rsatgani uchun barcha toifalar ochiq. Keraksizini olib tashlab saqlang.",
   'perm.project.edit': 'Loyihani tahrirlash',
   'perm.project.edit.desc': "Loyiha ma'lumotlari va bosqichlarini tahrirlash, "
     + 'bosqich ijrosini qabul qilish va loyihani yakunlash',

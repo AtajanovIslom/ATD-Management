@@ -8,8 +8,15 @@ Interaktiv arizalar — oqim:
     Har qanday paytda: → rejected (rahbar rad etadi)
 
 Ariza kelib tushishi:
-  - PUBLIC endpoint orqali (mobil ilova)  → status = new
-  - Xodim o'zi qo'lda ("walk-in") kiritadi → status = in_progress, avtomat o'ziga biriktiriladi
+  - PUBLIC endpoint orqali (mobil ilova)  → status = new; toifada bitta
+    ijrochi bo'lsa to'g'ridan-to'g'ri unga biriktiriladi
+  - Xodim o'zi qo'lda ("walk-in") kiritadi → status = in_progress, o'ziga
+    yoki tanlagan hamkasbiga biriktiriladi. Toifada `allow_walkin` o'chiq
+    bo'lsa (masalan Создание учётных записей) — faqat API orqali.
+
+Toifalar (service_departments) bir-biriga ko'rinmaydi: xodim faqat rol
+berishda o'ziga berilgan toifadagi arizalarni ko'radi va bajaradi
+(utils.interactive_categories_for).
 
 Ishtirokchilar:
   - user (ariza yuboruvchi)          — apidan yoki mobil ilovadan
@@ -28,8 +35,9 @@ from app.models import (
     ServiceDepartment, ServiceType, User,
 )
 from app.utils import (
-    is_any_admin, is_admin_or_above, log_audit, fetch_employee_from_isup,
-    get_scope, div_user_ids, dept_user_ids, WORKER_ROLES,
+    is_admin_or_above, log_audit, fetch_employee_from_isup,
+    get_scope, div_user_ids, dept_user_ids, WORKER_ROLES, FULL_ACCESS_ROLES,
+    interactive_categories_for, interactive_holder_ids,
 )
 from app.services import events
 
@@ -83,6 +91,52 @@ def _read_type_ids(data):
         return data['type_ids']
     single = data.get('type_id') or data.get('service_type')
     return [single] if single else []
+
+
+def _on_vacation_ids():
+    from app.models import Vacation
+    from datetime import date as _date
+    today = _date.today()
+    return {v.user_id for v in Vacation.query.filter(
+        Vacation.from_date <= today, Vacation.to_date >= today
+    ).all()}
+
+
+def _auto_assignee(category_id):
+    """Toifada bitta ijrochi bo'lsa — o'sha xodim (aks holda None).
+
+    Ijrochi — toifa berilgan oddiy xodim/agent. Ular yo'q bo'lib, toifada
+    yagona bo'lim rahbari bo'lsa, ariza unga tushadi. Tatildagilar hisobga
+    olinmaydi; bir nechta ijrochi bo'lsa ariza umumiy navbatda qoladi.
+    """
+    ids = interactive_holder_ids(category_id) - _on_vacation_ids()
+    if not ids:
+        return None
+    holders = User.query.filter(
+        User.id.in_(ids),
+        User.role.in_(('department_admin',) + tuple(WORKER_ROLES)),
+    ).all()
+    workers = [u for u in holders if u.role in WORKER_ROLES]
+    if len(workers) == 1:
+        return workers[0]
+    if not workers and len(holders) == 1:
+        return holders[0]
+    return None
+
+
+def _auto_assign(req, category_id):
+    """API arizasini yagona ijrochiga biriktiradi (bo'lsa). commit qilmaydi."""
+    worker = _auto_assignee(category_id)
+    if worker is None:
+        return None
+    req.assigned_to = worker.id
+    req.assigned_by = None
+    req.assigned_at = datetime.now(timezone.utc)
+    req.status = 'in_progress'
+    _log_history(req, 'in_progress', actor=None,
+                 note=f"Avtomatik biriktirildi: {worker.full_name} (toifadagi yagona ijrochi)")
+    events.interactive_assigned(req, worker.id, actor=None)
+    return worker
 
 
 # =========================================================================
@@ -169,6 +223,7 @@ def public_submit():
     type_names = ", ".join(t.name for t in types)
     _log_history(req, 'new', actor=None,
                  note=f"Ariza qabul qilindi: {type_names}")
+    _auto_assign(req, req.department_id)
     db.session.commit()
 
     return jsonify(req.to_public(with_history=True)), 201
@@ -201,33 +256,78 @@ def public_history_by_tabel(tabel_num):
 # ICHKI — TIZIM ICHIDA
 # =========================================================================
 
+def _visible_categories(role, dept_id, user_id):
+    """Rahbar/xodim ko'ra oladigan toifalar: None — hammasi.
+
+    Boshqarma rahbari — boshqarmasidagi xodimlarga berilgan toifalar,
+    qolganlar — faqat o'ziga berilganlari.
+    """
+    if role in FULL_ACCESS_ROLES:
+        return None
+    if role == 'admin':
+        member_ids = dept_user_ids(dept_id) if dept_id else set()
+        member_ids.add(user_id)
+        cats = set()
+        for u in User.query.filter(User.id.in_(member_ids)).all():
+            cats.update(interactive_categories_for(u))
+        return cats
+    return set(interactive_categories_for(User.query.get(user_id)))
+
+
+def _team_ids(role, dept_id, div_id, user_id):
+    """Rahbar ishini kuzatadigan xodimlar: boshqarma/bo'lim a'zolari (+o'zi)"""
+    if role == 'admin':
+        ids = dept_user_ids(dept_id) if dept_id else set()
+    elif role == 'department_admin':
+        ids = div_user_ids(div_id) if div_id else set()
+    else:
+        ids = set()
+    ids.add(user_id)
+    return ids
+
+
 def _list_scope_filter(q, role, dept_id, div_id, user_id):
     """Interaktiv arizalar bo'yicha rol scope filtri (list va stats uchun umumiy).
 
     Ko'rinish:
-      - admin+ (barcha boshqarma boshliqlari): hammasi
-      - department_admin (servis-provider bo'lim rahbari): o'z bo'limi
-        a'zolariga biriktirilganlar + biriktirilmagan yangi arizalar
-        (triage qilib xodimiga topshirishi yoki peer bo'lim rahbariga
-        uzatishi uchun)
-      - department_admin (servis-provider bo'lmagan): o'ziga yoki bo'lim
-        a'zolariga biriktirilganlar
-      - user: faqat o'ziga biriktirilganlar
+      - superadmin/direksiya: hammasi
+      - har kim: o'ziga biriktirilganlar + o'z toifasidagi hali hech kimga
+        biriktirilmagan arizalar (umumiy navbat)
+      - boshqarma / bo'lim rahbari: qo'shimcha ravishda boshqarmasi /
+        bo'limi a'zolariga biriktirilganlar
+
+    Toifalar bir-biriga ko'rinmaydi: "Создание учётных записей" berilmagan
+    xodim bu toifaning navbatini ko'rmaydi.
     """
-    from app.models import Division
-    if is_admin_or_above(role):
+    if role in FULL_ACCESS_ROLES:
         return q
-    if role == 'department_admin':
-        member_ids = div_user_ids(div_id) if div_id else set()
-        member_ids.add(user_id)
-        own_div = Division.query.get(div_id) if div_id else None
-        if own_div and own_div.is_service_provider:
-            return q.filter(db.or_(
-                InteractiveRequest.assigned_to.in_(member_ids),
-                InteractiveRequest.assigned_to.is_(None),
-            ))
-        return q.filter(InteractiveRequest.assigned_to.in_(member_ids))
-    return q.filter_by(assigned_to=user_id)
+    cats = _visible_categories(role, dept_id, user_id) or set()
+    conds = [
+        InteractiveRequest.assigned_to == user_id,
+        db.and_(InteractiveRequest.assigned_to.is_(None),
+                InteractiveRequest.department_id.in_(cats)),
+    ]
+    if role in ('admin', 'department_admin'):
+        conds.append(InteractiveRequest.assigned_to.in_(
+            _team_ids(role, dept_id, div_id, user_id)))
+    return q.filter(db.or_(*conds))
+
+
+def _visible_request(req_id, role, dept_id, div_id, user_id):
+    q = _list_scope_filter(InteractiveRequest.query, role, dept_id, div_id, user_id)
+    return q.filter(InteractiveRequest.id == req_id).first()
+
+
+@interactive_req_bp.route('/my-categories', methods=['GET'])
+@jwt_required()
+def my_categories():
+    """Joriy xodim ishlaydigan toifalar — "Ariza yaratish" oynasi uchun"""
+    role, dept_id, _ = get_scope(get_jwt())
+    cats = _visible_categories(role, dept_id, int(get_jwt_identity()))
+    q = ServiceDepartment.query
+    if cats is not None:
+        q = q.filter(ServiceDepartment.id.in_(cats))
+    return jsonify([d.to_dict() for d in q.order_by(ServiceDepartment.name).all()])
 
 
 @interactive_req_bp.route('', methods=['GET'])
@@ -258,9 +358,7 @@ def get_request(req_id):
     # Ro'yxatdagi ko'rinish qoidasi bilan bir xil — ilgari ID bo'yicha har
     # kim istalgan arizani (telefon raqami va izohlari bilan) ocha olardi
     role, dept_id, div_id = get_scope(get_jwt())
-    q = _list_scope_filter(InteractiveRequest.query, role, dept_id, div_id,
-                           int(get_jwt_identity()))
-    r = q.filter(InteractiveRequest.id == req_id).first()
+    r = _visible_request(req_id, role, dept_id, div_id, int(get_jwt_identity()))
     if r is None:
         return jsonify({'error': 'Ariza topilmadi'}), 404
     d = r.to_dict()
@@ -272,11 +370,13 @@ def get_request(req_id):
 @jwt_required()
 def delete_request(req_id):
     """Arizani o'chirish. Faqat admin+ (boshqarma rahbari va yuqori)."""
-    role = get_jwt().get('role', '')
+    role, dept_id, div_id = get_scope(get_jwt())
     if not is_admin_or_above(role):
         return jsonify({'error': "Ruxsat yo'q"}), 403
 
-    r = InteractiveRequest.query.get_or_404(req_id)
+    r = _visible_request(req_id, role, dept_id, div_id, int(get_jwt_identity()))
+    if r is None:
+        return jsonify({'error': 'Ariza topilmadi'}), 404
     label = f"{r.tabel_num} — {', '.join(t.name for t in r.types)}"
     events.interactive_deleted(r.id)
     db.session.delete(r)
@@ -290,25 +390,19 @@ def delete_request(req_id):
 def edit_request(req_id):
     """Ariza asosiy ma'lumotlarini tahrirlash (phone, tabel, department, types, comment).
 
-    Ruxsat: admin+ (barcha boshqarma boshliqlari) yoki bo'lim rahbari
-    (agar ariza uning bo'limi a'zosiga biriktirilgan bo'lsa).
+    Ruxsat: boshqarma yoki bo'lim rahbari — o'ziga ko'rinadigan arizani.
+    Toifa o'zgarsa va ijrochida yangi toifa bo'lmasa, ariza yangi toifa
+    navbatiga o'tadi (noto'g'ri toifada kelgan arizani to'g'rilash uchun).
     Yakunlangan yoki rad etilgan arizani tahrirlab bo'lmaydi.
     """
     role, dept_id, div_id = get_scope(get_jwt())
     user_id = int(get_jwt_identity())
 
-    r = InteractiveRequest.query.get_or_404(req_id)
-
-    # Ruxsat: admin+ hammasini, department_admin faqat o'z bo'limiga tegishlisini
-    if is_admin_or_above(role):
-        pass
-    elif role == 'department_admin':
-        member_ids = div_user_ids(div_id) if div_id else set()
-        member_ids.add(user_id)
-        if r.assigned_to and r.assigned_to not in member_ids:
-            return jsonify({'error': "Ruxsat yo'q"}), 403
-    else:
+    if not (is_admin_or_above(role) or role == 'department_admin'):
         return jsonify({'error': "Ruxsat yo'q"}), 403
+    r = _visible_request(req_id, role, dept_id, div_id, user_id)
+    if r is None:
+        return jsonify({'error': 'Ariza topilmadi'}), 404
 
     if r.status in ('completed', 'rejected'):
         return jsonify({'error': "Yakunlangan arizani tahrirlab bo'lmaydi"}), 400
@@ -317,6 +411,7 @@ def edit_request(req_id):
     actor = User.query.get(user_id)
 
     changed = []
+    category_changed = False
 
     if 'phone_num' in data:
         v = (data.get('phone_num') or '').strip()
@@ -365,14 +460,29 @@ def edit_request(req_id):
 
         if dept_id_final != r.department_id:
             r.department_id = dept_id_final
+            category_changed = True
             changed.append("xizmat bo'limi")
         if new_type_ids is not None:
             r.types = types
             changed.append("xizmat turlari")
 
+    # Ijrochi yangi toifada ishlamasa — ariza o'sha toifa navbatiga o'tadi
+    moved = (category_changed and r.assigned_to is not None
+             and r.assigned_to not in interactive_holder_ids(r.department_id))
+    if moved:
+        r.assigned_to = None
+        r.assigned_by = None
+        r.assigned_at = None
+        r.status = 'new'
+
     if changed:
         _log_history(r, r.status, actor=actor,
                      note="Tahrirlandi: " + ", ".join(changed))
+        if moved:
+            name = r.department.name if r.department else ''
+            _log_history(r, 'new', actor=actor,
+                         note=f"«{name}» toifasi navbatiga o'tkazildi")
+            _auto_assign(r, r.department_id)
         log_audit('update', 'interactive_request', r.id,
                   entity_label=r.tabel_num, details=", ".join(changed))
         db.session.commit()
@@ -385,9 +495,13 @@ def edit_request(req_id):
 @interactive_req_bp.route('/walkin', methods=['POST'])
 @jwt_required()
 def walkin_create():
-    """Xodim o'zi qo'lda kiritayotgan ariza (og'zaki kelgan zayavka).
-       Ariza yaratilgach avtomatik xodimga biriktiriladi, status = in_progress.
+    """Xodim o'zi qo'lda kiritayotgan ariza (telefon orqali kelgan zayavka).
+
+    Ariza yaratuvchining o'ziga yoki `assigned_to` da ko'rsatilgan
+    hamkasbiga biriktiriladi, status = in_progress. Faqat xodimga berilgan
+    va qo'lda yaratishga ruxsat etilgan (`allow_walkin`) toifada.
     """
+    role, dept_id, div_id = get_scope(get_jwt())
     user_id = int(get_jwt_identity())
     actor = User.query.get(user_id)
     if not actor:
@@ -406,10 +520,23 @@ def walkin_create():
     dept = ServiceDepartment.query.get(int(department_id))
     if not dept:
         return jsonify({'error': "Bo'lim topilmadi"}), 404
+    if not dept.allow_walkin:
+        return jsonify({'error': f"«{dept.name}» arizalari faqat API orqali qabul qilinadi"}), 400
+
+    cats = _visible_categories(role, dept_id, user_id)
+    if cats is not None and dept.id not in cats:
+        return jsonify({'error': "Bu toifadagi arizalar bilan ishlash huquqingiz yo'q"}), 403
 
     types, err = _resolve_types(_read_type_ids(data), int(department_id))
     if err:
         return jsonify({'error': err}), 400
+
+    assignee = actor
+    if data.get('assigned_to') and int(data['assigned_to']) != user_id:
+        allowed = {w.id: w for w in _assignable_workers(role, dept_id, div_id, user_id, dept.id)}
+        assignee = allowed.get(int(data['assigned_to']))
+        if assignee is None:
+            return jsonify({'error': "Bu xodimga biriktirish huquqingiz yo'q"}), 403
 
     emp = fetch_employee_from_isup(tabel_num) or {}
     now = datetime.now(timezone.utc)
@@ -424,7 +551,7 @@ def walkin_create():
         department_id=int(department_id),
         source='walkin',
         status='in_progress',
-        assigned_to=user_id,   # xodim o'ziga biriktiradi
+        assigned_to=assignee.id,
         assigned_by=user_id,
         assigned_at=now,
     )
@@ -435,8 +562,13 @@ def walkin_create():
     type_names = ", ".join(t.name for t in types)
     _log_history(req, 'new', actor=actor,
                  note=f"Ariza qo'lda kiritildi (walk-in): {type_names}")
-    _log_history(req, 'in_progress', actor=actor,
-                 note="Ariza yaratuvchi xodimga biriktirildi")
+    if assignee.id == user_id:
+        _log_history(req, 'in_progress', actor=actor,
+                     note="Ariza yaratuvchi xodimga biriktirildi")
+    else:
+        _log_history(req, 'in_progress', actor=actor,
+                     note=f"{assignee.full_name} xodimga biriktirildi")
+        events.interactive_assigned(req, assignee.id, actor=actor)
 
     log_audit('create', 'interactive_request', req.id,
               entity_label=f"{tabel_num} — {type_names}",
@@ -445,77 +577,92 @@ def walkin_create():
     return jsonify(req.to_dict()), 201
 
 
-def _assignable_workers(role, dept_id, div_id):
-    """Interaktiv arizalar biriktirish ierarxiyasi. Bugun tatildagilar chiqariladi.
+def _assignable_workers(role, dept_id, div_id, user_id, category_id):
+    """Shu toifadagi arizani kimga yuklash mumkin. Tatildagilar chiqariladi.
 
-    Servis xizmati yoqilgan bo'lim rahbari peer boshqa servis-provider bo'lim
-    rahbariga arizani "uzatishi" mumkin — shuning uchun ular ham ro'yxatga
-    qo'shiladi.
+    Faqat toifa berilgan xodimlar (toifalar bir-biriga o'tmaydi):
+      - superadmin/direksiya: toifadagi barcha xodimlar
+      - boshqarma rahbari: o'z boshqarmasidagilari
+      - bo'lim rahbari va oddiy xodim: o'z bo'limidagilari (+ o'zi)
     """
-    from app.models import Division, Vacation
-    from datetime import date as _date
-    if role in ('superadmin', 'director', 'deputy_director'):
-        provider_ids = [d.id for d in Division.query.filter_by(is_service_provider=True).all()]
-        cond = User.role == 'department_admin'
-        if provider_ids:
-            cond = db.or_(cond, User.division_id.in_(provider_ids))
-        q = User.query.filter(User.is_active == True).filter(cond)
-    elif role == 'admin':
-        # Boshqarma rahbari o'z boshqarmasidagi bo'lim rahbarlariga ham,
-        # bevosita xodim/agentlarga ham yuklay oladi (ilgari faqat bo'lim
-        # rahbarlari edi — kichik bo'linmalarda oraliq bo'g'in ortiqcha).
-        q = User.query.filter(
-            User.is_active == True,
-            User.role.in_(('department_admin',) + tuple(WORKER_ROLES)),
-            User.department_id == dept_id,
-        )
-    elif role == 'department_admin':
-        cond = db.and_(User.role.in_(WORKER_ROLES), User.division_id == div_id)
-        own_div = Division.query.get(div_id) if div_id else None
-        if own_div and own_div.is_service_provider:
-            peer_div_ids = [d.id for d in Division.query.filter(
-                Division.is_service_provider == True, Division.id != div_id
-            ).all()]
-            if peer_div_ids:
-                cond = db.or_(
-                    cond,
-                    db.and_(User.role == 'department_admin',
-                            User.division_id.in_(peer_div_ids)),
-                )
-        q = User.query.filter(User.is_active == True).filter(cond)
-    else:
+    ids = interactive_holder_ids(category_id)
+    if role not in FULL_ACCESS_ROLES:
+        if role == 'admin':
+            ids &= _team_ids('admin', dept_id, div_id, user_id)
+        elif div_id:
+            ids &= _team_ids('department_admin', dept_id, div_id, user_id)
+        else:
+            ids &= {user_id}
+    ids -= _on_vacation_ids()
+    if not ids:
         return []
-    today = _date.today()
-    on_vacation = {v.user_id for v in Vacation.query.filter(
-        Vacation.from_date <= today, Vacation.to_date >= today
-    ).all()}
-    if on_vacation:
-        q = q.filter(~User.id.in_(on_vacation))
-    return q.order_by(User.full_name).all()
+    return (User.query
+            .filter(User.id.in_(ids), User.is_active == True)
+            .order_by(User.full_name).all())
+
+
+def _can_assign(role, user_id, req):
+    """Arizani (qayta) yuklay oladimi. Rahbar — o'ziga ko'rinadigan har
+    qanday arizani, oddiy xodim — navbatdagi yoki o'ziga biriktirilganini."""
+    if req.status in ('completed', 'rejected'):
+        return False
+    if is_admin_or_above(role) or role == 'department_admin':
+        return True
+    return req.status in ('new', 'in_progress') and req.assigned_to in (None, user_id)
 
 
 @interactive_req_bp.route('/assignable-workers', methods=['GET'])
 @jwt_required()
 def assignable_workers():
-    """Joriy foydalanuvchi arizani biriktira oladigan xodimlar ro'yxati"""
+    """Arizani yuklash mumkin bo'lgan xodimlar.
+
+    `?request_id=` yoki `?department_id=` (toifa) — shu toifa bo'yicha.
+    Parametrsiz — joriy xodimning barcha toifalari bo'yicha.
+    """
     role, dept_id, div_id = get_scope(get_jwt())
-    if not is_any_admin(role):
-        return jsonify([])
-    return jsonify([w.to_dict() for w in _assignable_workers(role, dept_id, div_id)])
+    user_id = int(get_jwt_identity())
+    cats = _visible_categories(role, dept_id, user_id)
+
+    if request.args.get('request_id'):
+        r = _visible_request(int(request.args['request_id']), role, dept_id, div_id, user_id)
+        if r is None or not _can_assign(role, user_id, r):
+            return jsonify([])
+        cat_ids = [r.department_id]
+    elif request.args.get('department_id'):
+        cat_ids = [int(request.args['department_id'])]
+        if cats is not None and cat_ids[0] not in cats:
+            return jsonify([])
+    else:
+        cat_ids = sorted(cats) if cats is not None else [
+            d.id for d in ServiceDepartment.query.all()]
+
+    seen = {}
+    for cid in cat_ids:
+        for w in _assignable_workers(role, dept_id, div_id, user_id, cid):
+            seen[w.id] = w
+    workers = sorted(seen.values(), key=lambda w: w.full_name or '')
+    return jsonify([w.to_dict() for w in workers])
 
 
 @interactive_req_bp.route('/<int:req_id>/assign', methods=['POST'])
 @jwt_required()
 def assign(req_id):
-    """Rahbar arizani xodimga biriktiradi (status → in_progress).
-       Faqat ierarxiya bo'yicha ruxsat etilgan xodimga."""
-    role, dept_id, div_id = get_scope(get_jwt())
-    if not is_any_admin(role):
-        return jsonify({'error': "Ruxsat yo'q"}), 403
+    """Arizani xodimga yuklash yoki boshqaga qayta yuklash (status → in_progress).
 
-    r = InteractiveRequest.query.get_or_404(req_id)
+    Bo'lim rahbari — o'z bo'limi xodimlariga; oddiy xodim — navbatdagi yoki
+    o'ziga biriktirilgan arizani o'zi olishi yoki hamkasbiga berishi mumkin.
+    Faqat shu toifa berilgan xodimga.
+    """
+    role, dept_id, div_id = get_scope(get_jwt())
+    user_id = int(get_jwt_identity())
+
+    r = _visible_request(req_id, role, dept_id, div_id, user_id)
+    if r is None:
+        return jsonify({'error': 'Ariza topilmadi'}), 404
     if r.status in ('completed', 'rejected'):
         return jsonify({'error': "Yakunlangan arizani qayta biriktirib bo'lmaydi"}), 400
+    if not _can_assign(role, user_id, r):
+        return jsonify({'error': "Ruxsat yo'q"}), 403
 
     data = request.get_json() or {}
     worker_id = data.get('user_id')
@@ -534,7 +681,7 @@ def assign(req_id):
     if vac:
         return jsonify({'error': f"Bu xodim tatilda ({vac.type_label if hasattr(vac,'type_label') else vac.type}), biriktirib bo'lmaydi"}), 400
 
-    allowed_ids = {w.id for w in _assignable_workers(role, dept_id, div_id)}
+    allowed_ids = {w.id for w in _assignable_workers(role, dept_id, div_id, user_id, r.department_id)}
     if int(worker_id) not in allowed_ids:
         return jsonify({'error': "Bu xodimga biriktirish huquqingiz yo'q"}), 403
 
@@ -542,39 +689,26 @@ def assign(req_id):
     if not worker or not worker.is_active:
         return jsonify({'error': 'Xodim topilmadi'}), 404
 
-    actor = User.query.get(int(get_jwt_identity()))
-    actor_id = actor.id
+    actor = User.query.get(user_id)
     now = datetime.now(timezone.utc)
-
-    # Peer bo'lim rahbariga uzatish: dept_admin → boshqa dept_admin bo'lsa
-    # bu "uzatish" hisoblanadi, status yangi ko'rinishida qabul qiluvchiga
-    # tushadi (u o'z xodimiga biriktirish uchun).
-    is_transfer = (
-        role == 'department_admin'
-        and worker.role == 'department_admin'
-        and worker.id != actor_id
-    )
 
     prev_assignee = r.assignee.full_name if r.assignee else None
     r.assigned_to = worker.id
-    r.assigned_by = actor_id
+    r.assigned_by = user_id
     r.assigned_at = now
-    new_status = 'new' if is_transfer else 'in_progress'
-    r.status = new_status
+    r.status = 'in_progress'
 
-    if is_transfer:
-        target_div = worker.division.name if worker.division else worker.full_name
-        note = f"🔄 Bo'lim rahbari {actor.full_name} → {target_div} bo'limiga uzatildi ({worker.full_name})"
+    if worker.id == user_id and not prev_assignee:
+        note = f"{worker.full_name} arizani o'zi qabul qildi"
     elif prev_assignee and prev_assignee != worker.full_name:
         note = f"{prev_assignee} → {worker.full_name} ga qayta biriktirildi"
     else:
         note = f"{worker.full_name} xodimga biriktirildi"
-    _log_history(r, new_status, actor=actor, note=note)
+    _log_history(r, 'in_progress', actor=actor, note=note)
 
-    log_audit('transfer' if is_transfer else 'assign',
-              'interactive_request', r.id,
+    log_audit('assign', 'interactive_request', r.id,
               entity_label=f"{r.tabel_num} → {worker.full_name}")
-    events.interactive_assigned(r, worker.id, actor=actor, is_transfer=is_transfer)
+    events.interactive_assigned(r, worker.id, actor=actor)
     db.session.commit()
     return jsonify(r.to_dict())
 
@@ -611,18 +745,16 @@ def submit_review(req_id):
     return jsonify(r.to_dict())
 
 
-def _can_review(role, div_id, user_id, req):
+def _can_review(role, dept_id, div_id, user_id, req):
     """Rahbar arizani review qila oladimi (approve/return/reject)?
-       - admin+ (boshqarma rahbari va yuqori): hammasi
-       - department_admin (bo'lim rahbari): faqat o'z bo'limi a'zolariga yoki
-         o'ziga biriktirilgan arizalar
+       - superadmin/direksiya: hammasi
+       - boshqarma / bo'lim rahbari: faqat o'z boshqarmasi / bo'limi
+         a'zolariga yoki o'ziga biriktirilgan arizalar
     """
-    if is_admin_or_above(role):
+    if role in FULL_ACCESS_ROLES:
         return True
-    if role == 'department_admin':
-        member_ids = div_user_ids(div_id) if div_id else set()
-        member_ids.add(user_id)
-        return req.assigned_to in member_ids
+    if role in ('admin', 'department_admin'):
+        return req.assigned_to in _team_ids(role, dept_id, div_id, user_id)
     return False
 
 
@@ -634,7 +766,7 @@ def approve(req_id):
     user_id = int(get_jwt_identity())
 
     r = InteractiveRequest.query.get_or_404(req_id)
-    if not _can_review(role, div_id, user_id, r):
+    if not _can_review(role, dept_id, div_id, user_id, r):
         return jsonify({'error': "Ruxsat yo'q"}), 403
 
     if r.status != 'pending_review':
@@ -661,7 +793,7 @@ def return_to_worker(req_id):
     user_id = int(get_jwt_identity())
 
     r = InteractiveRequest.query.get_or_404(req_id)
-    if not _can_review(role, div_id, user_id, r):
+    if not _can_review(role, dept_id, div_id, user_id, r):
         return jsonify({'error': "Ruxsat yo'q"}), 403
 
     if r.status != 'pending_review':
@@ -695,7 +827,7 @@ def reject(req_id):
     user_id = int(get_jwt_identity())
 
     r = InteractiveRequest.query.get_or_404(req_id)
-    if not _can_review(role, div_id, user_id, r):
+    if not _can_review(role, dept_id, div_id, user_id, r):
         return jsonify({'error': "Ruxsat yo'q"}), 403
 
     if r.status in ('completed', 'rejected'):

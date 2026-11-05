@@ -85,11 +85,12 @@ def create_department():
     if not name:
         return jsonify({'error': 'Nom kiritilishi shart'}), 400
 
-    dept = ServiceDepartment(name=name, multi_type=bool(data.get('multi_type')))
+    dept = ServiceDepartment(name=name, multi_type=bool(data.get('multi_type')),
+                             allow_walkin=bool(data.get('allow_walkin', True)))
     db.session.add(dept)
     db.session.flush()
     log_audit('create', 'service_department', dept.id, entity_label=dept.name,
-              details=f"multi_type={dept.multi_type}")
+              details=f"multi_type={dept.multi_type}, allow_walkin={dept.allow_walkin}")
     db.session.commit()
     return jsonify(dept.to_dict(type_count=0)), 201
 
@@ -110,8 +111,10 @@ def update_department(dept_id):
     dept.name = name
     if 'multi_type' in data:
         dept.multi_type = bool(data['multi_type'])
+    if 'allow_walkin' in data:
+        dept.allow_walkin = bool(data['allow_walkin'])
     log_audit('update', 'service_department', dept.id, entity_label=dept.name,
-              details=f"multi_type={dept.multi_type}")
+              details=f"multi_type={dept.multi_type}, allow_walkin={dept.allow_walkin}")
     db.session.commit()
     return jsonify(dept.to_dict())
 

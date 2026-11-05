@@ -99,6 +99,9 @@ class ServiceDepartment(db.Model):
     name = db.Column(db.Text, nullable=False)
     # True bo'lsa — arizada bu bo'limning bir nechta xizmat turini birga tanlash mumkin
     multi_type = db.Column(db.Boolean, default=False, nullable=False)
+    # False bo'lsa — bu toifadagi ariza faqat API orqali keladi, xodim telefon
+    # orqali qo'lda yarata olmaydi (masalan Создание учётных записей)
+    allow_walkin = db.Column(db.Boolean, default=True, nullable=False)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     types = db.relationship(
@@ -114,6 +117,7 @@ class ServiceDepartment(db.Model):
             'id': self.id,
             'name': self.name,
             'multi_type': bool(self.multi_type),
+            'allow_walkin': bool(self.allow_walkin),
             'type_count': type_count if type_count is not None else len(self.types),
             'created_at': self.created_at.isoformat() if self.created_at else None,
         }
@@ -810,6 +814,10 @@ class User(db.Model):
     registration_token = db.Column(db.String(64), unique=True, nullable=True)
     division_id = db.Column(db.Integer, db.ForeignKey('divisions.id'), nullable=True)
     department_id = db.Column(db.Integer, db.ForeignKey('departments.id'), nullable=True)
+    # Xodim ishlaydigan interaktiv ariza toifalari (service_departments.id
+    # ro'yxati). NULL — rol berishda hali sozlanmagan: bo'linmasi xizmat
+    # ko'rsatsa barcha toifalar (avvalgi xatti-harakat), aks holda hech biri.
+    interactive_categories = db.Column(db.JSON, nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     managed_department = db.relationship('Department', foreign_keys=[department_id], lazy=True)
@@ -842,6 +850,7 @@ class User(db.Model):
             # Xodimning bo'linmasi interaktiv xizmat ko'rsatadimi (interaktiv arizalar
             # sahifasiga kirish huquqini aniqlash uchun)
             'division_is_service_provider': bool(div.is_service_provider) if div else False,
+            'interactive_categories': self.effective_interactive_categories(),
             'department_id': self.department_id,
             'department_name': dept.name if dept else None,
             # Amaldagi qo'shimcha huquqlar (masalan 'project.edit') — rolga
@@ -882,6 +891,11 @@ class User(db.Model):
         """Amaldagi huquqlar: roliga berilgani + shaxsiy berilgani."""
         from app.utils import effective_permissions
         return effective_permissions(self)
+
+    def effective_interactive_categories(self):
+        """Amaldagi interaktiv ariza toifalari (utils.interactive_categories_for)"""
+        from app.utils import interactive_categories_for
+        return interactive_categories_for(self)
 
     def _active_vacation_dict(self):
         """Bugun amalda bo'lgan tatil (agar bor bo'lsa) — assignee ro'yxatida

@@ -101,6 +101,8 @@ function UserRoles() {
   const [departments, setDepartments] = useState([])
   const [divisions, setDivisions] = useState([])
   const [permDefs, setPermDefs] = useState([])
+  // Interaktiv ariza toifalari ("Заявка для ДИТ", "Создание учётных записей")
+  const [categories, setCategories] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
 
@@ -110,6 +112,8 @@ function UserRoles() {
   const [newDeptId, setNewDeptId] = useState('')
   const [newDivId, setNewDivId] = useState('')
   const [newPerms, setNewPerms] = useState([])
+  const [newCats, setNewCats] = useState([])
+  const [catsTouched, setCatsTouched] = useState(false)
   const [filteredDivs, setFilteredDivs] = useState([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -119,16 +123,18 @@ function UserRoles() {
   const loadAll = async () => {
     setLoading(true)
     try {
-      const [uRes, dRes, pRes] = await Promise.all([
+      const [uRes, dRes, pRes, cRes] = await Promise.all([
         api.get('/permissions/users'),
         api.get('/departments'),
         api.get('/permissions/definitions').catch(() => ({ data: [] })),
+        api.get('/public/interactive/departments').catch(() => ({ data: [] })),
       ])
       setUsers(uRes.data.filter(u => u.id !== currentUser.id))
       setDepartments(dRes.data)
       const allDivs = dRes.data.flatMap(d => d.divisions || [])
       setDivisions(allDivs)
       setPermDefs(pRes.data || [])
+      setCategories(cRes.data || [])
     } catch {
       // ignore
     } finally {
@@ -142,8 +148,15 @@ function UserRoles() {
     setNewDeptId(u.department_id || '')
     setNewDivId(u.division_id || '')
     setNewPerms(u.permissions || [])
+    setNewCats(u.interactive_categories || [])
+    setCatsTouched(false)
     setError('')
     updateFilteredDivs(u.department_id, divisions)
+  }
+
+  const toggleCat = (id) => {
+    setCatsTouched(true)
+    setNewCats(prev => prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id])
   }
 
   const togglePerm = (key) => {
@@ -193,6 +206,10 @@ function UserRoles() {
         department_id: newDeptId ? parseInt(newDeptId) : null,
         division_id: newDivId ? parseInt(newDivId) : null,
         permissions: newPerms,
+        // Toifalar faqat o'zgartirilganda yuboriladi — tegilmasa xodim
+        // avvalgidek bo'linmasi orqali olgan toifalarida qoladi
+        ...((catsTouched || modal.interactive_categories_set)
+          ? { interactive_categories: newCats } : {}),
       })
       setModal(null)
       await loadAll()
@@ -202,6 +219,8 @@ function UserRoles() {
       setSaving(false)
     }
   }
+
+  const categoryNames = Object.fromEntries(categories.map(c => [c.id, c.name]))
 
   const filtered = users.filter(u =>
     u.full_name.toLowerCase().includes(search.toLowerCase()) ||
@@ -252,7 +271,7 @@ function UserRoles() {
             </span>
           </h2>
           {topLeadership.map(u => (
-            <UserCard key={u.id} u={u} onEdit={openModal}
+            <UserCard key={u.id} u={u} onEdit={openModal} categoryNames={categoryNames}
               readonly={u.role === 'superadmin'} />
           ))}
         </div>
@@ -280,7 +299,7 @@ function UserRoles() {
                   📁 {divName} <span style={{ fontWeight: 400 }}>({divUsers.length})</span>
                 </div>
                 {divUsers.map(u => (
-                  <UserCard key={u.id} u={u} onEdit={openModal}
+                  <UserCard key={u.id} u={u} onEdit={openModal} categoryNames={categoryNames}
                     readonly={u.role === 'superadmin'} />
                 ))}
               </div>
@@ -413,6 +432,35 @@ function UserRoles() {
               </div>
             )}
 
+            {/* Interaktiv arizalar — har bir toifa alohida beriladi va
+                toifalar bir-biriga ko'rinmaydi */}
+            {categories.length > 0 && (
+              <div className="form-group">
+                <label>{t('roles.field.interactive')}</label>
+                <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8 }}>
+                  {t('roles.interactive.hint')}
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {categories.map(c => (
+                    <label key={c.id}
+                      className={'role-option' + (newCats.includes(c.id) ? ' role-option--on' : '')}
+                      style={{ padding: 10 }}>
+                      <input type="checkbox" checked={newCats.includes(c.id)}
+                        onChange={() => toggleCat(c.id)} style={{ marginTop: 2 }} />
+                      <div>
+                        <div className="role-option__title">📥 {c.name}</div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+                {!modal.interactive_categories_set && !catsTouched && newCats.length > 0 && (
+                  <p style={{ fontSize: 11, color: '#f59e0b', marginTop: 6 }}>
+                    {t('roles.interactive.legacy')}
+                  </p>
+                )}
+              </div>
+            )}
+
             <div className="modal-actions">
               <button className="btn btn-outline" onClick={() => setModal(null)}>{t('btn.cancel')}</button>
               <button className="btn btn-primary" onClick={saveRole} disabled={saving}>
@@ -437,7 +485,7 @@ function permDesc(t, p) {
   return t(key) === key ? p.description : t(key)
 }
 
-function UserCard({ u, onEdit, readonly }) {
+function UserCard({ u, onEdit, readonly, categoryNames = {} }) {
   const { t } = useI18n()
   const roleColor = ROLE_COLORS[u.role] || 'var(--text-muted)'
   return (
@@ -453,6 +501,12 @@ function UserCard({ u, onEdit, readonly }) {
             <span key={p} className="role-chip"
               style={{ background: 'rgba(6, 214, 160, 0.15)', color: 'var(--accent)' }}>
               {t(`perm.${p}`) === `perm.${p}` ? p : t(`perm.${p}`)}
+            </span>
+          ))}
+          {(u.interactive_categories || []).map(id => (
+            <span key={`ic-${id}`} className="role-chip"
+              style={{ background: 'rgba(99,102,241,0.12)', color: '#6366f1' }}>
+              📥 {categoryNames[id] || id}
             </span>
           ))}
         </div>

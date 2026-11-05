@@ -4,6 +4,7 @@ from flask_jwt_extended import jwt_required, get_jwt, get_jwt_identity
 from app import db
 from app.models import (
     User, Division, RolePage, UserPage, AdminPermission, RolePermission,
+    ServiceDepartment,
 )
 from app.utils import (
     get_scope, is_superadmin, can_manage_roles, can_manage_page_access, log_audit,
@@ -11,7 +12,7 @@ from app.utils import (
     DEFAULT_ROLE_PAGES, role_page_matrix, allowed_pages, allowed_pages_for_user,
     user_page_override, PERMISSION_DEFS, PERMISSION_KEYS,
     DEFAULT_ROLE_PERMISSIONS, FULL_ACCESS_ROLES, role_permission_matrix,
-    role_permissions, effective_permissions,
+    role_permissions, effective_permissions, interactive_categories_for,
 )
 
 permissions_bp = Blueprint('permissions', __name__)
@@ -80,6 +81,10 @@ def set_role():
     div_id = data.get('division_id') or None
     # `permissions` yuborilmasa mavjud huquqlar tegilmaydi (eski mijozlar uchun)
     permissions = data.get('permissions')
+    # Interaktiv ariza toifalari (service_departments.id) — yuborilmasa tegilmaydi
+    categories = data.get('interactive_categories')
+    if categories is not None and not isinstance(categories, list):
+        return jsonify({'error': "interactive_categories ro'yxat bo'lishi kerak"}), 400
 
     if new_role not in VALID_ROLES:
         return jsonify({'error': "Noto'g'ri rol"}), 400
@@ -102,6 +107,10 @@ def set_role():
     granted = None
     if permissions is not None:
         granted = _set_permissions(user, permissions)
+    if categories is not None:
+        valid = {d.id for d in ServiceDepartment.query.all()}
+        user.interactive_categories = sorted(
+            {int(c) for c in categories if str(c).isdigit() and int(c) in valid})
 
     if new_role == 'admin':
         user.department_id = dept_id
@@ -125,6 +134,8 @@ def set_role():
     details = f"role={new_role}, dept_id={user.department_id}, div_id={user.division_id}"
     if granted is not None:
         details += f", huquqlar={','.join(granted) or '—'}"
+    if categories is not None:
+        details += f", toifalar={','.join(map(str, user.interactive_categories)) or '—'}"
     log_audit('set_role', 'user', user.id, entity_label=user.full_name, details=details)
     db.session.commit()
     return jsonify({'message': "Rol o'zgartirildi", 'user': _user_dict(user)})
@@ -515,5 +526,9 @@ def _user_dict(u):
         'division_id': u.division_id,
         'division_name': div.name if div else None,
         'permissions': u.extra_permissions(),
+        # Amaldagi toifalar; `_set` False — rol berishda hali sozlanmagan
+        # (bo'linmasi xizmat ko'rsatgani uchun avtomatik berilgan)
+        'interactive_categories': interactive_categories_for(u),
+        'interactive_categories_set': u.interactive_categories is not None,
         'is_active': u.is_active,
     }

@@ -242,8 +242,34 @@ def interactive_assigned(req, user_id, actor=None, is_transfer=False):
     )
 
 
+def _review_recipients(req):
+    """Tekshiruvga tushgan arizani kim tasdiqlaydi.
+
+    Arizani rahbar yuklagan bo'lsa — o'sha rahbar. Avtomatik biriktirilgan
+    yoki xodim hamkasbiga bergan bo'lsa — ijrochining bo'lim rahbarlari
+    (ular yo'q bo'lsa boshqarma rahbari).
+    """
+    from app.models import User
+    assigner = req.assigner
+    if assigner is not None and assigner.role not in ('user', 'agent'):
+        return [assigner.id]
+    worker = req.assignee
+    if worker is None:
+        return []
+    if worker.division_id:
+        heads = User.query.filter_by(division_id=worker.division_id,
+                                     role='department_admin', is_active=True).all()
+        if heads:
+            return [h.id for h in heads]
+    dept_id = worker.department_id or (worker.division.department_id if worker.division else None)
+    if dept_id:
+        return [u.id for u in User.query.filter_by(department_id=dept_id,
+                                                   role='admin', is_active=True).all()]
+    return []
+
+
 def interactive_status_changed(req, status, actor=None, reason=''):
-    """pending_review → biriktirgan rahbarga, qolgani → ijrochiga."""
+    """pending_review → tasdiqlovchi rahbarga, qolgani → ijrochiga."""
     label = _request_label(req)
     common = {
         'entity_type': 'interactive_request',
@@ -254,7 +280,7 @@ def interactive_status_changed(req, status, actor=None, reason=''):
 
     if status == 'pending_review':
         return notify(
-            req.assigned_by,
+            _review_recipients(req),
             event=INTERACTIVE_REVIEW,
             title='Ariza tekshiruvga tushdi',
             body=label,

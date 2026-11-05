@@ -196,23 +196,82 @@ def allowed_pages_for_user(user):
     """Aniq xodim ko'ra oladigan sahifalar.
 
     Tartib: shaxsiy sozlama (user_pages) → roldagi qiymat (role_pages) →
-    standart qiymat. Bo'linmasi interaktiv xizmat ko'rsatsa, qo'shimcha
-    sahifa har qanday holatda ochiladi (avvalgi xatti-harakat).
+    standart qiymat. Xodimga interaktiv ariza toifasi berilgan bo'lsa
+    (rol berishda yoki bo'linmasi xizmat ko'rsatgani uchun), arizalar
+    sahifasi har qanday holatda ochiladi.
     """
     if user is None:
         return []
     if user.role in LOCKED_ROLES:
         return list(PAGE_KEYS)
 
-    div = user.division
-    is_provider = bool(div.is_service_provider) if div else False
-
     override = user_page_override(user.id)
     pages = override if override is not None else allowed_pages(user.role)
 
-    if is_provider:
+    if interactive_categories_for(user):
         pages = _sorted_pages(list(pages) + list(SERVICE_PROVIDER_PAGES))
     return list(pages)
+
+
+# =========================================================================
+# INTERAKTIV ARIZA TOIFALARI
+#
+# Toifa — service_departments yozuvi ("Заявка для ДИТ", "Создание учётных
+# записей"). Har bir xodimga rol berishda o'zi ishlaydigan toifalar
+# beriladi va u faqat shu toifadagi arizalarni ko'radi va bajaradi —
+# toifalar bir-biriga ko'rinmaydi.
+#
+# `users.interactive_categories` NULL bo'lsa (hali sozlanmagan) avvalgi
+# qoida ishlaydi: bo'linmasi xizmat ko'rsatsa yoki agent bo'lsa — barcha
+# toifalar, aks holda hech biri.
+# =========================================================================
+
+def _all_category_ids():
+    # User.to_dict har xodim uchun chaqiradi — so'rov davomida bir marta o'qiymiz
+    from flask import g, has_request_context
+    from app.models import ServiceDepartment
+    if has_request_context() and hasattr(g, '_interactive_category_ids'):
+        return list(g._interactive_category_ids)
+    ids = [d.id for d in ServiceDepartment.query.order_by(ServiceDepartment.id).all()]
+    if has_request_context():
+        g._interactive_category_ids = ids
+    return list(ids)
+
+
+def _legacy_holder(user, provider_div_ids=None):
+    if user.role == 'agent':
+        return True
+    if provider_div_ids is not None:
+        return user.division_id in provider_div_ids
+    div = user.division
+    return bool(div.is_service_provider) if div else False
+
+
+def interactive_categories_for(user):
+    """Xodim ishlaydigan toifalar (service_departments.id ro'yxati)"""
+    if user is None:
+        return []
+    cats = user.interactive_categories
+    if cats is not None:
+        valid = set(_all_category_ids())
+        return sorted({int(c) for c in cats if str(c).isdigit() and int(c) in valid})
+    return _all_category_ids() if _legacy_holder(user) else []
+
+
+def interactive_holder_ids(category_id):
+    """Shu toifada ishlaydigan faol xodimlar ID'lari"""
+    from app.models import User, Division
+    category_id = int(category_id)
+    provider_div_ids = {d.id for d in Division.query.filter_by(is_service_provider=True).all()}
+    ids = set()
+    for u in User.query.filter(User.is_active.is_(True)).all():
+        cats = u.interactive_categories
+        if cats is not None:
+            if category_id in {int(c) for c in cats if str(c).isdigit()}:
+                ids.add(u.id)
+        elif _legacy_holder(u, provider_div_ids):
+            ids.add(u.id)
+    return ids
 
 
 def can_view_page(role, page_key, is_service_provider=False):
