@@ -296,8 +296,12 @@ def interactive_status_changed(req, status, actor=None, reason=''):
         return []
 
     title, code = titles[status]
+    recipients = req.assigned_to
+    if status == 'rejected' and actor is not None and actor.id == req.assigned_to:
+        # Ijrochi o'zi rad etdi — rahbari bilsin
+        recipients = _review_recipients(req)
     return notify(
-        req.assigned_to,
+        recipients,
         event=code,
         title=title,
         body=f'{label} — {reason}' if reason else label,

@@ -138,6 +138,11 @@ def set_role():
         details += f", toifalar={','.join(map(str, user.interactive_categories)) or '—'}"
     log_audit('set_role', 'user', user.id, entity_label=user.full_name, details=details)
     db.session.commit()
+
+    # Toifada yagona ijrochi qolgan bo'lsa — navbatdagi arizalar unga o'tadi
+    from app.routes.interactive_requests import assign_backlog_to_sole_workers
+    if assign_backlog_to_sole_workers():
+        db.session.commit()
     return jsonify({'message': "Rol o'zgartirildi", 'user': _user_dict(user)})
 
 

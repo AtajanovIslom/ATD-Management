@@ -124,11 +124,7 @@ def _auto_assignee(category_id):
     return None
 
 
-def _auto_assign(req, category_id):
-    """API arizasini yagona ijrochiga biriktiradi (bo'lsa). commit qilmaydi."""
-    worker = _auto_assignee(category_id)
-    if worker is None:
-        return None
+def _assign_auto(req, worker):
     req.assigned_to = worker.id
     req.assigned_by = None
     req.assigned_at = datetime.now(timezone.utc)
@@ -136,7 +132,39 @@ def _auto_assign(req, category_id):
     _log_history(req, 'in_progress', actor=None,
                  note=f"Avtomatik biriktirildi: {worker.full_name} (toifadagi yagona ijrochi)")
     events.interactive_assigned(req, worker.id, actor=None)
+
+
+def _auto_assign(req, category_id):
+    """API arizasini yagona ijrochiga biriktiradi (bo'lsa). commit qilmaydi."""
+    worker = _auto_assignee(category_id)
+    if worker is not None:
+        _assign_auto(req, worker)
     return worker
+
+
+def assign_backlog_to_sole_workers():
+    """Navbatda turgan (biriktirilmagan, yangi) arizalarni toifadagi yagona
+    ijrochiga o'tkazadi. Avtomatik biriktirish qo'shilishidan oldin kelgan
+    yoki ijrochilar soni kamaygan toifadagi arizalar shu yo'l bilan uniki
+    bo'ladi. commit qilmaydi; nechta ariza o'tkazilganini qaytaradi.
+    """
+    pending = (InteractiveRequest.query
+               .filter(InteractiveRequest.assigned_to.is_(None),
+                       InteractiveRequest.status == 'new')
+               .order_by(InteractiveRequest.created_at).all())
+    by_cat = {}
+    for req in pending:
+        by_cat.setdefault(req.department_id, []).append(req)
+
+    moved = 0
+    for cat_id, reqs in by_cat.items():
+        worker = _auto_assignee(cat_id)
+        if worker is None:
+            continue
+        for req in reqs:
+            _assign_auto(req, worker)
+            moved += 1
+    return moved
 
 
 # =========================================================================
@@ -335,6 +363,9 @@ def my_categories():
 def list_requests():
     role, dept_id, div_id = get_scope(get_jwt())
     user_id = int(get_jwt_identity())
+
+    if assign_backlog_to_sole_workers():
+        db.session.commit()
 
     q = _list_scope_filter(InteractiveRequest.query, role, dept_id, div_id, user_id)
 
@@ -822,12 +853,17 @@ def return_to_worker(req_id):
 @interactive_req_bp.route('/<int:req_id>/reject', methods=['POST'])
 @jwt_required()
 def reject(req_id):
-    """Rahbar: rad etadi (butunlay bekor qiladi)"""
+    """Rad etish (butunlay bekor qiladi) — sabab majburiy.
+
+    Rahbar — o'zi tekshiradigan arizani; ijrochi — o'ziga biriktirilgan
+    arizani o'qib chiqib bajarib bo'lmasa (rahbarga xabar boradi).
+    """
     role, dept_id, div_id = get_scope(get_jwt())
     user_id = int(get_jwt_identity())
 
     r = InteractiveRequest.query.get_or_404(req_id)
-    if not _can_review(role, dept_id, div_id, user_id, r):
+    is_assignee = r.assigned_to == user_id and r.status in ('new', 'in_progress')
+    if not (is_assignee or _can_review(role, dept_id, div_id, user_id, r)):
         return jsonify({'error': "Ruxsat yo'q"}), 403
 
     if r.status in ('completed', 'rejected'):

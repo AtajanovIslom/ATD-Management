@@ -50,6 +50,7 @@ export default {
 
   // Amallar
   'ir.action.assign': '📌 Xodimga biriktirish',
+  'ir.action.accept': '✋ Qabul qilish',
   'ir.action.reassign': '🔄 Boshqa xodimga',
   'ir.action.done': '✅ Bajarildi',
   'ir.action.approve': '✔️ Tasdiqlash',

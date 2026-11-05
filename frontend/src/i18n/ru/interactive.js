@@ -50,6 +50,7 @@ export default {
 
   // Действия
   'ir.action.assign': '📌 Назначить сотруднику',
+  'ir.action.accept': '✋ Принять',
   'ir.action.reassign': '🔄 Другому сотруднику',
   'ir.action.done': '✅ Выполнено',
   'ir.action.approve': '✔️ Подтвердить',

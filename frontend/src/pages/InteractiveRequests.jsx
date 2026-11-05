@@ -55,10 +55,10 @@ export default function InteractiveRequests() {
     setLoading(true)
     try {
       const params = filter ? `?status=${filter}` : ''
-      const [rRes, sRes] = await Promise.all([
-        api.get('/interactive-requests' + params),
-        api.get('/interactive-requests/stats/summary'),
-      ])
+      // Ketma-ket: ro'yxat so'rovi navbatdagi arizalarni yagona ijrochiga
+      // o'tkazadi, statistika shundan keyingi holatni ko'rsatsin
+      const rRes = await api.get('/interactive-requests' + params)
+      const sRes = await api.get('/interactive-requests/stats/summary')
       setItems(rRes.data)
       setSummary(sRes.data)
     } finally {
@@ -122,6 +122,22 @@ export default function InteractiveRequests() {
   }
 
   const isMine = (r) => r.assigned_to === user?.id
+  // Navbatdagi ariza — hali hech kimga biriktirilmagan, kim birinchi olsa
+  const isQueued = (r) => r.status === 'new' && !r.assigned_to
+
+  // "Qabul qilish" — arizani bajarishni o'ziga olish
+  const acceptReq = async (req) => {
+    setBusy(true)
+    try {
+      await api.post(`/interactive-requests/${req.id}/assign`, { user_id: user.id })
+      await load()
+      if (selected?.id === req.id) openReq(req)
+    } catch (err) {
+      alert(err.response?.data?.error || t('state.error'))
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const handleDelete = async (req) => {
     if (!window.confirm(t('ir.delete.confirm', { id: req.id }))) return
@@ -229,7 +245,13 @@ export default function InteractiveRequests() {
                       )}
                     </td>
                     <td style={{ fontSize: 12 }}>{r.assignee_name || '—'}</td>
-                    <td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      {isQueued(r) && (
+                        <button className="btn btn-primary btn-sm" disabled={busy} style={{ marginRight: 6 }}
+                          onClick={e => { e.stopPropagation(); acceptReq(r) }}>
+                          {t('ir.action.accept')}
+                        </button>
+                      )}
                       <button className="btn btn-outline btn-sm" onClick={e => { e.stopPropagation(); openReq(r) }}>
                         {t('ir.open')}
                       </button>
@@ -249,6 +271,8 @@ export default function InteractiveRequests() {
             isAdmin={isAdmin}
             onClose={() => setSelected(null)}
             onAction={openAction}
+            onAccept={acceptReq}
+            busy={busy}
             userId={user?.id}
             onApprove={(req) => submitModalWith(req, 'approve')}
             onEdit={(req) => setEditReq(req)}
@@ -318,7 +342,7 @@ export default function InteractiveRequests() {
 
 /* -------------------------- Ariza tafsilotlari -------------------------- */
 
-function RequestDetail({ r, isMine, isAnyAdmin, isAdmin, userId, onClose, onAction, onApprove, onEdit, onDelete, t, fmt }) {
+function RequestDetail({ r, isMine, isAnyAdmin, isAdmin, userId, onClose, onAction, onAccept, busy, onApprove, onEdit, onDelete, t, fmt }) {
   const canEdit = isAnyAdmin && r.status !== 'completed' && r.status !== 'rejected'
   // Rahbar har qanday ochiq arizani, xodim — navbatdagi yoki o'zinikini
   // (o'zi olishi yoki hamkasbiga berishi uchun) yuklay oladi
@@ -437,8 +461,14 @@ function RequestDetail({ r, isMine, isAnyAdmin, isAdmin, userId, onClose, onActi
             ✏️ {t('btn.edit')}
           </button>
         )}
+        {canAssign && r.status === 'new' && !r.assigned_to && (
+          <button className="btn btn-primary" disabled={busy} onClick={() => onAccept(r)}>
+            {t('ir.action.accept')}
+          </button>
+        )}
         {canAssign && r.status === 'new' && (
-          <button className="btn btn-primary" onClick={() => onAction('assign', r)}>
+          <button className={r.assigned_to ? 'btn btn-primary' : 'btn btn-outline'}
+            onClick={() => onAction('assign', r)}>
             {t('ir.action.assign')}
           </button>
         )}
@@ -465,7 +495,9 @@ function RequestDetail({ r, isMine, isAnyAdmin, isAdmin, userId, onClose, onActi
           </>
         )}
 
-        {isAnyAdmin && r.status !== 'completed' && r.status !== 'rejected' && (
+        {(isAnyAdmin
+          ? r.status !== 'completed' && r.status !== 'rejected'
+          : isMine && ['new', 'in_progress'].includes(r.status)) && (
           <button className="btn btn-danger" onClick={() => onAction('reject', r)}>
             {t('ir.action.reject')}
           </button>
