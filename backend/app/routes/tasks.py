@@ -136,11 +136,21 @@ def _can_edit(task, actor):
 
 
 def _can_approve(task, actor):
-    """Tekshiruvdagi ishni qabul qilish/qaytarish. Rahbar o'zi yagona ijrochi
-    bo'lgan vazifani o'zi tasdiqlamaydi — uni yuqori rahbar ko'radi."""
-    if not _can_manage(task, actor):
+    """Tekshiruvdagi ishni qabul qilish/qaytarish.
+
+    Superadmin/direksiya — har qanday vazifani. Boshqarma yoki bo'lim rahbari
+    — faqat o'zi yoki qo'l ostidagi xodim yaratgan vazifani, va faqat o'zi
+    unda ijrochi bo'lmasa. Rahbar ishtirok etgan vazifani (masalan boshqarma
+    rahbari bo'lim rahbariga yuklagan ishni) yuqori rahbar tasdiqlaydi —
+    ilgari bo'lim rahbari bir nechta ijrochidan biri bo'lsa o'zi
+    tasdiqlay olardi.
+    """
+    if actor.is_full:
+        return True
+    if not actor.is_leader or _is_assignee(task, actor):
         return False
-    return actor.is_full or _worker_ids(task) != {actor.id}
+    # actor.scope rahbarning o'zini ham o'z ichiga oladi
+    return task.created_by in actor.scope
 
 
 def _can_delete(task, actor):
@@ -569,8 +579,11 @@ def apply_status_change(task, actor, new_status, data):
                   details=task.cancel_reason, actor=actor.user)
     elif new_status in ('completed', 'returned'):
         if not _can_approve(task, actor):
-            if manage:
-                return ("O'zingiz bajargan vazifani o'zingiz tasdiqlay olmaysiz", 403)
+            if actor.is_leader and is_assignee:
+                return ("Siz ishtirok etgan vazifani o'zingiz tasdiqlay olmaysiz — "
+                        "uni yuqori rahbar tasdiqlaydi", 403)
+            if actor.is_leader:
+                return ("Bu vazifani uni bergan rahbar yoki yuqori rahbar tasdiqlaydi", 403)
             return ('Faqat rahbar tasdiqlaydi', 403)
         # 'review' holatidan ko'lamidagi har qanday rahbar amal qiladi.
         # Tugallangan vazifani qaytarish faqat boshqarma rahbari va yuqori rollarga
@@ -583,6 +596,7 @@ def apply_status_change(task, actor, new_status, data):
         else:
             return ('Bu holatda amal qilib bo\'lmaydi', 400)
         task.completed_at = datetime.now(timezone.utc) if new_status == 'completed' else None
+        task.approved_by = actor.id if new_status == 'completed' else None
         log_audit('approve' if new_status == 'completed' else 'return', 'task',
                   task.id, entity_label=task.name,
                   details=(data.get('return_reason') or '').strip()[:200], actor=actor.user)
@@ -605,6 +619,8 @@ def apply_status_change(task, actor, new_status, data):
     if new_status != 'cancelled':
         task.cancelled_at = None
         task.cancel_reason = ''
+    if new_status != 'completed':
+        task.approved_by = None
 
     task.status = new_status
     events.task_status_changed(task, new_status, actor=actor.user,

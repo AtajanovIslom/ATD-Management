@@ -1229,10 +1229,13 @@ class Task(db.Model):
     created_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     completed_at = db.Column(db.DateTime)
+    # Kim tasdiqladi (tugallangan deb qabul qildi). Qaytarilsa tozalanadi.
+    approved_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     cancelled_at = db.Column(db.DateTime)
     cancel_reason = db.Column(db.Text, default='')
 
     creator = db.relationship('User', foreign_keys=[created_by], backref='created_tasks', lazy=True)
+    approver = db.relationship('User', foreign_keys=[approved_by], lazy=True)
     team = db.relationship('Team', lazy=True)
     assignee = db.relationship('User', foreign_keys=[assignee_id], lazy=True)
     assignees = db.relationship('User', secondary=task_assignees, lazy=True)
@@ -1271,6 +1274,8 @@ class Task(db.Model):
             'creator_name': self.creator.full_name if self.creator else None,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'completed_at': self.completed_at.isoformat() if self.completed_at else None,
+            'approved_by': self.approved_by,
+            'approver_name': self.approver.full_name if self.approver else None,
             'cancelled_at': self.cancelled_at.isoformat() if self.cancelled_at else None,
             'cancel_reason': self.cancel_reason or '',
             'is_overdue': self.is_overdue,
@@ -1286,6 +1291,7 @@ class Task(db.Model):
             'start_date': self.start_date.isoformat() if self.start_date else None,
             'deadline': self.deadline.isoformat() if self.deadline else None,
             'completed_at': self.completed_at.isoformat() if self.completed_at else None,
+            'approver_name': self.approver.full_name if self.approver else None,
             'cancelled_at': self.cancelled_at.isoformat() if self.cancelled_at else None,
             'team_name': self.team.name if self.team else None,
             'assignee_id': self.assignee_id,

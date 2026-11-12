@@ -311,6 +311,16 @@ def _init_database(app):
                     SELECT MAX(s.completed_at) FROM project_stages s WHERE s.project_id = p.id
                 )
                 WHERE p.status = 'completed' AND p.completed_at IS NULL""",
+            # Vazifani kim tasdiqlagani. Avval faqat audit jurnalida qolardi —
+            # tugallangan vazifalar uchun o'sha yerdan to'ldiriladi (faqat bo'sh
+            # bo'lganlari, shuning uchun har restartda bezarar).
+            "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS approved_by INTEGER REFERENCES users(id)",
+            """UPDATE tasks t SET approved_by = (
+                    SELECT a.user_id FROM audit_logs a
+                    WHERE a.entity_type = 'task' AND a.action = 'approve'
+                      AND a.entity_id = t.id AND a.user_id IS NOT NULL
+                    ORDER BY a.created_at DESC LIMIT 1)
+                WHERE t.status = 'completed' AND t.approved_by IS NULL""",
             # Vazifani bekor qilish
             "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMP",
             "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS cancel_reason TEXT DEFAULT ''",

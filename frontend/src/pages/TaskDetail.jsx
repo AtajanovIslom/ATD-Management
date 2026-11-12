@@ -429,6 +429,24 @@ export default function TaskDetail() {
               <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{t('field.status')}</span>
               <span className={`badge ${statusClass(task.status)}`}>{statusText(task.status)}</span>
             </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{t('task.info.creator')}</span>
+              <strong style={{ fontSize: 13, color: 'var(--text-primary)', textAlign: 'right' }}>{task.creator_name || '—'}</strong>
+            </div>
+            {task.status === 'completed' && (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{t('task.info.approvedBy')}</span>
+                  <strong style={{ fontSize: 13, color: 'var(--success, #10b981)', textAlign: 'right' }}>
+                    {task.approver_name || '—'}
+                  </strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{t('task.info.completedAt')}</span>
+                  <strong style={{ fontSize: 13, color: 'var(--text-primary)' }}>{formatShortDate(task.completed_at)}</strong>
+                </div>
+              </>
+            )}
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{t('task.info.reports')}</span>
               <strong style={{ fontSize: 13, color: 'var(--text-primary)' }}>{reports.length}</strong>
