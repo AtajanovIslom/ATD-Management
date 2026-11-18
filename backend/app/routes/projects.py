@@ -77,6 +77,40 @@ def can_manage_project(project):
     return has_permission('project.edit', claims) and can_view_project(project)
 
 
+def _is_stage_worker(stage, user_id):
+    """Shu bosqichning ijrochisimi (yakka mas'ul, ijrochilar ro'yxati yoki guruh)."""
+    user = User.query.get(user_id)
+    user_team_ids = {t.id for t in user.teams} if user else set()
+    stage_assignee_ids = {a.id for a in stage.assignees}
+    return (stage.assignee_id == user_id) or (user_id in stage_assignee_ids) or \
+        (not stage.assignee_id and not stage_assignee_ids and stage.team_id in user_team_ids)
+
+
+def can_approve_stage(stage):
+    """Tekshiruvdagi bosqich ijrosini qabul qilish / qaytarish.
+
+    - superadmin/direksiya: har qanday bosqich
+    - boshqarma rahbari: o'zi boshqaradigan loyihada
+    - bo'lim rahbari: faqat o'zi yaratgan loyihada
+    - "Loyihani tahrirlash" huquqi: tasdiqlamaydi
+    O'zi ijrochi bo'lgan bosqichni hech kim (direksiyadan tashqari) o'zi
+    tasdiqlamaydi — uni yuqori rahbar qabul qiladi. Ilgari loyihani
+    boshqara oladigan har kim, jumladan bo'lim rahbari o'zi bajargan
+    bosqichni ham tasdiqlay olardi.
+    """
+    project = stage.project
+    role, me, scope = _my_scope()
+    if role in FULL_ACCESS_ROLES:
+        return True
+    if _is_stage_worker(stage, me):
+        return False
+    if role == 'admin':
+        return project.created_by == me or project.created_by in scope
+    if role == 'department_admin':
+        return project.created_by == me
+    return False
+
+
 def can_view_project(project):
     if project is None:
         return False
@@ -373,6 +407,8 @@ def get_project(project_id):
         'manage': can_manage_project(project),
         'delete': _can_delete_project(project),
         'see_all_reports': _sees_all_reports(project),
+        # Qaysi bosqichlar ijrosini shu foydalanuvchi qabul qila oladi
+        'approve_stage_ids': [s.id for s in project.stages if can_approve_stage(s)],
     }
 
     team_stats = []
@@ -691,6 +727,15 @@ def update_stage(project_id, stage_id):
         if is_admin:
             if new_status == 'completed' and stage.status != 'review':
                 return jsonify({'error': 'Avval xodim bajarildi deb yuborishi kerak'}), 400
+            # Qabul qilish yoki tekshiruvdan qaytarish — faqat tasdiqlovchi rahbar
+            reviewing = new_status == 'completed' or \
+                (stage.status == 'review' and new_status == 'in_progress')
+            if reviewing and not can_approve_stage(stage):
+                if _is_stage_worker(stage, user_id):
+                    return jsonify({'error': "O'zingiz ijrochi bo'lgan bosqichni o'zingiz "
+                                             "tasdiqlay olmaysiz — uni yuqori rahbar qabul qiladi"}), 403
+                return jsonify({'error': "Bosqich ijrosini boshqarma rahbari yoki "
+                                         "loyihani yaratgan rahbar tasdiqlaydi"}), 403
 
         if new_status == 'in_progress' and not stage.started_at:
             stage.started_at = now
@@ -1188,13 +1233,7 @@ def get_full_stats():
 
 def _can_work_on_stage(stage, user_id):
     """Ichki etaplar: loyihani boshqaruvchi rahbar yoki shu bosqich ijrochisi."""
-    if can_manage_project(stage.project):
-        return True
-    user = User.query.get(user_id)
-    user_team_ids = {t.id for t in user.teams} if user else set()
-    stage_assignee_ids = {a.id for a in stage.assignees}
-    return (stage.assignee_id == user_id) or (user_id in stage_assignee_ids) or \
-        (not stage.assignee_id and not stage_assignee_ids and stage.team_id in user_team_ids)
+    return can_manage_project(stage.project) or _is_stage_worker(stage, user_id)
 
 
 @projects_bp.route('/<int:project_id>/stages/<int:stage_id>/substages', methods=['GET'])

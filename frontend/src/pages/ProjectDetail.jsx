@@ -169,6 +169,9 @@ export default function ProjectDetail() {
   // o'z boshqarmasi, bo'lim rahbari — o'z bo'limi, yaratuvchi — o'zi
   // yaratgani). Rol bo'yicha taxmin qilinsa tugma ko'rinib, 403 qaytardi.
   const canManage = !!perms?.manage
+  // Bosqich ijrosini qabul qilish — backend hisoblaydi (o'zi ijrochi bo'lgan
+  // rahbar va boshqa loyihani boshqaruvchi bo'lim rahbari tasdiqlay olmaydi)
+  const canApproveStage = (s) => !!perms?.approve_stage_ids?.includes(s.id)
   const canDelete = !!perms?.delete
 
   /** Loyihani yakunlash / bekor qilish / nofaol qilish / qayta faollashtirish */
@@ -733,12 +736,12 @@ export default function ProjectDetail() {
                           {t('project.stage.submit')}
                         </button>
                       )}
-                      {canManage && s.status === 'review' && (
+                      {canApproveStage(s) && s.status === 'review' && (
                         <button className="btn btn-success btn-sm" onClick={() => handleStageUpdate(s.id, 'completed')}>
                           ✓ {t('project.stage.approve')}
                         </button>
                       )}
-                      {canManage && s.status === 'review' && (
+                      {canApproveStage(s) && s.status === 'review' && (
                         <button className="btn btn-outline btn-sm" onClick={() => handleStageUpdate(s.id, 'in_progress')}>
                           ↩ {t('project.stage.return')}
                         </button>
