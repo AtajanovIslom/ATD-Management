@@ -1135,9 +1135,13 @@ class SubStage(db.Model):
     status = db.Column(db.String(50), default='pending')
     created_by = db.Column(db.Integer, db.ForeignKey('users.id'))
     completed_at = db.Column(db.DateTime)
+    # Tamomlashda xodim yozgan "nimalar qilindi" izohi va kim tamomlagani
+    result_note = db.Column(db.Text, default='')
+    completed_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
-    creator = db.relationship('User', lazy=True)
+    creator = db.relationship('User', foreign_keys=[created_by], lazy=True)
+    completer = db.relationship('User', foreign_keys=[completed_by], lazy=True)
 
     def to_dict(self):
         return {
@@ -1149,6 +1153,9 @@ class SubStage(db.Model):
             'created_by': self.created_by,
             'creator_name': self.creator.full_name if self.creator else None,
             'completed_at': self.completed_at.isoformat() if self.completed_at else None,
+            'result_note': self.result_note or '',
+            'completed_by': self.completed_by,
+            'completer_name': self.completer.full_name if self.completer else None,
             'created_at': self.created_at.isoformat() if self.created_at else None,
         }
 

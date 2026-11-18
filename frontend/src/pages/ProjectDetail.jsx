@@ -62,6 +62,10 @@ export default function ProjectDetail() {
   const [editMode, setEditMode] = useState(false)
   const [editForm, setEditForm] = useState({})
   const [newSubName, setNewSubName] = useState({})
+  // "Bosqichni tamomlash" oynasi: { stageId, sub } va xodim yozgan izoh
+  const [completeSub, setCompleteSub] = useState(null)
+  const [completeNote, setCompleteNote] = useState('')
+  const [completeBusy, setCompleteBusy] = useState(false)
   const [expandedStages, setExpandedStages] = useState({})
   const [editStages, setEditStages] = useState([])
   const [deletedStageIds, setDeletedStageIds] = useState(new Set())
@@ -207,13 +211,24 @@ export default function ProjectDetail() {
     }
   }
 
-  const handleSubStageUpdate = async (stageId, subId, status) => {
+  const handleSubStageUpdate = async (stageId, subId, status, extra = {}) => {
     try {
-      const res = await api.put(`/projects/${id}/stages/${stageId}/substages/${subId}`, { status })
+      const res = await api.put(`/projects/${id}/stages/${stageId}/substages/${subId}`, { status, ...extra })
       setProject(res.data)
+      return true
     } catch (err) {
       alert(err.response?.data?.error || t('state.error'))
+      return false
     }
+  }
+
+  const submitCompleteSub = async () => {
+    if (!completeSub || !completeNote.trim()) return
+    setCompleteBusy(true)
+    const ok = await handleSubStageUpdate(completeSub.stageId, completeSub.sub.id, 'completed',
+      { result_note: completeNote.trim() })
+    setCompleteBusy(false)
+    if (ok) { setCompleteSub(null); setCompleteNote('') }
   }
 
   const handleDeleteSubStage = async (stageId, subId) => {
@@ -759,12 +774,23 @@ export default function ProjectDetail() {
                                 </div>
                                 <div className="substage-card-name">{ss.name}</div>
                                 {ss.completed_at && (
-                                  <div className="substage-card-date">{formatShortDate(ss.completed_at)}</div>
+                                  <div className="substage-card-date">
+                                    {formatShortDate(ss.completed_at)}
+                                    {ss.completer_name && ` · ${ss.completer_name}`}
+                                  </div>
+                                )}
+                                {ss.result_note && (
+                                  <div style={{ fontSize: 11, color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', marginTop: 4 }}
+                                    title={t('project.substage.note')}>
+                                    {ss.result_note}
+                                  </div>
                                 )}
                                 <div className="substage-card-actions">
                                   {canManageSubStages(s) && ss.status === 'in_progress' && (
                                     <button className="btn btn-success btn-sm" style={{ padding: '3px 10px', fontSize: 10 }}
-                                      onClick={() => handleSubStageUpdate(s.id, ss.id, 'completed')}>✓ {t('project.substage.ready')}</button>
+                                      onClick={() => { setCompleteSub({ stageId: s.id, sub: ss }); setCompleteNote('') }}>
+                                      ✓ {t('project.substage.complete')}
+                                    </button>
                                   )}
                                   {canManageSubStages(s) && ss.status === 'pending' && (
                                     <button className="btn btn-outline btn-sm" style={{ padding: '3px 10px', fontSize: 10 }}
@@ -825,9 +851,52 @@ export default function ProjectDetail() {
                 {statusText(project.status)}
               </span>
             </div>
+            {/* Rahbar joriy bosqich ichida qaysi ichki bosqichda turilganini ko'radi */}
+            {currentStage?.sub_stages?.length > 0 && (() => {
+              const subs = currentStage.sub_stages
+              const done = subs.filter(ss => ss.status === 'completed').length
+              const cur = subs.find(ss => ss.status === 'in_progress')
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, color: 'var(--text-muted)',
+                  borderTop: '1px solid var(--border)', paddingTop: 8 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>{t('project.currentSubStage')}</span>
+                    <strong style={{ color: 'var(--text-primary)' }}>{done}/{subs.length}</strong>
+                  </div>
+                  <strong style={{ color: cur ? 'var(--warning, #f59e0b)' : 'var(--success)' }}>
+                    {cur ? `${cur.order}. ${cur.name}` : t('project.subStagesAllDone')}
+                  </strong>
+                </div>
+              )
+            })()}
           </div>
         </div>
       </div>
+
+      {/* Ichki bosqichni tamomlash — xodim nimalar qilinganini yozadi */}
+      {completeSub && (
+        <div className="modal-overlay" onClick={() => !completeBusy && setCompleteSub(null)}>
+          <div className="modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
+            <h2 style={{ marginBottom: 4 }}>✓ {t('project.substage.complete.title')}</h2>
+            <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 14 }}>
+              {completeSub.sub.order}. {completeSub.sub.name}
+            </p>
+            <div className="form-group">
+              <label>{t('project.substage.complete.label')}</label>
+              <textarea className="form-input" rows={5} autoFocus
+                value={completeNote}
+                onChange={e => setCompleteNote(e.target.value)}
+                placeholder={t('project.substage.complete.placeholder')} />
+            </div>
+            <div className="modal-actions">
+              <button className="btn btn-outline" disabled={completeBusy} onClick={() => setCompleteSub(null)}>{t('btn.cancel')}</button>
+              <button className="btn btn-success" disabled={completeBusy || !completeNote.trim()} onClick={submitCompleteSub}>
+                {completeBusy ? t('btn.saving') : t('project.substage.complete.submit')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Summary bar */}
       <div className="summary-bar" style={{ marginBottom: 16 }}>

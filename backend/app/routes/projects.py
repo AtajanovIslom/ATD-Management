@@ -1253,12 +1253,23 @@ def update_substage(project_id, stage_id, sub_id):
         if new_status not in ('pending', 'in_progress', 'completed'):
             return jsonify({'error': "Noto'g'ri holat"}), 400
         if new_status == 'completed':
+            # Tamomlashda xodim bu bosqichda nima qilinganini yozadi —
+            # rahbar ichki bosqich kartasida va hisobotda ko'radi
+            note = (data.get('result_note') or '').strip()
+            if not note:
+                return jsonify({'error': "Bu bosqichda nimalar qilinganini yozing"}), 400
             sub.completed_at = now
+            sub.completed_by = user_id
+            sub.result_note = note
             next_sub = SubStage.query.filter_by(stage_id=stage_id, order=sub.order + 1).first()
             if next_sub and next_sub.status == 'pending':
                 next_sub.status = 'in_progress'
+            log_audit('complete', 'sub_stage', sub.id, entity_label=sub.name,
+                      details=note[:200])
         elif new_status == 'in_progress':
             sub.completed_at = None
+            sub.completed_by = None
+            sub.result_note = ''
         sub.status = new_status
     if 'name' in data and (data['name'] or '').strip():
         sub.name = data['name'].strip()

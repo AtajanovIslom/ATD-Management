@@ -321,6 +321,9 @@ def _init_database(app):
                       AND a.entity_id = t.id AND a.user_id IS NOT NULL
                     ORDER BY a.created_at DESC LIMIT 1)
                 WHERE t.status = 'completed' AND t.approved_by IS NULL""",
+            # Ichki bosqichni tamomlashda bajarilgan ish izohi va tamomlovchi
+            "ALTER TABLE sub_stages ADD COLUMN IF NOT EXISTS result_note TEXT DEFAULT ''",
+            "ALTER TABLE sub_stages ADD COLUMN IF NOT EXISTS completed_by INTEGER REFERENCES users(id)",
             # Vazifani bekor qilish
             "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMP",
             "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS cancel_reason TEXT DEFAULT ''",
